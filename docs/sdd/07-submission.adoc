@@ -1,0 +1,255 @@
+= Submission Module Design
+
+== Overview
+
+The submission module accepts student homework and project uploads, enforces format and size constraints at the HTTP boundary, stores files on local disk, detects late submissions, and enqueues submissions for the grading pipeline. Validation is performed before any bytes are written to disk, preventing malformed or oversized content from entering the system.
+
+Format validation does not rely solely on file extension because extensions are trivially spoofed. Content-based detection is run after the size check passes and before the file is persisted.
+
+== Requirements in Scope
+
+* REQ-SUBMISSION-001 — Accepted submission file formats
+* REQ-SUBMISSION-002 — File upload size limit enforcement
+* REQ-SUBMISSION-003 — File format validation on upload
+* REQ-SYS-017 — Homework and project file submission
+* REQ-SYS-054 — File upload size validation
+* REQ-SYS-055 — File upload format validation
+
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003", "REQ-SYS-017", "REQ-SYS-054", "REQ-SYS-055"]}
+== Data Model
+
+=== submissions Table
+
+[source,sql]
+----
+CREATE TYPE submission_format AS ENUM ('latex', 'markdown', 'asciidoc');
+
+CREATE TABLE submissions (
+    id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id       UUID        NOT NULL REFERENCES users(id)          ON DELETE CASCADE,
+    course_id        UUID        NOT NULL REFERENCES courses(id)        ON DELETE CASCADE,
+    homework_id      UUID        NOT NULL REFERENCES homework(id)       ON DELETE CASCADE,
+    file_path        TEXT        NOT NULL,
+    format           submission_format NOT NULL,
+    file_size_bytes  BIGINT      NOT NULL CHECK (file_size_bytes > 0),
+    submitted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_late          BOOLEAN     NOT NULL DEFAULT FALSE,
+    round            INT         NOT NULL DEFAULT 0,
+    submitted_by     UUID        REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_submissions_student_id   ON submissions (student_id);
+CREATE INDEX idx_submissions_homework_id  ON submissions (homework_id);
+CREATE INDEX idx_submissions_course_id    ON submissions (course_id);
+CREATE INDEX idx_submissions_submitted_at ON submissions (submitted_at);
+----
+
+`round` is `0` for the original submission, `1` for the first correction, `2` for the second, and so on. `submitted_by` is `NULL` when the student submits themselves; it is populated with the admin's user ID when an admin submits on behalf of a student.
+
+`file_path` stores the path relative to the configured upload root (e.g. `uploads/{student_id}/{submission_id}.tex`). The absolute root is read from the `UPLOAD_ROOT` environment variable at startup.
+
+=== Migration Plan
+
+No existing table is modified. This is an additive migration. Rollback drops the `submissions` table and the `submission_format` type.
+
+[source,sql]
+----
+-- rollback
+DROP TABLE IF EXISTS submissions;
+DROP TYPE  IF EXISTS submission_format;
+----
+
+// @{"req": ["REQ-SUBMISSION-002", "REQ-SYS-054"]}
+== Size Limit Enforcement
+
+The maximum upload size is read from `system_config` key `max_upload_bytes` at request time via the in-memory `ConfigService`. The check occurs before the multipart body is parsed:
+
+[source,go]
+----
+func (h *SubmissionHandler) Submit(w http.ResponseWriter, r *http.Request) {
+    maxBytes := h.config.GetInt64("max_upload_bytes")
+    if r.ContentLength > maxBytes {
+        http.Error(w, `{"error":"file_too_large"}`, http.StatusRequestEntityTooLarge)
+        return
+    }
+    r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+    // ... parse multipart
+}
+----
+
+`Content-Length` is checked first to fast-reject large uploads without reading the body. `http.MaxBytesReader` enforces the limit during body parsing as a defence-in-depth measure for chunked transfers that omit `Content-Length`. Returns HTTP 413 with a JSON error body.
+
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-003", "REQ-SYS-017", "REQ-SYS-055"]}
+== Format Detection
+
+The declared format is taken from the `format` form field (`latex`, `markdown`, or `asciidoc`). After the file bytes are read into memory (subject to the size limit), the detector scans the content for format-specific markers:
+
+[source,go]
+----
+func detectFormat(data []byte) (submission_format, bool) {
+    s := string(data[:min(len(data), 4096)])
+    switch {
+    case strings.Contains(s, `\documentclass`) ||
+         strings.Contains(s, `\begin{document}`):
+        return FormatLatex, true
+    case reAsciiDocTitle.MatchString(s) ||
+         reAsciiDocSection.MatchString(s):
+        return FormatAsciiDoc, true
+    case reMdHeading.MatchString(s) ||
+         reMdBold.MatchString(s):
+        return FormatMarkdown, true
+    }
+    return "", false
+}
+----
+
+Regex patterns used:
+
+* `reAsciiDocTitle` — `(?m)^= \S` (AsciiDoc level-0 title)
+* `reAsciiDocSection` — `(?m)^== \S` (AsciiDoc level-1 section)
+* `reMdHeading` — `(?m)^#{1,6} \S` (Markdown ATX heading)
+* `reMdBold` — `\*\*\S` (Markdown bold)
+* LaTeX: substring match on `\documentclass` or `\begin{document}`
+
+Detection is run on the first 4 KB of the file to bound execution time. If the detected format does not match the declared format, the handler returns HTTP 422:
+
+[source,json]
+----
+{
+  "error": "format_mismatch",
+  "declared": "markdown",
+  "detected": "latex"
+}
+----
+
+If no format markers are found, the request is rejected with HTTP 422 `unrecognized_format`.
+
+// @{"req": ["REQ-SYS-017"]}
+== File Storage
+
+Files are stored at `{UPLOAD_ROOT}/{student_id}/{submission_id}.{ext}` where `ext` is `tex`, `md`, or `adoc` corresponding to the validated format. The directory `{UPLOAD_ROOT}/{student_id}/` is created with `os.MkdirAll` before writing. The file is written with `os.WriteFile` using mode `0600`.
+
+`submission_id` is a UUID generated before the file is written. The row is inserted into `submissions` after the file write succeeds. If the DB insert fails, the written file is deleted to prevent orphaned files.
+
+`UPLOAD_ROOT` must be an absolute path supplied via environment variable. The handler rejects requests if `UPLOAD_ROOT` is empty at startup.
+
+// @{"req": ["REQ-SYS-017", "REQ-SYS-018"]}
+== Late Detection
+
+Late detection runs inside the submission handler after the file is persisted, before the response is returned. Late detection runs only for `round = 0` submissions. Resubmissions (`round > 0`) inherit `is_late` from the original submission row and do not trigger a new late calculation.
+
+[source,go]
+----
+func (h *SubmissionHandler) detectLate(
+    ctx context.Context,
+    homeworkID uuid.UUID,
+    submittedAt time.Time,
+) (bool, error) {
+    var dueDate time.Time
+    err := h.db.QueryRowContext(ctx,
+        `SELECT due_date FROM due_date_schedules WHERE homework_id = $1`,
+        homeworkID,
+    ).Scan(&dueDate)
+    if err != nil {
+        return false, err
+    }
+    return submittedAt.After(dueDate), nil
+}
+----
+
+The `is_late` flag is written to the `submissions` row. The grading module reads this flag to determine whether to apply a late penalty. Late detection uses `time.Time` UTC throughout; due dates are stored as `TIMESTAMPTZ`.
+
+== Resubmission
+
+Students may submit multiple correction rounds for any homework assignment. Each resubmission inserts a new `submissions` row with `round` incremented by 1 relative to the preceding round for that `(student_id, homework_id)` pair.
+
+`is_late` is determined once at `round = 0` and is not recalculated on resubmissions. Resubmissions copy the `is_late` value from the `round = 0` row for the same `(student_id, homework_id)`.
+
+The grading module applies a recovery formula when scoring resubmissions. For a correction at round n, only questions that were incorrect in the previous round but correct in round n earn recovered points. The recovered points are discounted by `(0.5)^n`:
+
+----
+final_score = original_score + Σ(recovered_n * (0.5)^n)   for n = 1..N
+----
+
+Admin submissions on behalf of a student are recorded with `submitted_by = admin_id`. These rows appear in the audit log and are visible to admins via the admin submission list endpoint. The student-facing submission view does not expose `submitted_by`.
+
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003", "REQ-SYS-017", "REQ-SYS-054", "REQ-SYS-055"]}
+== API Contract
+
+=== POST /api/v1/courses/:id/homework/:hwid/submit
+
+Accepts a multipart/form-data body. Requires an authenticated session with role `student`. The student must own the course.
+
+Request fields:
+
+* `file` (file, required) — the submission file
+* `format` (string, required) — one of `latex`, `markdown`, `asciidoc`
+
+Success response — HTTP 201:
+
+[source,json]
+----
+{
+  "submission_id": "uuid",
+  "homework_id":   "uuid",
+  "format":        "markdown",
+  "file_size_bytes": 14320,
+  "submitted_at":  "2026-04-25T10:00:00Z",
+  "is_late":       false,
+  "round":         0
+}
+----
+
+Error responses:
+
+[cols="1,3"]
+|===
+|Status |Condition
+
+|400
+|Missing `file` or `format` field; invalid `format` value
+
+|413
+|`file_size_bytes` exceeds `max_upload_bytes`
+
+|422
+|Detected content does not match declared format or no format markers found
+
+|403
+|Authenticated student does not own this course
+
+|404
+|Course or homework not found
+|===
+
+=== GET /api/v1/courses/:id/homework/:hwid/submission
+
+Returns the student's current submission for the specified homework. Requires authenticated session; student role returns own submission only.
+
+Success response — HTTP 200:
+
+[source,json]
+----
+{
+  "submission_id":  "uuid",
+  "homework_id":    "uuid",
+  "format":         "asciidoc",
+  "file_size_bytes": 8190,
+  "submitted_at":   "2026-04-24T22:15:00Z",
+  "is_late":        true,
+  "round":          1
+}
+----
+
+Returns HTTP 404 if no submission exists for this student and homework pair.
+
+== Alternatives Considered
+
+* *Store files in PostgreSQL `bytea` columns* — rejected because large binary columns degrade DB performance and prevent use of filesystem-level backup tooling.
+* *Rely on MIME type from `Content-Type` header for format detection* — rejected because MIME type is user-supplied and does not validate actual content structure.
+* *Asynchronous size check via streaming read* — rejected in favour of `Content-Length` pre-check plus `MaxBytesReader` as it provides earlier rejection with lower resource cost.
+* *Single mutable submission row with in-place updates* — rejected in favour of immutable round rows so that the full submission history and audit trail are preserved. The grading module walks the round chain to compute the final score.
+
+== Open Questions
+
+All open questions resolved.

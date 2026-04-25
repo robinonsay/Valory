@@ -1,0 +1,361 @@
+= Admin Configuration Module Design
+
+== Overview
+
+The admin configuration module provides a single, operator-managed key-value store for all system-wide policies. A Go `ConfigService` loads all keys into an in-memory map at startup and hot-reloads on admin write, eliminating the need for restarts when policies change. Token expenditure per student is tracked in a dedicated table; the AI SDK wrapper enforces the cap before every API call.
+
+== Requirements in Scope
+
+* REQ-ADMIN-001 — Agent retry limit configuration
+* REQ-ADMIN-002 — Correction loop limit configuration
+* REQ-ADMIN-003 — Per-student AI token cost limit configuration
+* REQ-ADMIN-004 — Per-student AI token cap enforcement
+* REQ-SYS-049 — Per-student AI API cost limit
+* REQ-SYS-050 — Admin grading policy configuration
+* REQ-SYS-051 — Admin agent retry limit configuration
+
+// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-ADMIN-004", "REQ-SYS-049", "REQ-SYS-050", "REQ-SYS-051"]}
+== Data Model
+
+=== system_config Table
+
+[source,sql]
+----
+CREATE TABLE system_config (
+    key         VARCHAR(120) PRIMARY KEY,
+    value       TEXT         NOT NULL,
+    updated_by  UUID         REFERENCES users(id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+----
+
+Defined keys and their types/defaults:
+
+[cols="2,1,2"]
+|===
+|Key |Type |Default
+
+|`agent_retry_limit`
+|INT
+|3
+
+|`correction_loop_max_iterations`
+|INT
+|5
+
+|`per_student_token_limit`
+|BIGINT
+|500000
+
+|`late_penalty_rate`
+|FLOAT
+|0.05
+
+|`homework_weight`
+|FLOAT
+|0.7
+
+|`project_weight`
+|FLOAT
+|0.3
+
+|`session_inactivity_seconds`
+|INT
+|1800
+
+|`account_lockout_seconds`
+|INT
+|900
+
+|`max_upload_bytes`
+|BIGINT
+|10485760
+
+|`content_generation_timeout_seconds`
+|INT
+|300
+
+|`audit_retention_days`
+|INT
+|365
+
+|`notification_retention_days`
+|INT
+|90
+
+|`consent_version`
+|STRING
+|"1.0"
+|===
+
+Keys are seeded by a migration that inserts default rows with `INSERT ... ON CONFLICT DO NOTHING`, so they are always present after a fresh deploy.
+
+`audit_retention_days` controls how long audit log entries are retained before the nightly cleanup removes them. `notification_retention_days` controls notification retention. `consent_version` holds the current consent text version; when an admin increments it via `PATCH /api/v1/admin/config`, every student whose stored `consent_version` is lower than the new value must re-consent before their next AI interaction.
+
+=== agent_token_usage Table
+
+[source,sql]
+----
+CREATE TABLE agent_token_usage (
+    id                 UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id         UUID    NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+    course_id          UUID    NOT NULL REFERENCES courses(id)  ON DELETE CASCADE,
+    total_tokens_used  BIGINT  NOT NULL DEFAULT 0
+                               CHECK (total_tokens_used >= 0),
+
+    CONSTRAINT uq_token_usage_student_course UNIQUE (student_id, course_id)
+);
+
+CREATE INDEX idx_token_usage_student_id ON agent_token_usage (student_id);
+----
+
+The `UNIQUE` constraint on `(student_id, course_id)` means the row is upserted on first use and incremented atomically thereafter.
+
+=== Migration Plan
+
+Both tables are additive. Rollback:
+
+[source,sql]
+----
+-- rollback
+DROP TABLE IF EXISTS agent_token_usage;
+DELETE FROM system_config;  -- removes seed rows; table retained for safety
+-- DROP TABLE IF EXISTS system_config;  -- uncomment only on full teardown
+----
+
+// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-SYS-050", "REQ-SYS-051"]}
+== Config Access Pattern
+
+`ConfigService` is a singleton initialized during application startup. It holds an in-memory map protected by a `sync.RWMutex`.
+
+[source,go]
+----
+type ConfigService struct {
+    mu     sync.RWMutex
+    values map[string]string
+    db     *sql.DB
+}
+
+func (c *ConfigService) Load(ctx context.Context) error {
+    rows, err := c.db.QueryContext(ctx, `SELECT key, value FROM system_config`)
+    if err != nil {
+        return err
+    }
+    defer rows.Close()
+    m := make(map[string]string)
+    for rows.Next() {
+        var k, v string
+        if err := rows.Scan(&k, &v); err != nil {
+            return err
+        }
+        m[k] = v
+    }
+    c.mu.Lock()
+    c.values = m
+    c.mu.Unlock()
+    return nil
+}
+
+func (c *ConfigService) GetInt64(key string) int64 {
+    c.mu.RLock()
+    v := c.values[key]
+    c.mu.RUnlock()
+    n, _ := strconv.ParseInt(v, 10, 64)
+    return n
+}
+
+func (c *ConfigService) GetFloat64(key string) float64 {
+    c.mu.RLock()
+    v := c.values[key]
+    c.mu.RUnlock()
+    f, _ := strconv.ParseFloat(v, 64)
+    return f
+}
+----
+
+The admin PATCH handler calls `c.Load(ctx)` after writing the updated values to the database. This reloads the full map atomically; partial updates are not applied to the in-memory map.
+
+Config values are validated before writing to the DB. Validation rules:
+
+* `agent_retry_limit`, `correction_loop_max_iterations`: integer, `>= 1`
+* `per_student_token_limit`: integer, `>= 0` (`0` is valid and disables AI features; see Token Cap Enforcement)
+* `late_penalty_rate`: float, `0.0 <= value <= 1.0`
+* `homework_weight + project_weight`: must sum to `1.0` (validated together when either is updated)
+* `max_upload_bytes`: integer, `>= 1024`
+* All timeout/duration keys: integer, `>= 1`
+* `audit_retention_days`, `notification_retention_days`: integer, `>= 1`
+
+If validation fails, the DB write is not performed, the in-memory map is not reloaded, and HTTP 422 is returned.
+
+// @{"req": ["REQ-ADMIN-003", "REQ-ADMIN-004", "REQ-SYS-049"]}
+== Token Cap Enforcement
+
+The Anthropic SDK is wrapped by a `ThrottledClient` that intercepts every API call to enforce the per-student token limit.
+
+[source,go]
+----
+type ThrottledClient struct {
+    inner   anthropic.Client
+    db      *sql.DB
+    config  *ConfigService
+}
+
+func (t *ThrottledClient) Messages(
+    ctx context.Context,
+    studentID uuid.UUID,
+    courseID  uuid.UUID,
+    req       anthropic.MessageRequest,
+) (*anthropic.MessageResponse, error) {
+    limit := t.config.GetInt64("per_student_token_limit")
+
+    resp, err := t.inner.Messages(ctx, req)
+    if err != nil {
+        return nil, err
+    }
+
+    newTokens := int64(resp.Usage.InputTokens + resp.Usage.OutputTokens)
+    var newTotal int64
+    // INSERT ... SELECT ... WHERE guards the first-row case; ON CONFLICT guards subsequent rows.
+    // Both paths enforce the cap atomically in a single SQL statement.
+    err = t.db.QueryRowContext(ctx,
+        `INSERT INTO agent_token_usage (student_id, course_id, total_tokens_used)
+         SELECT $1, $2, $3 WHERE $3 <= $4
+         ON CONFLICT (student_id, course_id) DO UPDATE
+             SET total_tokens_used =
+                 agent_token_usage.total_tokens_used + EXCLUDED.total_tokens_used
+             WHERE agent_token_usage.total_tokens_used +
+                   EXCLUDED.total_tokens_used <= $4
+         RETURNING total_tokens_used`,
+        studentID, courseID, newTokens, limit,
+    ).Scan(&newTotal)
+    if errors.Is(err, sql.ErrNoRows) {
+        return nil, ErrTokenCapExceeded
+    }
+    if err != nil {
+        return nil, err
+    }
+    return resp, nil
+}
+----
+
+`ErrTokenCapExceeded` is a sentinel error. The pipeline treats this error as a non-retryable halt, emits a `token_cap_reached` pipeline event, and notifies the student. The cap is enforced atomically: the `ON CONFLICT DO UPDATE ... WHERE` clause makes the increment and the limit check a single PostgreSQL operation. PostgreSQL's row-level lock on the upsert target serializes concurrent increments for the same `(student_id, course_id)` pair, so a second concurrent goroutine will always evaluate the WHERE clause against the already-committed total. If the WHERE condition fails, no row is returned and `ErrTokenCapExceeded` is raised without any separate pre-call SELECT.
+
+Setting `per_student_token_limit` to `0` is a valid way to disable AI features for a course. The `ThrottledClient` treats `limit == 0` as an immediate cap — `$3 <= $4` evaluates to false for any positive `newTokens`, so the INSERT produces no row and `ErrTokenCapExceeded` is returned on the first API call attempt.
+
+// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-ADMIN-004", "REQ-SYS-049", "REQ-SYS-050", "REQ-SYS-051"]}
+== API Contract
+
+All endpoints in this section require the authenticated user to hold the `admin` role. The auth middleware enforces this; requests from `student`-role sessions receive HTTP 403.
+
+=== GET /api/v1/admin/config
+
+Returns all current configuration key-value pairs.
+
+Success response — HTTP 200:
+
+[source,json]
+----
+{
+  "config": {
+    "agent_retry_limit":                   "3",
+    "correction_loop_max_iterations":      "5",
+    "per_student_token_limit":             "500000",
+    "late_penalty_rate":                   "0.05",
+    "homework_weight":                     "0.7",
+    "project_weight":                      "0.3",
+    "session_inactivity_seconds":          "1800",
+    "account_lockout_seconds":             "900",
+    "max_upload_bytes":                    "10485760",
+    "content_generation_timeout_seconds":  "300",
+    "audit_retention_days":                "365",
+    "notification_retention_days":         "90",
+    "consent_version":                     "1.0"
+  },
+  "updated_by": {"id": "uuid", "username": "string"},
+  "updated_at": "2026-04-20T10:00:00Z"
+}
+----
+
+Values are returned as strings to avoid client-side type inference errors. The `updated_by` object contains the `id` (UUID) and `username` of the admin who last changed any key, and `updated_at` reflects the timestamp of that most-recent change.
+
+=== PATCH /api/v1/admin/config
+
+Partially updates one or more config keys. Only the supplied keys are written; keys not present in the request body are unchanged.
+
+Request body:
+
+[source,json]
+----
+{
+  "config": {
+    "late_penalty_rate":        "0.10",
+    "agent_retry_limit":        "5"
+  }
+}
+----
+
+Success response — HTTP 200:
+
+[source,json]
+----
+{
+  "updated_keys": ["late_penalty_rate", "agent_retry_limit"],
+  "config": {
+    "late_penalty_rate":                   "0.10",
+    "agent_retry_limit":                   "5",
+    "correction_loop_max_iterations":      "5",
+    "per_student_token_limit":             "500000",
+    "homework_weight":                     "0.7",
+    "project_weight":                      "0.3",
+    "session_inactivity_seconds":          "1800",
+    "account_lockout_seconds":             "900",
+    "max_upload_bytes":                    "10485760",
+    "content_generation_timeout_seconds":  "300",
+    "audit_retention_days":                "365",
+    "notification_retention_days":         "90",
+    "consent_version":                     "1.0"
+  }
+}
+----
+
+Error responses:
+
+[cols="1,3"]
+|===
+|Status |Condition
+
+|400
+|Unknown config key in request body
+
+|403
+|Requester does not hold the `admin` role
+
+|422
+|Value fails type or range validation; `homework_weight + project_weight != 1.0`
+|===
+
+On HTTP 422, no keys are written and the in-memory config is unchanged. The response body includes a `validation_errors` array:
+
+[source,json]
+----
+{
+  "validation_errors": [
+    {
+      "key":     "late_penalty_rate",
+      "message": "must be between 0.0 and 1.0"
+    }
+  ]
+}
+----
+
+Each admin config change is recorded in the `audit_log` table per REQ-AUDIT-001.
+
+== Alternatives Considered
+
+* *Per-key API endpoints (e.g. `PATCH /admin/config/agent_retry_limit`)* — rejected in favour of a single PATCH endpoint with a map body. A bulk endpoint reduces the number of round trips for multi-key updates and simplifies the audit log to one entry per admin action rather than one per key.
+* *Reading config from the DB on every request* — rejected because the config is read on the hot path of every AI call and every file upload. In-memory access with RWMutex is orders of magnitude faster. The consistency trade-off (briefly stale in-memory values) is acceptable for operational settings.
+* *Environment variables for all config* — rejected for settings that must be changeable at runtime without a process restart. `UPLOAD_ROOT` and `ANTHROPIC_API_KEY` remain as env vars because they are deployment-time secrets, not operational policy.
+
+== Open Questions
+
+All open questions resolved.

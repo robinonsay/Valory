@@ -1,0 +1,198 @@
+= Notification Module Design
+
+== Overview
+
+The notification module delivers in-app event messages to students when AI pipeline failures occur. Notifications are written directly by the agent module into the `notifications` table; no separate notification service or message broker is required. The frontend retrieves unread notifications by polling on page load and on SSE pipeline events. This design keeps the delivery path minimal and avoids adding infrastructure dependencies for a non-real-time use case.
+
+== Requirements in Scope
+
+* REQ-NOTIFY-001 — AI API failure student notification
+* REQ-NOTIFY-002 — Content generation timeout student notification
+* REQ-SYS-035 — AI API failure student notification
+* REQ-SYS-043 — Content generation time bound notification
+
+// @{"req": ["REQ-NOTIFY-001", "REQ-NOTIFY-002", "REQ-SYS-035", "REQ-SYS-043"]}
+== Data Model
+
+[source,sql]
+----
+CREATE TYPE notification_type AS ENUM (
+    'api_failure',
+    'generation_timeout',
+    'admin_escalation'
+);
+
+CREATE TABLE notifications (
+    id          UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id  UUID              NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        notification_type NOT NULL,
+    message     TEXT              NOT NULL,
+    read_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ       NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notifications_student_unread
+    ON notifications (student_id, created_at DESC)
+    WHERE read_at IS NULL;
+----
+
+Migration plan: additive. Rollback drops the `notifications` table, the `notification_type` enum, and the index.
+
+=== Type Values
+
+* `api_failure` — written by the agent module when an Anthropic API call exhausts retries (REQ-AGENT-011).
+* `generation_timeout` — written by the agent module when upfront content generation exceeds the configured time limit (REQ-AGENT-014).
+* `admin_escalation` — written by the agent module when the correction loop reaches its cap and an admin must intervene (REQ-AGENT-008). `admin_escalation` notifications are written to the student's notification feed as a delay notice ("Content generation encountered a persistent issue and has been escalated to an administrator") AND surfaced to admins via the audit/escalation pipeline event. Both audiences receive the notification through their respective channels: the student receives it in their notification feed via the standard `notify.Write` path, and the admin receives it through the pipeline escalation event that triggers an entry in the audit/escalation pipeline.
+
+// @{"req": ["REQ-NOTIFY-001", "REQ-NOTIFY-002", "REQ-SYS-035", "REQ-SYS-043"]}
+== Notification Creation
+
+The agent module writes notifications directly. No intermediate service is involved. The write is performed using a dedicated `notify.Write` function that executes outside the content-generation transaction so that a generation halt does not roll back the notification insert.
+
+[source,go]
+----
+// Write inserts a notification for a student. db is the root connection pool,
+// not a transaction, so the write is independent of any in-flight generation tx.
+func Write(ctx context.Context, db *pgxpool.Pool, n Notification) error {
+    _, err := db.Exec(ctx,
+        `INSERT INTO notifications (student_id, type, message)
+         VALUES ($1, $2, $3)`,
+        n.StudentID, n.Type, n.Message,
+    )
+    return err
+}
+----
+
+=== API Failure Notification
+
+Triggered in the agent module's retry loop when the final retry is exhausted:
+
+[source,go]
+----
+notify.Write(ctx, db, notify.Notification{
+    StudentID: studentID,
+    Type:      "api_failure",
+    Message:   "Content generation failed due to an AI API error. Please contact support.",
+})
+----
+
+=== Timeout Notification
+
+The agent module starts a `context.WithTimeout` for the full upfront generation task. The timeout duration is read from the `system_config` table at job start. When the context is cancelled due to timeout, the agent module calls:
+
+[source,go]
+----
+notify.Write(ctx, db, notify.Notification{
+    StudentID: studentID,
+    Type:      "generation_timeout",
+    Message:   "Course content generation is taking longer than expected. You will be notified when it completes.",
+})
+----
+
+The background context (not the cancelled generation context) is used for the notify write to ensure delivery despite timeout.
+
+// @{"req": ["REQ-NOTIFY-001", "REQ-NOTIFY-002", "REQ-SYS-035", "REQ-SYS-043"]}
+== Student Delivery
+
+The frontend retrieves notifications at two trigger points:
+
+1. On page load: `GET /api/v1/notifications?unread=true`
+2. On SSE pipeline events: when the agent module emits any terminal pipeline event (failure or timeout), the SSE handler additionally signals the frontend to re-poll notifications.
+
+No server-push (WebSocket or SSE) is used exclusively for notifications. Pull-on-event avoids maintaining a persistent connection per student for a low-frequency event type.
+
+== Retention Policy
+
+A nightly background goroutine deletes notifications where `created_at < NOW() - INTERVAL '1 day' * notification_retention_days`, reading `notification_retention_days` from `system_config` (default 90). The delete runs in batches of 1000 rows to avoid long table locks:
+
+[source,go]
+----
+for {
+    res, err := db.Exec(ctx,
+        `DELETE FROM notifications
+         WHERE id IN (
+             SELECT id FROM notifications
+             WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
+             LIMIT 1000
+         )`,
+        retentionDays,
+    )
+    if err != nil || rowsAffected(res) == 0 {
+        break
+    }
+}
+----
+
+== API Contract
+
+=== List Notifications
+
+`GET /api/v1/notifications?unread=true|false&limit=50&before=<id>`
+
+Authorization: student (own notifications only).
+
+Query parameters:
+
+* `unread` — `true` returns only rows where `read_at IS NULL`; `false` or absent returns all
+* `limit` — integer 1–100, default 50
+* `before` — UUID cursor for pagination (created_at descending)
+
+Response 200:
+
+[source,json]
+----
+{
+  "notifications": [
+    {
+      "id": "n1a2b3c4-...",
+      "type": "api_failure",
+      "message": "Content generation failed due to an AI API error. Please contact support.",
+      "read_at": null,
+      "created_at": "2026-04-25T10:05:00Z"
+    }
+  ],
+  "next_before": "n0a1b2c3-..."
+}
+----
+
+`next_before` is null when no further rows exist.
+
+Error cases:
+
+* 401 — no valid session
+* 400 — `limit` out of range
+
+=== Mark Notification as Read
+
+`POST /api/v1/notifications/:id/read`
+
+Authorization: student owning the notification.
+
+Response 200:
+
+[source,json]
+----
+{
+  "id": "n1a2b3c4-...",
+  "read_at": "2026-04-25T10:10:00Z"
+}
+----
+
+Error cases:
+
+* 401 — no valid session
+* 403 — notification does not belong to the authenticated student
+* 404 — notification not found
+* 409 — notification already marked read (idempotent behaviour: return 200 with existing `read_at` instead of 409)
+
+The 409 case is resolved in favour of idempotency: if `read_at IS NOT NULL`, return HTTP 200 with the existing value unchanged.
+
+== Alternatives Considered
+
+* Dedicated notification service with a message queue: ruled out because the notification volume is low (triggered only on failure events), and adding a broker like Redis Pub/Sub or RabbitMQ is not warranted by the current requirements.
+* WebSocket push: ruled out because push-only-on-failure is not a high-frequency stream; polling on SSE events achieves the same UX result without maintaining a persistent per-student socket.
+* Storing notifications in-memory (e.g., a Go channel per user): ruled out because in-memory state does not survive process restarts, violating the student's right to receive a notification they were owed.
+
+== Open Questions
+
+All open questions resolved.

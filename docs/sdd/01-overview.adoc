@@ -1,0 +1,322 @@
+= System Architecture Overview
+
+== Purpose and Scope
+
+Valory is an AI professor system that generates, delivers, and grades personalized
+courses on any topic through a conversation-driven multi-agent pipeline. It serves
+two user classes: students who create and progress through courses, and admins who
+configure system parameters, review escalations, and manage user accounts.
+
+This Software Design Document specifies every module's data model, API contract,
+agent interaction protocol, and cross-cutting security and infrastructure
+decisions. It is the authoritative reference for implementation: both the Go
+backend and the Vue.js frontend are built against the contracts defined here.
+Requirement traceability tags (`REQ-MODULE-NNN`) appear at the section level
+within each module chapter; this overview chapter is architectural context and
+carries no per-requirement tags.
+
+== System Components
+
+[cols="2,2,4", options="header"]
+|===
+| Component | Technology | Role
+
+| API server
+| Go (single binary)
+| Serves the REST API and SSE pipeline events over TLS. All business logic,
+  agent orchestration, and database access live inside this binary as packages
+  under `internal/`. Runs database migrations on startup.
+
+| Frontend SPA
+| Vue.js + TypeScript (Composition API)
+| Single-page application served by Nginx. Communicates with the API over REST
+  for data mutations and queries, and over Server-Sent Events for pipeline
+  status updates. No direct database access.
+
+| Database
+| PostgreSQL 16
+| Sole persistence store. Parameterized queries only. Row-level security enabled
+  on all student-owned tables. The `valory_app` role is the only application
+  credential; no direct connections are issued from the frontend.
+
+| Anthropic Claude API
+| External HTTPS service
+| Provides the language model backing all agent conversations. Consumed
+  exclusively by the agent pipeline inside the Go binary via the Anthropic SDK.
+  Credential supplied via `ANTHROPIC_API_KEY` environment variable.
+
+| Brave Search API
+| External HTTPS service
+| Provides web search results to Professor agents during content generation.
+  Each search is a synchronous HTTP call from the Go runner, with results
+  injected back into the agent conversation as a `tool_result` message.
+  Credential supplied via `BRAVE_API_KEY` environment variable.
+
+| Asciidoctor CLI
+| Local subprocess
+| Invoked by the content module to export lesson content and syllabi to HTML or
+  PDF. Runs as a subprocess of the Go binary via `exec.Command`; no CGo
+  dependency is introduced and content files remain on disk between calls.
+
+| Docker Compose
+| Container orchestration
+| Three services: `db` (PostgreSQL), `api` (Go binary), `frontend` (Nginx +
+  compiled Vue.js). Used for both development and production. TLS is terminated
+  at the `api` service; Nginx proxies `/api/` and `/health` to the API port.
+|===
+
+== Module Map
+
+[cols="2,3,5", options="header"]
+|===
+| Module | Go package | Responsibility
+
+| Auth
+| `internal/auth`
+| Issues and validates opaque session tokens; enforces role-based access
+  control at the HTTP boundary; manages brute-force lockout and session expiry.
+
+| User
+| `internal/user`
+| Manages student and admin account lifecycle, including profile updates,
+  password changes, account deactivation, and GDPR-compliant erasure.
+
+| Course
+| `internal/course`
+| Owns course lifecycle state (`intake` through `completed`), enforces the
+  single-active-course constraint, and persists due-date schedules read by
+  the grading module.
+
+| Agent
+| `internal/agent`
+| Implements the University Chair, Professor, Reviewer, and Grader agents as
+  Go structs wrapping Anthropic SDK conversation state; drives all AI
+  interactions and emits pipeline events.
+
+| Content
+| `internal/content`
+| Stores and retrieves lesson AsciiDoc content, manages the content library for
+  reuse matching, and invokes Asciidoctor for export.
+
+| Submission
+| `internal/submission`
+| Accepts, validates, and stores student homework submissions; enforces file
+  type and size limits; triggers the Grader agent pipeline.
+
+| Grade
+| `internal/grade`
+| Records Grader agent output, applies late-submission penalties from the
+  due-date schedule, and exposes grade history to students and admins.
+
+| Badge
+| `internal/badge`
+| Evaluates achievement criteria after grade writes and course completion, and
+  awards badges to student profiles.
+
+| Admin
+| `internal/admin`
+| Exposes admin-only endpoints for user management, system configuration, and
+  course oversight; all writes are recorded by the audit module.
+
+| Audit
+| `internal/audit`
+| Maintains a tamper-evident, SHA-256 hash-chained log of every privileged
+  admin action; writes occur inside the same transaction as the action.
+
+| Notify
+| `internal/notify`
+| Delivers in-system notifications to students and admins for pipeline events,
+  grade publications, and escalation alerts.
+
+| Security
+| `internal/security`
+| Provides cross-cutting controls: CSRF middleware, AI processing consent gate,
+  password-reset rate limiting, and per-student data isolation via RLS policies.
+
+| Infra
+| `internal/infra`
+| Owns the health check endpoint, TLS server configuration, and the Docker
+  Compose service layout.
+|===
+
+== Request Lifecycle
+
+A typical authenticated, state-changing request traverses the following layers:
+
+. *TLS termination* — The Go `net/http` server accepts the connection with
+  `MinVersion: tls.VersionTLS12`. No plaintext traffic reaches the handler
+  chain; the HTTP server on port 80 issues 301 redirects only.
+
+. *CSRF validation* — `CSRFMiddleware` intercepts every non-idempotent method
+  (POST, PATCH, PUT, DELETE). It reads the `__Host-csrf` cookie and compares it
+  against the `X-CSRF-Token` request header using a constant-time comparison.
+  A mismatch returns HTTP 403 before any session lookup occurs.
+
+. *Session lookup and role check* — `AuthMiddleware` reads the
+  `Authorization: Bearer <token>` header, computes `hex(SHA-256(token))`, and
+  queries `sessions` by `token_hash`. It validates both the absolute expiry
+  (`expires_at`) and the inactivity window (`last_active_at`). On success, it
+  stores `user_id` and `role` in `context.Context` and updates `last_active_at`.
+  Role-gated routes additionally pass through `RequireRole`, which reads the role
+  from context and returns HTTP 403 on mismatch.
+
+. *Handler execution* — The Go handler reads `user_id` and `role` from context
+  for every database query. Before issuing queries, the handler sets session-local
+  PostgreSQL settings (`app.current_user_id`, `app.current_role`) so that RLS
+  policies on student-owned tables are enforced at the database layer as a
+  second defence-in-depth measure.
+
+. *Agent invocation (when applicable)* — Handlers that trigger AI work call into
+  `internal/agent`. The agent module first checks the `student_consent` table;
+  if the student has not consented to AI processing (or their consent version is
+  outdated), the call returns `ErrConsentRequired` and the handler responds HTTP
+  403 before any Anthropic API call is made.
+
+. *Response* — The handler serializes the response as JSON and writes it.
+  Pipeline-event endpoints instead hold the connection open as
+  `Content-Type: text/event-stream` and stream `pipeline_events` rows as
+  Server-Sent Events until the client disconnects or the run completes.
+
+== Database Design Principles
+
+The following conventions apply uniformly across all module schemas.
+
+*Primary keys* — All tables use `UUID PRIMARY KEY DEFAULT gen_random_uuid()`,
+with the exception of `audit_log` which uses `BIGSERIAL` to support sequential
+chain verification. UUIDs prevent enumeration attacks and allow client-side ID
+generation where needed.
+
+*Timestamps* — Every timestamp column is `TIMESTAMPTZ NOT NULL DEFAULT NOW()`.
+All values are stored and returned in UTC. Application code never assumes a
+local timezone.
+
+*Soft deletes* — User deactivation is expressed as `users.is_active = FALSE`;
+rows are not deleted. This preserves foreign key integrity for courses and audit
+entries. Hard deletes are used only for student data erasure requests (GDPR
+right to erasure), which go through a dedicated handler that terminates any
+running agent contexts before deletion.
+
+*Operator configuration* — The `system_config` table (owned by `internal/admin`)
+is the single source of truth for all operator-tunable parameters (bcrypt cost
+factor, session timeouts, agent iteration limits, consent version string). No
+configuration value that an operator might adjust at runtime is hardcoded in the
+binary. Configuration is read into an in-memory `sync.RWMutex`-protected map at
+startup and reloaded on admin write without a process restart.
+
+*Row-level security* — RLS is enabled on all student-owned tables: `courses`,
+`lesson_content`, `section_feedback`, `submissions`, `grades`, `chat_messages`,
+`notifications`, and `student_consent`. The application sets `app.current_user_id`
+and `app.current_role` as session-local PostgreSQL parameters before executing
+queries, and each table's policy allows access only when `student_id` matches
+the current user or the current role is `admin`.
+
+*Single-active-course constraint* — Enforced by a partial unique index rather
+than application-level check-then-insert, eliminating the TOCTOU race:
+
+[source,sql]
+----
+CREATE UNIQUE INDEX idx_courses_one_active_per_student
+    ON courses (student_id)
+    WHERE status NOT IN ('archived', 'completed');
+----
+
+*Migration discipline* — Every schema change is expressed as an additive
+migration file. Columns and tables are never dropped in the same migration that
+removes application references to them; removal follows a two-phase approach
+where the application stops writing the column in one release before it is
+dropped in the next. Rollback paths are documented in each module's migration
+plan section.
+
+== Agent Pipeline Overview
+
+All agents are Go structs that hold Anthropic SDK conversation state
+(`[]anthropic.MessageParam`). They are not separate processes, containers, or
+microservices; they run as goroutines inside the single Go binary and share the
+database connection pool and configuration map.
+
+*University Chair* — The primary agent. Scoped to a single course by `course_id`.
+Owns the full student-facing conversation from the moment a course is created:
+intake questionnaire, syllabus drafting, due-date negotiation, and active-course
+chat. Phase transitions are expressed as system-prompt injections into the
+continuing conversation; the Chair does not lose prior context when moving from
+intake to syllabus generation.
+
+*Professor agent* — Short-lived; one instance per lesson section. Instantiated
+by the content generation runner after syllabus approval and discarded after the
+section AsciiDoc is committed. Each Professor has a `web_search` tool registered
+with the Anthropic SDK; the Go runner executes Brave Search API calls
+synchronously when the model emits a `tool_use` block, injects the results as
+`tool_result` messages, and continues the conversation.
+
+*Reviewer agent* — Invoked by the generation runner immediately after each
+Professor produces a section. The Reviewer checks the section for the presence
+of at least one citation. On failure it increments `agent_runs.iteration_count`;
+if the count reaches the admin-configured maximum, it escalates and halts
+generation for that run. On success it clears the way for content to be
+committed.
+
+*Grader agent* — Instantiated per submission. Receives the lesson content, the
+assignment description, and the student's submission as context. Returns a
+structured score and feedback object that the grade module persists. Late
+penalties from `due_dates` are applied by the grade module in Go after the
+Grader returns its score, not by the agent itself.
+
+The chain from intake to graded submission is:
+
+----
+Chair (intake) --> Chair (syllabus) --> [student approves]
+    --> Professor x N (parallel sections) --> Reviewer (each section)
+    --> course status: active
+    --> [student submits]
+    --> Grader --> Grade module --> Badge module
+----
+
+Pipeline progress is observable at every stage via `pipeline_events` rows, which
+the SSE endpoint streams to the frontend in real time.
+
+== Key Architectural Decisions
+
+The following decisions recur across multiple modules and are recorded here to
+prevent each module's author from re-litigating them independently.
+
+. *Opaque session tokens over JWT* — Server-side session rows allow immediate
+  revocation on lockout, admin deactivation, or inactivity expiry. JWT's
+  stateless nature would require a denylist to achieve the same effect, which
+  reintroduces the database lookup while adding cache invalidation complexity.
+  The per-request `sessions` lookup is the accepted cost.
+
+. *Synchronous config hot-reload via `sync.RWMutex`* — Admin writes to
+  `system_config` are reflected immediately in the in-memory map without a
+  process restart. A `sync.RWMutex` protects the map: write lock on admin update,
+  read lock on every access. This is viable because config reads are infrequent
+  relative to request volume and the map is small. No distributed cache or
+  message bus is needed at this scale.
+
+. *SSE for pipeline status, not WebSocket* — Pipeline events flow only from
+  server to client; there is no client-to-server message on the same channel.
+  SSE (unidirectional) is sufficient and simpler: standard `EventSource` API
+  in the browser, `text/event-stream` chunked response in Go, and resumption
+  via `Last-Event-ID` without custom protocol handling. WebSocket would add
+  bidirectional framing overhead for a use case that does not require it.
+
+. *Asciidoctor invoked as a subprocess* — The Go binary shells out to the
+  `asciidoctor` CLI for HTML and PDF export. This avoids any CGo dependency,
+  keeps content files as first-class artifacts on the filesystem (rather than
+  in-memory strings), and allows Asciidoctor extensions and themes to be
+  configured independently of the Go build. The 500-line-per-document limit
+  and `include::` composition directives are enforced at the content generation
+  layer before files reach Asciidoctor.
+
+. *Audit log hash chain inside the same transaction* — Each audit entry
+  computes `SHA-256(prev_hash || action || payload || created_at)` and stores the
+  result as `entry_hash`. The `prev_hash` is the `entry_hash` of the most recent
+  row, selected inside the same database transaction that performs the admin
+  operation. This means the chain cannot be broken by a partial write: either
+  both the operation and its audit entry commit, or neither does.
+
+. *Partial unique index for single-active-course constraint* — The database
+  enforces at most one non-archived, non-completed course per student via a
+  partial unique index on `(student_id) WHERE status NOT IN ('archived',
+  'completed')`. Application-level TOCTOU checks (SELECT then INSERT) cannot
+  provide the same guarantee under concurrent transactions; the index makes the
+  constraint atomic at the storage engine level.

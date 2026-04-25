@@ -1,0 +1,244 @@
+= Audit Module Design
+
+== Overview
+
+The audit module records a tamper-evident, hash-chained log of every privileged admin action. Each entry commits to the preceding entry's hash, forming a linked chain whose integrity can be verified in full without external infrastructure. The log is append-only; no UPDATE or DELETE is issued against `audit_log` by the application. Audit writes happen inside the same database transaction as the mutating operation they record, ensuring no admin action can succeed without a corresponding log entry.
+
+== Requirements in Scope
+
+* REQ-AUDIT-001 — Tamper-evident admin action log entry
+* REQ-AUDIT-002 — Audit log integrity verifiability
+* REQ-SYS-042 — Admin action audit logging
+
+// @{"req": ["REQ-AUDIT-001", "REQ-AUDIT-002", "REQ-SYS-042"]}
+== Data Model
+
+[source,sql]
+----
+CREATE TABLE audit_log (
+    id           BIGSERIAL    PRIMARY KEY,
+    admin_id     UUID         NOT NULL REFERENCES users(id),
+    action       VARCHAR(64)  NOT NULL,
+    target_type  VARCHAR(64)  NOT NULL,
+    target_id    UUID,
+    payload      JSONB        NOT NULL DEFAULT '{}',
+    prev_hash    VARCHAR(64)  NOT NULL,
+    entry_hash   VARCHAR(64)  NOT NULL,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_log_admin_id   ON audit_log (admin_id);
+CREATE INDEX idx_audit_log_created_at ON audit_log (created_at DESC);
+CREATE INDEX idx_audit_log_target     ON audit_log (target_type, target_id);
+----
+
+Migration plan: the table is additive. Rollback drops the table and its indexes. No existing table is altered.
+
+=== Field Definitions
+
+* `action` — one of `user.create`, `user.modify`, `user.deactivate`, `user.activate`, `user.delete`, `config.change`.
+* `target_type` — one of `user`, `system_config`.
+* `target_id` — the UUID of the affected record; NULL only for `config.change` when no single row is the target.
+* `payload` — JSON snapshot of changed fields (new values only; previous values logged by the caller before mutation). Sensitive config keys are redacted before the payload is stored (see Sensitive Value Redaction).
+* `prev_hash` — `entry_hash` of the immediately preceding row ordered by `id`; the genesis entry uses the fixed constant `"0000000000000000000000000000000000000000000000000000000000000000"` (64 zeros).
+* `entry_hash` — SHA-256 of the concatenation described below.
+
+// @{"req": ["REQ-AUDIT-001", "REQ-AUDIT-002", "REQ-SYS-042"]}
+== Tamper-Evident Chaining
+
+=== Hash Computation
+
+[source,go]
+----
+// computeEntryHash produces the SHA-256 entry hash.
+// All fields are serialized to their canonical string forms before hashing.
+// payload must be a canonical (keys sorted) JSON string.
+func computeEntryHash(prevHash, createdAt, adminID, action, targetID, payloadJSON string) string {
+    h := sha256.New()
+    h.Write([]byte(prevHash))
+    h.Write([]byte(createdAt))
+    h.Write([]byte(adminID))
+    h.Write([]byte(action))
+    h.Write([]byte(targetID))
+    h.Write([]byte(payloadJSON))
+    return hex.EncodeToString(h.Sum(nil))
+}
+----
+
+`created_at` is formatted as RFC 3339 UTC with nanosecond precision to avoid timezone ambiguity. `target_id` is the empty string when NULL. `payloadJSON` uses Go's `encoding/json` with sorted keys (marshal to `map[string]any` then re-marshal to ensure determinism).
+
+=== Insertion Procedure
+
+Insertion is performed inside the mutating transaction:
+
+1. SELECT the `entry_hash` of the row with the highest `id` under a row-level lock (`SELECT ... FOR UPDATE`). If no rows exist, use the genesis hash.
+2. Compute `entry_hash` using the fields of the new row and the retrieved `prev_hash`.
+3. INSERT the new row with both hashes.
+
+The SELECT FOR UPDATE prevents concurrent inserts from racing on `prev_hash`, keeping the chain linear.
+
+=== Integrity Verification
+
+The verify handler replays the chain in `id` order:
+
+[source,go]
+----
+// verifyChain returns (true, 0) if every entry_hash is correct,
+// or (false, firstBrokenID) on the first mismatch.
+func verifyChain(rows []AuditRow) (bool, int64) {
+    prev := genesisHash
+    for _, row := range rows {
+        expected := computeEntryHash(
+            prev,
+            row.CreatedAt.UTC().Format(time.RFC3339Nano),
+            row.AdminID.String(),
+            row.Action,
+            nullableUUID(row.TargetID),
+            row.PayloadJSON,
+        )
+        if expected != row.EntryHash {
+            return false, row.ID
+        }
+        prev = row.EntryHash
+    }
+    return true, 0
+}
+----
+
+The verify endpoint streams rows in batches of 1000 to bound memory usage.
+
+// @{"req": ["REQ-AUDIT-001", "REQ-SYS-042"]}
+== Sensitive Value Redaction
+
+Before the `payload` field is written for a `config.change` action, the audit module checks each config key in the entry against a redacted-key list. Any key on that list has both its `new_value` and the caller-supplied previous value replaced with `"[REDACTED]"` in the payload JSON before the hash is computed and the row is inserted. The initial redacted-key list contains `anthropic_api_key`. This prevents secrets from appearing in the audit log even if an admin rotates an API key through the config endpoint.
+
+The redacted-key list is a compile-time constant in the audit package. Adding a new sensitive key requires a code change and a re-deploy; it is not a runtime configuration value so that the list cannot be emptied by an admin action.
+
+// @{"req": ["REQ-AUDIT-001", "REQ-SYS-042"]}
+== Actions Covered
+
+Every admin module handler that mutates state calls `audit.Append` within the same `pgx` transaction before committing:
+
+[cols="2,2,3", options="header"]
+|===
+| Action | target_type | Payload fields
+
+| `user.create`       | `user`          | `{email, role}`
+| `user.modify`       | `user`          | changed fields only (new values)
+| `user.deactivate`   | `user`          | `{deactivated_at}`
+| `user.activate`     | `user`          | `{reactivated_at}`
+| `user.delete`       | `user`          | `{deleted_at}`
+| `config.change`     | `system_config` | `{key, new_value}` (sensitive keys redacted)
+|===
+
+`user.activate` is recorded when an admin reactivates a previously deactivated account. This action was identified as an audit gap during the review cycle and is required to ensure the full account lifecycle is captured in the tamper-evident log.
+
+The `audit.Append` function signature is:
+
+[source,go]
+----
+func Append(ctx context.Context, tx pgx.Tx, entry Entry) error
+----
+
+Callers that fail to call `Append` will have their transaction rolled back by the admin middleware, which wraps all admin mutations in a deferred rollback-on-audit-error guard.
+
+// @{"req": ["REQ-AUDIT-002"]}
+== Retention Policy
+
+A nightly background goroutine deletes audit log entries where `created_at < NOW() - INTERVAL '1 day' * audit_retention_days`, reading `audit_retention_days` from `system_config` (default 365). The delete runs in batches of 1000 rows to avoid long table locks:
+
+[source,go]
+----
+for {
+    res, err := db.Exec(ctx,
+        `DELETE FROM audit_log
+         WHERE id IN (
+             SELECT id FROM audit_log
+             WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
+             LIMIT 1000
+         )`,
+        retentionDays,
+    )
+    if err != nil || rowsAffected(res) == 0 {
+        break
+    }
+}
+----
+
+Deleting old entries does not break the hash chain for remaining entries. The chain verification endpoint only verifies the retained window; it does not attempt to reconstruct hashes for deleted rows. The first retained entry's `prev_hash` is treated as the effective genesis for any verification run that starts mid-chain.
+
+// @{"req": ["REQ-AUDIT-002", "REQ-SYS-042"]}
+== API Contract
+
+=== Paginated Log View
+
+`GET /api/v1/admin/audit?limit=50&before=<id>`
+
+Authorization: admin only.
+
+Query parameters:
+
+* `limit` — integer 1–200, default 50
+* `before` — `id` (BIGSERIAL) for cursor-based pagination; omit for first page
+
+Response 200:
+
+[source,json]
+----
+{
+  "entries": [
+    {
+      "id": 42,
+      "admin_id": "a1b2c3d4-...",
+      "action": "user.deactivate",
+      "target_type": "user",
+      "target_id": "b2c3d4e5-...",
+      "payload": {"deactivated_at": "2026-04-25T10:00:00Z"},
+      "prev_hash": "abc123...",
+      "entry_hash": "def456...",
+      "created_at": "2026-04-25T10:00:00.000000000Z"
+    }
+  ],
+  "next_before": 41
+}
+----
+
+`next_before` is null when no further rows exist.
+
+Error cases:
+
+* 401 — no valid session
+* 403 — caller is not admin
+* 400 — `limit` out of range or `before` non-integer
+
+=== Integrity Verification
+
+`GET /api/v1/admin/audit/verify`
+
+Authorization: admin only.
+
+Response 200 (chain intact):
+
+[source,json]
+----
+{"valid": true}
+----
+
+Response 200 (chain broken):
+
+[source,json]
+----
+{"valid": false, "first_broken_id": 17}
+----
+
+The endpoint always returns HTTP 200; HTTP 5xx is reserved for handler or database errors. A broken chain is an application-level result, not a transport error.
+
+== Alternatives Considered
+
+* External append-only log (e.g., a write-once S3 bucket or Kafka topic): ruled out because it introduces infrastructure that is not part of the specified stack and complicates transactional atomicity with the mutating operation.
+* Merkle tree instead of linear hash chain: provides no additional integrity benefit for a sequential log; linear chaining is sufficient and simpler to verify.
+* Storing previous field values alongside new values in `payload`: deferred as an enhancement; current requirements specify only that the action is recorded, not a full diff.
+
+== Open Questions
+
+All open questions resolved.

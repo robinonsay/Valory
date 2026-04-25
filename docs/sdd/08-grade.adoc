@@ -1,0 +1,363 @@
+= Grading Module Design
+
+== Overview
+
+The grading module receives a completed submission, invokes the AI Grader agent to produce a raw score, applies late penalties and badge rewards, and persists the final grade. All penalty rates and grade weights are read from the `system_config` table at grading time so that policy changes take effect on the next grading run without a restart. Badge interactions are decoupled: the badge module writes to `student_badges`; the grade module reads from it.
+
+== Requirements in Scope
+
+* REQ-GRADE-001 — Five-percent daily late penalty deduction
+* REQ-GRADE-002 — Configurable late-penalty rate application
+* REQ-GRADE-003 — Configurable grade-weight distribution application
+* REQ-GRADE-004 — Badge grade-improvement application
+* REQ-GRADE-005 — Badge late-penalty waiver application
+* REQ-SYS-018 — Late penalty enforcement
+* REQ-SYS-050 — Admin grading policy configuration
+* REQ-SYS-052 — Badge final grade improvement reward
+* REQ-SYS-053 — Badge late-penalty waiver reward
+
+// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-GRADE-004", "REQ-GRADE-005", "REQ-SYS-018", "REQ-SYS-050", "REQ-SYS-052", "REQ-SYS-053"]}
+== Data Model
+
+=== grades Table
+
+[source,sql]
+----
+CREATE TABLE grades (
+    id                    UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+    submission_id         UUID           NOT NULL REFERENCES submissions(id)  ON DELETE CASCADE,
+    student_id            UUID           NOT NULL REFERENCES users(id)        ON DELETE CASCADE,
+    course_id             UUID           NOT NULL REFERENCES courses(id)      ON DELETE CASCADE,
+    homework_id           UUID           NOT NULL REFERENCES homework(id)     ON DELETE CASCADE,
+    round                 INT            NOT NULL DEFAULT 0,
+    raw_score             NUMERIC(5,2)   NOT NULL CHECK (raw_score BETWEEN 0 AND 100),
+    late_days             INT            NOT NULL DEFAULT 0 CHECK (late_days >= 0),
+    late_penalty          NUMERIC(5,2)   NOT NULL DEFAULT 0 CHECK (late_penalty >= 0),
+    badge_waiver_applied  BOOLEAN        NOT NULL DEFAULT FALSE,
+    badge_improvement     NUMERIC(5,2)   NOT NULL DEFAULT 0 CHECK (badge_improvement >= 0),
+    final_score           NUMERIC(5,2)   NOT NULL CHECK (final_score BETWEEN 0 AND 100),
+    graded_at             TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    graded_by_run_id      UUID           NOT NULL,
+    agent_response        JSONB,
+
+    CONSTRAINT uq_grade_submission UNIQUE (submission_id)
+);
+
+CREATE INDEX idx_grades_student_id    ON grades (student_id);
+CREATE INDEX idx_grades_course_id     ON grades (course_id);
+CREATE INDEX idx_grades_homework_id   ON grades (homework_id);
+CREATE INDEX idx_grades_graded_at     ON grades (graded_at);
+----
+
+`round` mirrors `submissions.round` and identifies which correction round this grade row corresponds to. One grade row is stored per submission. `graded_by_run_id` is the UUID of the agent pipeline run that produced the grade, enabling replay and audit. `agent_response` stores the raw JSON response from the Grader agent for audit and regrade workflows.
+
+=== grade_disputes Table
+
+[source,sql]
+----
+CREATE TYPE dispute_status AS ENUM ('pending', 'reviewed', 'regraded');
+
+CREATE TABLE grade_disputes (
+    id           UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+    grade_id     UUID           NOT NULL REFERENCES grades(id) ON DELETE CASCADE,
+    student_id   UUID           NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+    reason       TEXT           NOT NULL,
+    status       dispute_status NOT NULL DEFAULT 'pending',
+    created_at   TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    resolved_at  TIMESTAMPTZ
+);
+
+CREATE INDEX idx_grade_disputes_grade_id   ON grade_disputes (grade_id);
+CREATE INDEX idx_grade_disputes_student_id ON grade_disputes (student_id);
+CREATE INDEX idx_grade_disputes_status     ON grade_disputes (status);
+----
+
+=== Migration Plan
+
+Additive migration. Rollback:
+
+[source,sql]
+----
+-- rollback
+DROP TABLE IF EXISTS grade_disputes;
+DROP TYPE  IF EXISTS dispute_status;
+DROP TABLE IF EXISTS grades;
+----
+
+// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002", "REQ-SYS-018", "REQ-SYS-050"]}
+== Late Penalty Calculation
+
+The late penalty rate is read from `system_config` key `late_penalty_rate` (default `0.05`). Late days are computed from the submission's `is_late` flag and `submitted_at` versus `due_date_schedules.due_date`.
+
+[source,go]
+----
+func computeLateDays(submittedAt, dueDate time.Time) int {
+    if !submittedAt.After(dueDate) {
+        return 0
+    }
+    return int(submittedAt.Sub(dueDate).Hours()/24) + 1
+}
+
+func computeLatePenalty(rawScore float64, lateDays int, rate float64) float64 {
+    return math.Min(rawScore, float64(lateDays)*rate*rawScore)
+}
+----
+
+Penalty is capped at `raw_score` so that the grade floor is 0, not negative. `rate` is the configured `late_penalty_rate` value (e.g. `0.05` for 5% per day per REQ-GRADE-001 default).
+
+// @{"req": ["REQ-GRADE-005", "REQ-SYS-053"]}
+=== Badge Waiver Path
+
+Before computing late penalty, the grading service checks whether the student holds an unredeemed `late_penalty_waiver` badge for this course that has been marked for redemption against this submission. Redemption is signalled by the `POST /api/v1/badges/:id/redeem` endpoint, which sets `student_badges.redeemed_at` and records the target `submission_id`.
+
+If a waiver is active for this submission:
+
+* `late_penalty` is set to `0.00`
+* `badge_waiver_applied` is set to `TRUE`
+* The badge waiver entitlement is consumed (single-use; the redeemed badge cannot be applied again)
+
+// @{"req": ["REQ-GRADE-004", "REQ-GRADE-001", "REQ-GRADE-002", "REQ-SYS-052"]}
+== Final Score Formula
+
+[source,go]
+----
+func computeFinalScore(rawScore, latePenalty, badgeImprovement float64) float64 {
+    score := rawScore - latePenalty + badgeImprovement
+    return math.Min(100, math.Max(0, score))
+}
+----
+
+`badge_improvement` is the `reward_value` from the redeemed grade-improvement badge, or `0` if none applies. Final score is capped at 100 and floored at 0.
+
+== Resubmission Scoring
+
+The grading module stores one grade row per submission row, linked via `submission_id`. For a homework with N correction rounds, there are N+1 grade rows (round 0 through round N).
+
+The canonical final score for a homework is computed from the full chain of grade rows:
+
+----
+final_score = original_score + Σ(recovered_n * (0.5)^n)   for n = 1..N
+----
+
+`recovered_n` is the sum of points earned on questions that were wrong in round n-1 but correct in round n. The discount factor `(0.5)^n` is applied per correction round. Late penalties and badge adjustments are applied to the round-0 grade row only; resubmission grade rows carry only `raw_score` and the recovery contribution.
+
+The grading service computes the canonical final score by walking the grade chain in ascending `round` order after each new grade row is committed.
+
+// @{"req": ["REQ-GRADE-003", "REQ-SYS-050"]}
+== Grade Weight Distribution
+
+The course grade is computed when all homework and the final project have been graded. Weights are read from `system_config`:
+
+* `homework_weight` — fraction of course grade assigned to homework aggregate
+* `project_weight`  — fraction assigned to the final project
+
+Validation: `homework_weight + project_weight` must equal `1.0`. This invariant is enforced by the admin config PATCH handler at write time; the grading module treats the values as already-valid.
+
+[source,go]
+----
+func computeCourseGrade(
+    hwScores []float64,
+    projectScore float64,
+    hwWeight float64,
+    projectWeight float64,
+) float64 {
+    var hwSum float64
+    for _, s := range hwScores {
+        hwSum += s
+    }
+    hwAvg := hwSum / float64(len(hwScores))
+    return hwWeight*hwAvg + projectWeight*projectScore
+}
+----
+
+Per-homework weights (when the Chair assigns non-uniform homework weights) are stored in `homework.grade_weight` and used instead of a simple average when present.
+
+// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-GRADE-004", "REQ-GRADE-005", "REQ-SYS-018", "REQ-SYS-050", "REQ-SYS-052", "REQ-SYS-053"]}
+== AI Grading Agent
+
+The Grader agent is an Anthropic Claude model invoked via the Anthropic SDK. The grading pipeline:
+
+. Retrieve the submission file from disk using `submissions.file_path`.
+. Retrieve the rubric from `homework.rubric` (stored as AsciiDoc text).
+. Build the Grader prompt: rubric + submission content.
+. Call the Anthropic Messages API with a structured output instruction.
+. Parse the response into a `GraderResult`.
+. Persist `GraderResult.score` as `raw_score` and the full response as `agent_response`.
+
+Expected Grader agent response structure:
+
+[source,json]
+----
+{
+  "score": 87.5,
+  "feedback": "Strong analysis in section 2. Citations missing in section 4.",
+  "rubric_breakdown": [
+    {
+      "criterion":      "correctness",
+      "max_points":     40.0,
+      "awarded_points": 35.0,
+      "feedback":       "Core concepts correct; minor error in derivation."
+    },
+    {
+      "criterion":      "completeness",
+      "max_points":     35.0,
+      "awarded_points": 30.0,
+      "feedback":       "All sections present; section 4 lacks citations."
+    },
+    {
+      "criterion":      "style",
+      "max_points":     25.0,
+      "awarded_points": 22.5,
+      "feedback":       "Well-structured. Minor formatting issues."
+    }
+  ]
+}
+----
+
+`rubric_breakdown` is an array with one entry per criterion: criterion name, max points, awarded points, and per-criterion feedback. The full `rubric_breakdown` is returned to the student in the grade response; it is not hidden. The `agent_response` JSONB column stores this structure verbatim.
+
+If the agent response cannot be parsed or `score` falls outside `[0, 100]`, the grading run is marked `failed` and the student is notified. The raw response is preserved in `agent_response` for manual review.
+
+Agent retries use the `agent_retry_limit` config key with exponential backoff (base 1 s, multiplier 2, max 32 s) consistent with REQ-AGENT-012.
+
+== Regrade Dispute Flow
+
+Students may dispute an AI-assigned grade by submitting a reason via the dispute endpoint. The dispute is logged and reviewed by an admin.
+
+=== POST /api/v1/grades/:id/dispute
+
+Authorization: authenticated student who owns the grade.
+
+Request body:
+
+[source,json]
+----
+{
+  "reason": "The rubric criterion for completeness was incorrectly applied."
+}
+----
+
+Creates a `grade_disputes` row with `status = 'pending'`. Returns HTTP 201 with the created dispute record.
+
+Error responses: 403 (student does not own grade), 404 (grade not found), 409 (dispute already open for this grade).
+
+=== GET /api/v1/admin/disputes
+
+Authorization: admin role required.
+
+Returns all open and historical disputes. Supports `?status=pending|reviewed|regraded` query filter.
+
+=== PATCH /api/v1/admin/disputes/:id
+
+Authorization: admin role required.
+
+Request body:
+
+[source,json]
+----
+{
+  "action": "confirm"
+}
+----
+
+or
+
+[source,json]
+----
+{
+  "action": "regrade"
+}
+----
+
+`confirm` keeps the original grade unchanged and sets `status = 'reviewed'` and `resolved_at = now()`.
+
+`regrade` triggers a new Grader agent run for the disputed submission. The result overwrites the `raw_score`, `final_score`, and `agent_response` on the existing grade row. `status` is set to `'regraded'` and `resolved_at = now()`.
+
+// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-GRADE-004", "REQ-GRADE-005", "REQ-SYS-018", "REQ-SYS-050", "REQ-SYS-052", "REQ-SYS-053"]}
+== API Contract
+
+=== GET /api/v1/courses/:id/grades
+
+Returns all graded homework scores for the authenticated student in the specified course. Requires role `student` (own grades only) or `admin`.
+
+Success response — HTTP 200:
+
+[source,json]
+----
+{
+  "course_id": "uuid",
+  "course_grade": 88.3,
+  "grades": [
+    {
+      "grade_id":             "uuid",
+      "homework_id":          "uuid",
+      "grade_weight":         0.15,
+      "raw_score":            90.0,
+      "late_days":            0,
+      "late_penalty":         0.0,
+      "badge_waiver_applied": false,
+      "badge_improvement":    2.0,
+      "final_score":          92.0,
+      "graded_at":            "2026-04-20T14:30:00Z"
+    }
+  ]
+}
+----
+
+`course_grade` is `null` if not all assignments have been graded. `grade_weight` is the per-homework weight drawn from `homework.grade_weight`; it reflects the contribution of this homework to the course grade.
+
+=== GET /api/v1/courses/:id/homework/:hwid/grade
+
+Returns the grade for a single homework submission.
+
+Success response — HTTP 200:
+
+[source,json]
+----
+{
+  "grade_id":             "uuid",
+  "submission_id":        "uuid",
+  "homework_id":          "uuid",
+  "round":                0,
+  "raw_score":            75.0,
+  "late_days":            2,
+  "late_penalty":         7.5,
+  "badge_waiver_applied": false,
+  "badge_improvement":    0.0,
+  "final_score":          67.5,
+  "graded_at":            "2026-04-22T09:00:00Z",
+  "feedback":             "Strong analysis in section 2. Citations missing in section 4.",
+  "rubric_breakdown": [
+    {
+      "criterion":      "correctness",
+      "max_points":     40.0,
+      "awarded_points": 30.0,
+      "feedback":       "Core concepts correct; minor error in derivation."
+    }
+  ]
+}
+----
+
+Error responses:
+
+[cols="1,3"]
+|===
+|Status |Condition
+
+|403
+|Student does not own this course
+
+|404
+|No grade exists for this submission (not yet graded)
+|===
+
+== Alternatives Considered
+
+* *Synchronous grading in the HTTP handler* — rejected because AI agent calls can take several seconds, blocking the HTTP connection and causing client timeouts. Grading runs asynchronously after submission acknowledgement.
+* *Storing penalty rate inside the `grades` row* — rejected in favour of reading from `system_config` at grading time. The applied rate is derivable from `late_days` and `late_penalty` if an audit is needed.
+* *Negative course grade allowed* — rejected; the floor is 0 on both `final_score` and `course_grade`.
+* *Hiding `rubric_breakdown` from students* — rejected; transparency in AI grading builds trust and allows students to understand where points were lost.
+
+== Open Questions
+
+All open questions resolved.

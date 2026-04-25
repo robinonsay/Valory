@@ -1,0 +1,355 @@
+= User Management Module Design
+
+== Overview
+
+The user module owns the lifecycle of user accounts from provisioning through deactivation and permanent deletion. It delegates credential checking to the auth module; it owns the `is_active` flag and the password-reset token table. The module surfaces a set of admin-only REST endpoints for provisioning and lifecycle changes, and two public endpoints for password reset that are rate-limited at the security layer.
+
+== Requirements in Scope
+
+* REQ-USER-001, REQ-USER-002, REQ-USER-003, REQ-USER-004
+* REQ-USER-005, REQ-USER-006, REQ-USER-007
+* REQ-SYS-003, REQ-SYS-004, REQ-SYS-025, REQ-SYS-026
+
+// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-004", "REQ-USER-007", "REQ-SYS-003", "REQ-SYS-004", "REQ-SYS-025"]}
+== Data Model
+
+=== users table (shared with auth module)
+
+The `users` table is defined in `02-auth.adoc`. The user module owns these columns:
+
+* `is_active BOOLEAN NOT NULL DEFAULT TRUE` — deactivation flag; the auth module reads this before issuing a session.
+* `updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()` — updated by any admin modification.
+
+No additional columns are added to `users` by this module.
+
+// @{"req": ["REQ-USER-005", "REQ-USER-006", "REQ-SYS-026"]}
+=== password_reset_tokens table
+
+[source,sql]
+----
+CREATE TABLE password_reset_tokens (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash  TEXT        NOT NULL UNIQUE,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    used_at     TIMESTAMPTZ
+);
+
+CREATE INDEX idx_prt_user_id    ON password_reset_tokens (user_id);
+CREATE INDEX idx_prt_token_hash ON password_reset_tokens (token_hash);
+CREATE INDEX idx_prt_expires_at ON password_reset_tokens (expires_at)
+    WHERE used_at IS NULL;
+----
+
+`token_hash` stores `hex(SHA-256(raw_token))`. The raw token is delivered out-of-band and never stored. `used_at IS NULL AND expires_at > NOW()` defines a valid, unused token. Setting `used_at = NOW()` invalidates the token on first use without deleting the row, preserving the audit record.
+
+=== Migration plan
+
+`password_reset_tokens` is net-new. `is_active` and `updated_at` on `users` are included in the auth module's initial migration. Rollback: `DROP TABLE password_reset_tokens;`.
+
+// @{"req": ["REQ-USER-003", "REQ-USER-004", "REQ-SYS-004"]}
+== User Lifecycle
+
+----
+          Admin creates account
+                  |
+                  v
+            [ active ]
+           /          \
+  Admin deactivates    Admin reactivates
+          |                   |
+          v                   |
+      [ deactivated ] --------+
+          |
+  Admin deletes (student only)
+          |
+          v
+      [ deleted ]  (hard delete, irreversible)
+----
+
+State transitions:
+
+* `active -> deactivated`: sets `is_active = false`. All existing sessions for the user are deleted immediately (prevents continued access with a live token). The user cannot log in.
+* `deactivated -> active`: sets `is_active = true`. The user may log in again.
+* `active/deactivated -> deleted`: hard delete, students only. See Student Data Deletion section.
+
+Admin accounts cannot be deleted via any API endpoint; they can only be deactivated. The `DELETE /api/v1/admin/students/:id` endpoint is scoped to student accounts only. No super-admin role is introduced.
+
+Deactivation does not delete records; the `users` row and all related data remain intact, supporting audit trails and re-activation. The auth module checks `is_active` at login time (before password comparison) and returns 401 with `{"error": "account disabled"}` for deactivated accounts (REQ-USER-004).
+
+Session invalidation on deactivation is implemented by `DELETE FROM sessions WHERE user_id = $1` within the same transaction as the `is_active = false` update.
+
+// @{"req": ["REQ-USER-005", "REQ-USER-006", "REQ-SYS-026"]}
+== Password Reset Flow
+
+----
+Student                     API                         SMTP Transport
+  |                          |                              |
+  |-- POST /password-reset/request (username) ------------>|
+  |                          | generate 256-bit token      |
+  |                          | store SHA-256(token)        |
+  |                          | expires_at = NOW() + 1h     |
+  |                          |-- send plaintext token ----->|
+  |<-- 202 Accepted ---------|                              |
+  |                          |                         [email delivered]
+  |-- POST /password-reset/confirm (token, new_password) ->|
+  |                          | hash token                  |
+  |                          | SELECT where token_hash     |
+  |                          |   AND used_at IS NULL       |
+  |                          |   AND expires_at > NOW()    |
+  |                          | UPDATE password_hash        |
+  |                          | SET used_at = NOW()         |
+  |                          | DELETE all user sessions    |
+  |<-- 204 No Content -------|                              |
+----
+
+Key design decisions:
+
+* The response to `/request` is always 202 regardless of whether the username exists, to prevent account enumeration.
+* The token is a 256-bit random value from `crypto/rand`, base64url-encoded for delivery. Only the SHA-256 hash is stored.
+* Token lifetime is 1 hour (hardcoded; configurable via `PASSWORD_RESET_TOKEN_TTL` env var).
+* On confirm: all active sessions for the user are deleted to force re-authentication with the new password.
+* Rate limiting (max 3 requests/account/hour, per REQ-SECURITY-003) is enforced in the security middleware layer, not in this module's handler.
+
+=== Email Transport
+
+Password reset tokens are delivered via SMTP. The transport is expressed as an interface so it can be swapped for a test double in unit tests. The production implementation is `SMTPTransport`.
+
+Environment variables required for production:
+
+* `SMTP_HOST` — hostname of the SMTP relay (e.g. `smtp.example.com`)
+* `SMTP_PORT` — port number (e.g. `587` for STARTTLS)
+* `SMTP_FROM` — sender address (e.g. `no-reply@valory.example.com`)
+* `SMTP_PASSWORD` — credential for SMTP authentication
+
+[source,go]
+----
+// EmailTransport is the interface the password-reset handler depends on.
+type EmailTransport interface {
+    SendPasswordReset(ctx context.Context, toAddress, rawToken string) error
+}
+
+// SMTPTransport is the production implementation.
+type SMTPTransport struct {
+    Host     string
+    Port     int
+    From     string
+    Password string
+}
+
+func (s *SMTPTransport) SendPasswordReset(ctx context.Context, toAddress, rawToken string) error {
+    // Dial SMTP relay, authenticate, compose message containing rawToken, send.
+}
+----
+
+In development, when `SMTP_HOST` is absent, a no-op logger implementation is substituted so the token appears in application logs without requiring a live mail server.
+
+// @{"req": ["REQ-USER-007", "REQ-SYS-025", "REQ-SYS-045"]}
+== Student Data Deletion
+
+Permanent deletion cascades in this order within a single database transaction:
+
+[source,sql]
+----
+-- Step 1: Signal agent module to terminate in-flight operations (see note below)
+-- Step 2: Within transaction (explicit order; CASCADE handles any unlisted dependents):
+DELETE FROM submissions       WHERE course_id IN (SELECT id FROM courses WHERE student_id = $1);
+DELETE FROM grades            WHERE course_id IN (SELECT id FROM courses WHERE student_id = $1);
+DELETE FROM chat_messages     WHERE course_id IN (SELECT id FROM courses WHERE student_id = $1);
+DELETE FROM courses           WHERE student_id = $1;
+DELETE FROM sessions          WHERE user_id = $1;
+DELETE FROM password_reset_tokens WHERE user_id = $1;
+DELETE FROM users             WHERE id = $1;
+----
+
+`ON DELETE CASCADE` foreign keys handle dependent rows for tables not listed explicitly above (e.g. `login_attempts`).
+
+*Cross-module dependency (REQ-AGENT-013 / REQ-SYS-045)*: Before the transaction begins, the deletion handler calls the agent module's `TerminateStudentOperations(ctx, userID)` function. This function cancels all in-flight `context.Context` values for that user and waits for goroutines to drain (with a timeout). If termination does not complete within the drain timeout (`AGENT_DRAIN_TIMEOUT` env var, default 30 s), the deletion handler returns 409 Conflict and the client must retry. The transaction is not started until drain confirmation is received. This ensures no partial writes from the agent module race with the database cascade.
+
+*Post-delete hook*: After the transaction commits, the deletion handler calls a post-delete hook that removes `uploads/{student_id}/` from disk. This is a best-effort operation — file deletion failure is logged but does not cause the HTTP response to fail (the DB deletion is already committed and irreversible).
+
+// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-004", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SYS-003", "REQ-SYS-004", "REQ-SYS-025", "REQ-SYS-026"]}
+== API Contract
+
+All `/api/v1/admin/` routes require `Authorization: Bearer <token>` with `role = admin` enforced by `RequireRole("admin")` middleware.
+
+=== POST /api/v1/admin/users
+
+Creates a new user account.
+
+*Request*
+
+[source,json]
+----
+{
+  "username": "bob",
+  "password": "initialP@ss1",
+  "role": "student"
+}
+----
+
+*Response 201 Created*
+
+[source,json]
+----
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "username": "bob",
+  "role": "student",
+  "is_active": true,
+  "created_at": "2026-04-25T09:00:00Z"
+}
+----
+
+*Error responses*
+
+|===
+| Status | Condition
+
+| 400 Bad Request
+| Missing required fields or invalid role value
+
+| 409 Conflict
+| Username already exists
+|===
+
+=== PATCH /api/v1/admin/users/:id
+
+Modifies mutable profile fields. Supports partial update; only supplied fields are changed.
+
+*Request* (all fields optional)
+
+[source,json]
+----
+{
+  "username": "robert",
+  "password": "newP@ss2"
+}
+----
+
+*Response 200 OK*: returns updated user object (same shape as POST 201).
+
+*Error responses*
+
+|===
+| Status | Condition
+
+| 404 Not Found
+| User ID does not exist
+
+| 409 Conflict
+| New username already taken
+|===
+
+=== POST /api/v1/admin/users/:id/deactivate
+
+Sets `is_active = false` and invalidates all sessions.
+
+*Request*: no body.
+
+*Response 204 No Content*.
+
+*Error responses*
+
+|===
+| Status | Condition
+
+| 404 Not Found
+| User ID does not exist
+
+| 409 Conflict
+| Account is already deactivated
+|===
+
+To reactivate, the admin issues `POST /api/v1/admin/users/:id/activate` (identical shape, sets `is_active = true`).
+
+=== DELETE /api/v1/admin/students/:id
+
+Permanently deletes a student account and all associated personal data. This endpoint is scoped to student accounts only; admin accounts cannot be deleted via any API endpoint.
+
+*Request*: no body.
+
+*Response 204 No Content*: deletion complete.
+
+*Error responses*
+
+|===
+| Status | Condition
+
+| 404 Not Found
+| Student ID does not exist
+
+| 409 Conflict
+| Agent drain timed out; retry after `Retry-After` interval
+
+| 422 Unprocessable Entity
+| Target account has `role = admin`; admin deletion is not permitted via this endpoint
+|===
+
+=== POST /api/v1/auth/password-reset/request
+
+Public endpoint (no auth required). Rate-limited to 3 requests/account/hour by security middleware.
+
+*Request*
+
+[source,json]
+----
+{
+  "username": "alice"
+}
+----
+
+*Response 202 Accepted* (always, regardless of whether username exists):
+
+[source,json]
+----
+{
+  "message": "If the account exists, a reset link has been sent."
+}
+----
+
+=== POST /api/v1/auth/password-reset/confirm
+
+Public endpoint (no auth required).
+
+*Request*
+
+[source,json]
+----
+{
+  "token": "<base64url-raw-token>",
+  "new_password": "newS3cur3P@ss"
+}
+----
+
+*Response 204 No Content*: password updated, all sessions invalidated.
+
+*Error responses*
+
+|===
+| Status | Condition
+
+| 400 Bad Request
+| Missing fields
+
+| 401 Unauthorized
+| Token not found, already used, or expired; body: `{"error": "invalid or expired token"}`
+|===
+
+// @{"req": ["REQ-USER-003", "REQ-USER-004", "REQ-SYS-004", "REQ-SYS-002"]}
+== RBAC Enforcement
+
+* All `POST /api/v1/admin/users`, `PATCH /api/v1/admin/users/:id`, `POST /api/v1/admin/users/:id/deactivate`, `POST /api/v1/admin/users/:id/activate`, and `DELETE /api/v1/admin/students/:id` routes are wrapped with `RequireRole("admin")` from the auth middleware. A request with a student token receives 403 Forbidden.
+* Deactivated account login rejection (REQ-USER-004) is implemented in the auth module's login handler: after loading the `users` row and before checking the password, the handler checks `is_active`. If `false`, it returns 401 without performing the Argon2id comparison. This prevents timing-based account enumeration through the deactivated path.
+* Password-reset endpoints are public but do not grant a session; they produce only a one-time token consumed through the confirm endpoint.
+
+== Alternatives Considered
+
+* *Soft delete for students* — Marking `is_deleted = true` instead of hard deleting would preserve referential integrity and support undo. Rejected: REQ-USER-007 and REQ-SYS-025 require permanent deletion of all personal data. Soft deletion would require scrubbing PII fields individually, increasing the risk of incomplete erasure. Hard delete with cascade is simpler and more auditable.
+* *JWT-encoded reset tokens* — Would encode expiry into the token without a DB lookup. Rejected for the same reason as auth JWTs: a used token cannot be invalidated without a denylist, which reintroduces the DB lookup.
+* *Admin-initiated password reset* — Allowing admins to set a password directly simplifies the flow. Deferred: out-of-band delivery (REQ-USER-005) is a security requirement that prevents admins from accessing the plaintext reset credential.
+* *SMS or multi-channel delivery* — Considered alongside SMTP. SMTP was chosen as the sole transport for the initial implementation due to lower operational complexity and no third-party SMS provider dependency. The `EmailTransport` interface allows additional channels to be added without changing the handler.
+
+== Open Questions
+
+All open questions resolved.

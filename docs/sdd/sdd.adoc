@@ -1,0 +1,37 @@
+= Valory Software Design Document
+:description: Technical design specification for the Valory AI professor system, covering all modules, API contracts, data models, and agent interaction protocols.
+:revdate: 2026-04-25
+:toc:
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:imagesdir: images
+:source-highlighter: rouge
+
+include::01-overview.adoc[leveloffset=+1]
+
+include::02-auth.adoc[leveloffset=+1]
+
+include::03-user.adoc[leveloffset=+1]
+
+include::04-course.adoc[leveloffset=+1]
+
+include::05-agent.adoc[leveloffset=+1]
+
+include::06-content.adoc[leveloffset=+1]
+
+include::07-submission.adoc[leveloffset=+1]
+
+include::08-grade.adoc[leveloffset=+1]
+
+include::09-badge.adoc[leveloffset=+1]
+
+include::10-admin.adoc[leveloffset=+1]
+
+include::11-audit.adoc[leveloffset=+1]
+
+include::12-notify.adoc[leveloffset=+1]
+
+include::13-security.adoc[leveloffset=+1]
+
+include::14-infra.adoc[leveloffset=+1]

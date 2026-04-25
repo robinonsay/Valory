@@ -1,0 +1,411 @@
+= Course Module Design
+
+== Overview
+
+The course module owns the lifecycle of a student's course from initial creation
+through archival or completion. It enforces the syllabus approval gate that prevents
+premature content generation, persists due-date schedules that the grading module
+reads for late-penalty calculation, and provides admin visibility into all courses
+system-wide. State is held in PostgreSQL; the API layer is a thin Go handler set.
+The Chair agent (agent module) drives state transitions by calling these endpoints
+after each conversational checkpoint.
+
+== Requirements in Scope
+
+REQ-COURSE-001, REQ-COURSE-002, REQ-COURSE-003, REQ-COURSE-004, REQ-COURSE-005,
+REQ-COURSE-006, REQ-COURSE-007, REQ-COURSE-008, REQ-SYS-005, REQ-SYS-008,
+REQ-SYS-027, REQ-SYS-028, REQ-SYS-029, REQ-SYS-030, REQ-SYS-031, REQ-SYS-032
+
+== Data Model
+
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-SYS-008", "REQ-SYS-027", "REQ-SYS-028", "REQ-SYS-031", "REQ-SYS-032"]}
+=== Schema
+
+[source,sql]
+----
+CREATE TYPE course_status AS ENUM (
+    'intake',
+    'syllabus_draft',
+    'syllabus_approved',
+    'generating',
+    'active',
+    'archived',
+    'completed'
+);
+
+CREATE TABLE courses (
+    id                     UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id             UUID          NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    title                  TEXT          NOT NULL,
+    topic                  TEXT          NOT NULL,
+    status                 course_status NOT NULL DEFAULT 'intake',
+    pre_withdrawal_status  course_status,
+    created_at             TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+-- Enforces REQ-COURSE-001 / REQ-SYS-008 at the database layer.
+-- Only one row per student may exist outside archived/completed.
+CREATE UNIQUE INDEX courses_single_active_idx
+    ON courses (student_id)
+    WHERE status NOT IN ('archived', 'completed');
+
+CREATE INDEX courses_student_id_idx ON courses (student_id);
+CREATE INDEX courses_status_idx     ON courses (status);
+----
+
+[source,sql]
+----
+CREATE TABLE syllabi (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id    UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    content_adoc TEXT        NOT NULL,
+    version      INTEGER     NOT NULL DEFAULT 1,
+    approved_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX syllabi_course_id_idx ON syllabi (course_id);
+----
+
+// @{"req": ["REQ-COURSE-007", "REQ-SYS-031"]}
+=== Homework Table
+
+`homework` rows are created by the Chair agent after syllabus approval and referenced by `due_date_schedules`, `submissions`, and `grades`. Per-homework `grade_weight` values must sum to 1.0 across all homework in a course; this invariant is enforced by the admin module on grade-weight config save and by the Chair agent when assigning weights from the syllabus.
+
+[source,sql]
+----
+CREATE TABLE homework (
+    id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id     UUID         NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    section_index INT          NOT NULL,
+    title         VARCHAR(255) NOT NULL,
+    rubric        TEXT         NOT NULL,
+    grade_weight  NUMERIC(4,3) NOT NULL CHECK (grade_weight > 0),
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX homework_course_id_idx ON homework (course_id);
+----
+
+[source,sql]
+----
+CREATE TABLE due_date_schedules (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id   UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    homework_id UUID        NOT NULL REFERENCES homework(id) ON DELETE CASCADE,
+    due_date    TIMESTAMPTZ NOT NULL,
+    agreed_at   TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX due_date_schedules_course_id_idx ON due_date_schedules (course_id);
+CREATE UNIQUE INDEX due_date_schedules_unique_hw
+    ON due_date_schedules (course_id, homework_id);
+----
+
+=== Migration Plan
+
+All schema changes ship as sequential numbered migration files under
+`backend/course/migrations/`. Migrations are applied via `golang-migrate` at
+server start. No destructive column drops are performed without a prior migration
+that moves data and a subsequent release that drops the old column. The
+`course_status` ENUM is extended with `ALTER TYPE ... ADD VALUE` (non-destructive);
+removing a value requires a full ENUM replacement in a multi-step migration.
+
+The `pre_withdrawal_status` column is added via a non-destructive `ALTER TABLE`
+migration. Existing rows will have `pre_withdrawal_status = NULL`, which the
+resumption logic treats as a legacy row (see Archival and Resumption below).
+
+== Course State Machine
+
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-006", "REQ-SYS-027", "REQ-SYS-028", "REQ-SYS-030"]}
+=== States and Transitions
+
+----
+intake
+  |
+  | Chair gathers sufficient intake data; syllabus generated
+  v
+syllabus_draft
+  |  ^
+  |  | POST /syllabus/modification  (triggers Chair re-draft; returns here)
+  |
+  | POST /syllabus/approve  (student explicit approval)
+  v
+syllabus_approved
+  |
+  | Agent module begins generation (internal trigger)
+  v
+generating
+  |
+  | All content and homework persisted successfully
+  v
+active
+  |  \
+  |   \ POST /withdraw
+  |    v
+  |   archived
+  |      |
+  |      | POST /resume  (requires no other non-archived/completed course)
+  |      v
+  |    <pre_withdrawal_status>  (restored; see Archival and Resumption)
+  |
+  | Student submits final project and all homework graded
+  v
+completed
+----
+
+Each transition updates `courses.status` and `courses.updated_at` atomically inside
+a transaction. Illegal transitions (e.g., `completed` -> `active`) return HTTP 409.
+The allowed transition map is enforced in the Go `courseService.Transition()` method
+before the UPDATE executes.
+
+== Single-Active Constraint
+
+// @{"req": ["REQ-COURSE-001", "REQ-SYS-008"]}
+
+The partial unique index `courses_single_active_idx` covers every status except
+`archived` and `completed`. A second `INSERT` or `UPDATE` that would leave two
+rows for the same `student_id` in a non-terminal status raises a unique-violation
+error at the database level (SQLSTATE 23505). The Go handler maps this error to
+HTTP 409 with error code `COURSE_ALREADY_ACTIVE`.
+
+Database-level enforcement is chosen over application-level checks because it
+remains correct under concurrent requests without requiring advisory locks or
+serializable transactions. Any code path that reaches PostgreSQL is protected.
+
+== Syllabus Approval Gate
+
+// @{"req": ["REQ-COURSE-005", "REQ-COURSE-006", "REQ-SYS-029", "REQ-SYS-030"]}
+
+Content generation (`status = generating`) is only reachable from
+`syllabus_approved`. The agent module's generation trigger calls
+`GET /api/v1/courses/:id` and asserts `status == "syllabus_approved"` before
+dispatching work; if the assertion fails, the trigger is a no-op and an error
+is logged.
+
+A modification request (`POST /api/v1/courses/:id/syllabus/modification`) inserts
+a new `syllabi` row with an incremented `version` and transitions the course back
+to `syllabus_draft`. The Chair agent is notified via an internal event so it
+re-enters the syllabus conversation context. Only the most recent syllabus row
+(highest `version`) is considered canonical; prior versions are retained for audit.
+
+== Due Date Schedule
+
+// @{"req": ["REQ-COURSE-007", "REQ-COURSE-008", "REQ-SYS-031", "REQ-SYS-032"]}
+
+After the Chair agent computes due dates, the agent module writes one row per
+homework item into `due_date_schedules` with `agreed_at = NULL`. The grading
+module queries `due_date_schedules` joining on `homework_id`; it treats a NULL
+`agreed_at` as "schedule not yet agreed" and blocks late-penalty calculation until
+agreement is recorded.
+
+`POST /api/v1/courses/:id/schedule/agree` sets `agreed_at = now()` on all rows
+for the course where `agreed_at IS NULL`. This is the only write path for
+`agreed_at`; it is idempotent if called a second time (rows already non-NULL are
+skipped).
+
+When the agent module adds new homework rows via section regeneration, those rows
+are inserted with `agreed_at = NULL`. The course module requires a new
+`POST /api/v1/courses/:id/schedule/agree` call before those due dates are enforced
+by the grading module. Existing agreed rows (`agreed_at IS NOT NULL`) are
+unaffected by the new insertion and are not reset.
+
+== Archival and Resumption
+
+// @{"req": ["REQ-COURSE-003", "REQ-COURSE-004", "REQ-SYS-027", "REQ-SYS-028"]}
+
+`POST /api/v1/courses/:id/withdraw` transitions `status` to `archived`. Before
+setting `status = 'archived'`, the current `status` value is copied to
+`pre_withdrawal_status` within the same transaction. No data is deleted.
+In-flight agent runs for the course are signalled for cancellation via the agent
+module's cancellation API before the status write commits (two-phase: cancel,
+then commit).
+
+`POST /api/v1/courses/:id/resume` restores `status` to the value held in
+`pre_withdrawal_status`, rather than hardcoding a return to `'active'`. The
+restoration logic follows these rules:
+
+. If `pre_withdrawal_status IS NULL` (a legacy row created before this column
+  was added), the course is restored to `'active'` as a safe fallback.
+. If `pre_withdrawal_status = 'generating'`, after restoring `status` the course
+  module emits an internal event to the agent module to re-trigger content
+  generation, so that generation resumes rather than stalling indefinitely.
+. For all other values (`intake`, `syllabus_draft`, `syllabus_approved`,
+  `active`), `status` is set directly to `pre_withdrawal_status` with no
+  additional side effects.
+
+The resumption UPDATE is executed inside a transaction so that the partial unique
+index check remains atomic. A unique-violation indicates another active course
+exists and returns HTTP 409 with `COURSE_ALREADY_ACTIVE`.
+
+== Admin Course Listing
+
+// @{"req": ["REQ-COURSE-002", "REQ-SYS-005"]}
+
+`GET /api/v1/courses` applies role-based filtering at the query level. For role
+`student`, the handler adds `WHERE student_id = $1`. For role `admin`, no
+`student_id` filter is applied. Pagination is cursor-based on `(created_at, id)`.
+The admin response includes `student_id` and `student_email` joined from `users`.
+
+== API Contract
+
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-SYS-005", "REQ-SYS-008", "REQ-SYS-027", "REQ-SYS-028", "REQ-SYS-029", "REQ-SYS-030", "REQ-SYS-031", "REQ-SYS-032"]}
+=== POST /api/v1/courses
+
+Create a new course. Fails if the student already has a non-terminal course.
+
+Request:
+[source,json]
+----
+{
+  "topic": "Distributed Systems"
+}
+----
+
+Response 201:
+[source,json]
+----
+{
+  "id": "c1d2e3f4-...",
+  "student_id": "a1b2c3d4-...",
+  "title": "",
+  "topic": "Distributed Systems",
+  "status": "intake",
+  "created_at": "2026-04-25T00:00:00Z",
+  "updated_at": "2026-04-25T00:00:00Z"
+}
+----
+
+Response 409 (`COURSE_ALREADY_ACTIVE`):
+[source,json]
+----
+{ "error": "COURSE_ALREADY_ACTIVE", "message": "student already has an active course" }
+----
+
+=== GET /api/v1/courses
+
+List courses. Students see only their own; admins see all.
+
+Query params: `status` (optional filter), `limit` (default 20), `cursor` (opaque).
+
+Response 200:
+[source,json]
+----
+{
+  "courses": [
+    {
+      "id": "c1d2e3f4-...",
+      "student_id": "a1b2c3d4-...",
+      "title": "Distributed Systems",
+      "topic": "Distributed Systems",
+      "status": "active",
+      "created_at": "2026-04-25T00:00:00Z",
+      "updated_at": "2026-04-25T00:00:00Z"
+    }
+  ],
+  "next_cursor": "eyJjcmVhdGVkX2F0..."
+}
+----
+
+=== POST /api/v1/courses/:id/withdraw
+
+Transitions course to `archived`. Valid from `intake`, `syllabus_draft`,
+`syllabus_approved`, `generating`, `active`.
+
+Response 200:
+[source,json]
+----
+{ "id": "c1d2e3f4-...", "status": "archived" }
+----
+
+Response 409 (`INVALID_TRANSITION`):
+[source,json]
+----
+{ "error": "INVALID_TRANSITION", "message": "course is already archived or completed" }
+----
+
+=== POST /api/v1/courses/:id/resume
+
+Transitions course from `archived` back to its pre-withdrawal status.
+
+Response 200:
+[source,json]
+----
+{ "id": "c1d2e3f4-...", "status": "active" }
+----
+
+Response 409 (`COURSE_ALREADY_ACTIVE`):
+[source,json]
+----
+{ "error": "COURSE_ALREADY_ACTIVE", "message": "student already has an active course" }
+----
+
+=== POST /api/v1/courses/:id/syllabus/approve
+
+Transitions course from `syllabus_draft` to `syllabus_approved`. Sets
+`syllabi.approved_at` on the current version.
+
+Response 200:
+[source,json]
+----
+{ "id": "c1d2e3f4-...", "status": "syllabus_approved", "syllabus_version": 1 }
+----
+
+Response 409 (`NOT_IN_SYLLABUS_DRAFT`):
+[source,json]
+----
+{ "error": "NOT_IN_SYLLABUS_DRAFT", "message": "course is not awaiting syllabus approval" }
+----
+
+=== POST /api/v1/courses/:id/syllabus/modification
+
+Submits a modification request. Inserts a new syllabus version stub and
+transitions course to `syllabus_draft`, notifying the Chair agent to re-draft.
+
+Request:
+[source,json]
+----
+{ "request": "Please add a section on consensus algorithms." }
+----
+
+Response 200:
+[source,json]
+----
+{ "id": "c1d2e3f4-...", "status": "syllabus_draft", "syllabus_version": 2 }
+----
+
+=== POST /api/v1/courses/:id/schedule/agree
+
+Records student agreement on all pending due dates for the course.
+
+Response 200:
+[source,json]
+----
+{ "id": "c1d2e3f4-...", "agreed_count": 8 }
+----
+
+Response 409 (`NO_PENDING_SCHEDULE`):
+[source,json]
+----
+{ "error": "NO_PENDING_SCHEDULE", "message": "no unconfirmed due dates found for this course" }
+----
+
+== Alternatives Considered
+
+* *Application-level uniqueness check for single-active constraint* — rejected
+  because a check-then-insert pattern has a TOCTOU race under concurrent requests.
+  The partial unique index eliminates the race entirely.
+
+* *Soft-delete for archival* — rejected in favour of a status column because
+  archived courses need to be listed, queried, and resumed; a soft-delete pattern
+  would require filtering deleted rows throughout the query layer.
+
+* *Separate `syllabus_modification_requests` table* — considered to track each
+  request body. Deferred; the modification request body is already captured in
+  `chat_messages` (agent module) and the current `syllabi` versioning is sufficient.
+
+== Open Questions
+
+All open questions resolved.

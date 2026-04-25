@@ -1,0 +1,307 @@
+= Badge Module Design
+
+== Overview
+
+The badge module awards badges when students reach defined academic milestones and provides two distinct reward types that integrate with the grading module: a flat grade improvement and a single-use late-penalty waiver. Badge evaluation is a post-grading hook; it does not block the grade response. Reward application is deferred to grading time rather than applied eagerly, so the grading module remains the single source of truth for all grade computations.
+
+== Requirements in Scope
+
+* REQ-BADGE-001 — Badge award on academic milestone
+* REQ-BADGE-002 — Grade improvement reward type on badge
+* REQ-BADGE-003 — Late-penalty waiver reward type on badge
+* REQ-SYS-019 — Badge award for academic milestones
+* REQ-SYS-052 — Badge final grade improvement reward
+* REQ-SYS-053 — Badge late-penalty waiver reward
+
+// @{"req": ["REQ-BADGE-001", "REQ-BADGE-002", "REQ-BADGE-003", "REQ-SYS-019", "REQ-SYS-052", "REQ-SYS-053"]}
+== Data Model
+
+=== badge_definitions Table
+
+[source,sql]
+----
+CREATE TYPE milestone_type AS ENUM (
+    'first_submission',
+    'perfect_score',
+    'course_completion',
+    'streak'
+);
+
+CREATE TYPE badge_reward_type AS ENUM (
+    'grade_improvement',
+    'late_penalty_waiver'
+);
+
+CREATE TABLE badge_definitions (
+    id                   UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                 VARCHAR(120)      NOT NULL UNIQUE,
+    description          TEXT              NOT NULL,
+    milestone_type       milestone_type    NOT NULL,
+    reward_type          badge_reward_type NOT NULL,
+    reward_value         NUMERIC(5,2)      NOT NULL DEFAULT 0 CHECK (reward_value >= 0),
+    streak_length        INT               CHECK (
+        (milestone_type = 'streak' AND streak_length IS NOT NULL AND streak_length > 1)
+        OR
+        (milestone_type != 'streak' AND streak_length IS NULL)
+    ),
+    milestone_condition  JSONB
+);
+----
+
+`reward_value` semantics differ by `reward_type`:
+
+* `grade_improvement`: flat points added to `final_score` (e.g. `2.00` adds 2 points)
+* `late_penalty_waiver`: value is `0.00`; the waiver is a boolean entitlement, not a numeric value
+
+`streak_length` is only meaningful when `milestone_type = 'streak'`; a check constraint enforces this.
+
+`milestone_condition` is nullable. When non-null, it defines a custom milestone rule for admin-created badge types using the pluggable condition engine (see Custom Milestone Conditions below). The four built-in `milestone_type` values remain as optimized fast-paths; rows with a non-null `milestone_condition` fall through to the JSONB evaluator.
+
+=== student_badges Table
+
+[source,sql]
+----
+CREATE TABLE student_badges (
+    id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id            UUID        NOT NULL REFERENCES users(id)             ON DELETE CASCADE,
+    badge_definition_id   UUID        NOT NULL REFERENCES badge_definitions(id) ON DELETE RESTRICT,
+    course_id             UUID        NOT NULL REFERENCES courses(id)           ON DELETE CASCADE,
+    awarded_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    redeemed_at           TIMESTAMPTZ,
+    redeemed_submission_id UUID       REFERENCES submissions(id)
+);
+
+CREATE INDEX idx_student_badges_student_id ON student_badges (student_id);
+CREATE INDEX idx_student_badges_course_id  ON student_badges (course_id);
+
+CREATE UNIQUE INDEX student_badges_one_unredeemed_per_type
+    ON student_badges (student_id, badge_definition_id)
+    WHERE redeemed_at IS NULL;
+----
+
+`redeemed_at` is NULL for unspent badges. `redeemed_submission_id` records which submission the waiver or improvement was applied to.
+
+A student may hold at most one unredeemed badge of each type at a time. Earning a duplicate milestone when the previous badge of the same type is unredeemed has no effect; the `INSERT ... ON CONFLICT DO NOTHING` idempotency guard handles this via the partial unique index `student_badges_one_unredeemed_per_type`.
+
+=== Migration Plan
+
+Additive migration. Rollback:
+
+[source,sql]
+----
+-- rollback
+DROP INDEX  IF EXISTS student_badges_one_unredeemed_per_type;
+DROP TABLE  IF EXISTS student_badges;
+DROP TABLE  IF EXISTS badge_definitions;
+DROP TYPE   IF EXISTS badge_reward_type;
+DROP TYPE   IF EXISTS milestone_type;
+----
+
+// @{"req": ["REQ-BADGE-001", "REQ-SYS-019"]}
+== Milestone Detection
+
+Milestone evaluation is triggered as a post-grading hook by the grading service after a grade row is committed. The badge module exports an `EvaluateMilestones` function that accepts the grading context and runs all milestone checks in a single database transaction.
+
+=== first_submission
+
+Condition: count of `submissions` rows for `(student_id, course_id)` equals 1 after the current submission is committed.
+
+[source,go]
+----
+SELECT COUNT(*) FROM submissions
+WHERE student_id = $1 AND course_id = $2
+----
+
+Award the badge if `COUNT = 1` and no unredeemed `student_badges` row already exists for this definition.
+
+=== perfect_score
+
+Condition: `grades.raw_score = 100.00` for the just-graded submission.
+
+The check reads `raw_score` from the grade row committed in the same transaction.
+
+=== course_completion
+
+Condition: every `homework` row for the course has a corresponding `grades` row for this student, and the project submission is also graded.
+
+[source,go]
+----
+SELECT COUNT(*) FROM homework WHERE course_id = $1
+-- compare against
+SELECT COUNT(*) FROM grades
+WHERE student_id = $2 AND course_id = $1
+----
+
+Award when both counts match.
+
+=== streak
+
+Condition: the last N consecutive homework submissions for `(student_id, course_id)` all have `is_late = FALSE`, where N is `badge_definitions.streak_length`.
+
+[source,go]
+----
+SELECT is_late FROM submissions
+WHERE student_id = $1 AND course_id = $2
+ORDER BY submitted_at DESC
+LIMIT $3
+----
+
+Award if all returned rows have `is_late = FALSE` and the result set contains exactly N rows (not fewer, in case fewer than N submissions exist).
+
+=== Custom Milestone Conditions
+
+When `badge_definitions.milestone_condition` is non-null, the badge module evaluates it using a pluggable condition engine rather than a built-in fast-path. The schema for `milestone_condition` is:
+
+[source,json]
+----
+{
+  "metric":   "string",
+  "operator": "gt" | "gte" | "eq" | "lte" | "lt",
+  "value":    number
+}
+----
+
+Example: `{"metric": "submission_score", "operator": "gte", "value": 95}` awards the badge when the submission score is greater than or equal to 95.
+
+Supported metrics are resolved by the condition engine against the grading context at evaluation time. Unrecognised metrics cause the condition to evaluate to false and are logged as a warning.
+
+=== Idempotency
+
+Before inserting a `student_badges` row, the service uses `INSERT ... ON CONFLICT DO NOTHING` against the `student_badges_one_unredeemed_per_type` partial unique index. This makes milestone evaluation safe to re-run and prevents duplicate unredeemed badges of the same type.
+
+// @{"req": ["REQ-BADGE-002", "REQ-BADGE-003", "REQ-SYS-052", "REQ-SYS-053"]}
+== Reward Application
+
+Both `grade_improvement` and `late_penalty_waiver` badges use explicit redemption. The student selects which submission to apply the badge to by calling `POST /api/v1/badges/:id/redeem` with a `submission_id` body parameter. The grade module applies the reward to the specified submission.
+
+=== Grade Improvement
+
+The student redeems a `grade_improvement` badge via `POST /api/v1/badges/:id/redeem` with the target `submission_id`. The endpoint:
+
+. Validates the badge belongs to the authenticated student and is unredeemed.
+. Validates the badge `reward_type = 'grade_improvement'`.
+. Sets `student_badges.redeemed_at = now()` and `redeemed_submission_id`.
+. If a grade for the submission already exists, updates `grades.badge_improvement = reward_value` and recalculates `final_score`.
+. If the submission has not yet been graded, the grading module reads the redemption record and applies the improvement during the initial grade computation.
+
+The grading module query for an active improvement redemption:
+
+[source,go]
+----
+SELECT sb.id, bd.reward_value
+FROM student_badges sb
+JOIN badge_definitions bd ON bd.id = sb.badge_definition_id
+WHERE sb.student_id               = $1
+  AND sb.redeemed_submission_id   = $2
+  AND bd.reward_type              = 'grade_improvement'
+  AND sb.redeemed_at              IS NOT NULL
+LIMIT 1
+----
+
+=== Late-Penalty Waiver
+
+The student explicitly redeems a waiver via `POST /api/v1/badges/:id/redeem` with the target `submission_id` in the request body. This endpoint:
+
+. Validates the badge belongs to the authenticated student and is unredeemed.
+. Validates the badge `reward_type = 'late_penalty_waiver'`.
+. Sets `student_badges.redeemed_at = now()` and `redeemed_submission_id`.
+. If a grade for the submission already exists, triggers a re-score of that grade row with `late_penalty = 0` and `badge_waiver_applied = TRUE`.
+. If the submission has not yet been graded, the grading module reads the redemption record and applies the waiver during the initial grade computation.
+
+A waiver applied after an initial grade has been computed performs an in-place update to the existing `grades` row: `late_penalty = 0`, `badge_waiver_applied = TRUE`, and `final_score` is recalculated.
+
+// @{"req": ["REQ-BADGE-001", "REQ-BADGE-002", "REQ-BADGE-003", "REQ-SYS-019", "REQ-SYS-052", "REQ-SYS-053"]}
+== API Contract
+
+=== GET /api/v1/students/me/badges
+
+Returns all badges awarded to the authenticated student across all courses.
+
+Success response — HTTP 200:
+
+[source,json]
+----
+{
+  "badges": [
+    {
+      "badge_id":       "uuid",
+      "name":           "First Step",
+      "description":    "Awarded for submitting your first homework.",
+      "milestone_type": "first_submission",
+      "reward_type":    "grade_improvement",
+      "reward_value":   2.0,
+      "course_id":      "uuid",
+      "awarded_at":     "2026-04-10T08:00:00Z",
+      "redeemed_at":    null
+    },
+    {
+      "badge_id":       "uuid",
+      "name":           "Safety Net",
+      "description":    "Waive one late penalty.",
+      "milestone_type": "streak",
+      "reward_type":    "late_penalty_waiver",
+      "reward_value":   0.0,
+      "course_id":      "uuid",
+      "awarded_at":     "2026-04-15T11:30:00Z",
+      "redeemed_at":    "2026-04-22T09:05:00Z"
+    }
+  ]
+}
+----
+
+=== POST /api/v1/badges/:id/redeem
+
+Redeems a badge (`grade_improvement` or `late_penalty_waiver`) against a specific submission.
+
+Request body:
+
+[source,json]
+----
+{
+  "submission_id": "uuid"
+}
+----
+
+Success response — HTTP 200:
+
+[source,json]
+----
+{
+  "badge_id":              "uuid",
+  "redeemed_at":           "2026-04-22T09:05:00Z",
+  "redeemed_submission_id":"uuid",
+  "grade_updated":         true
+}
+----
+
+`grade_updated` is `true` when an existing grade row was updated in the same request; `false` when the grade has not yet been computed.
+
+Error responses:
+
+[cols="1,3"]
+|===
+|Status |Condition
+
+|400
+|Missing `submission_id`
+
+|403
+|Badge does not belong to the authenticated student
+
+|404
+|Badge or submission not found
+
+|409
+|Badge has already been redeemed
+|===
+
+== Alternatives Considered
+
+* *Eager reward application at award time* — rejected because grade state at award time may not be final; applying the improvement or waiver at grade computation time is safer and keeps the grading module as the sole grade authority.
+* *Multiple waiver badges stackable on one submission* — rejected to keep late-penalty semantics simple. One waiver per submission; a student holding multiple waivers chooses which submission to apply each to.
+* *Storing badge definitions in code rather than DB* — rejected because admins must be able to create new milestone/reward configurations without a code deploy.
+* *Auto-applying grade improvement to the next graded homework* — rejected in favour of explicit redemption so that students retain agency over which submission receives the improvement.
+
+== Open Questions
+
+All open questions resolved.

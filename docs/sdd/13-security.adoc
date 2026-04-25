@@ -1,0 +1,308 @@
+= Cross-Cutting Security Design
+
+== Overview
+
+This document specifies the security controls that cut across all modules of the Valory system. The controls address credential management, per-student data isolation, CSRF defence, password-reset abuse prevention, and student consent gating for AI data transmission. Each control is implemented in its designated layer (middleware, database policy, or application logic) so that no single bypass defeats all protections.
+
+== Requirements in Scope
+
+* REQ-SECURITY-001 — AI API credentials via environment variables only
+* REQ-SECURITY-002 — Per-student data isolation
+* REQ-SECURITY-003 — Password-reset request rate limiting
+* REQ-SECURITY-004 — CSRF token validation on state-changing requests
+* REQ-SECURITY-005 — Student consent before AI data transmission
+* REQ-SYS-002 — Role-based access control (security perspective)
+* REQ-SYS-007 — AI API credential configuration
+* REQ-SYS-023 — Student data privacy
+* REQ-SYS-038 — Password-reset rate limiting
+* REQ-SYS-046 — AI processing consent
+* REQ-SYS-048 — CSRF protection
+
+// @{"req": ["REQ-SECURITY-001", "REQ-SYS-007"]}
+== Environment Variable Secrets
+
+`ANTHROPIC_API_KEY` is the sole Anthropic credential. It is loaded once at process startup:
+
+[source,go]
+----
+apiKey := os.Getenv("ANTHROPIC_API_KEY")
+if apiKey == "" {
+    log.Fatal("ANTHROPIC_API_KEY environment variable is not set")
+}
+----
+
+The value is passed to the Anthropic SDK client constructor and is never stored in a struct field that could be serialised, never written to logs, and never included in error responses. The SDK client is constructed once and injected via dependency injection into all agent handlers. No configuration file path is used for secrets.
+
+All secrets come from the environment; `.env.example` documents the variable names with placeholder values and is the only secrets-related file committed to the repository.
+
+// @{"req": ["REQ-SECURITY-002", "REQ-SYS-023"]}
+== Per-Student Data Isolation
+
+=== Application Layer
+
+Every database query that returns student-owned data must include a `WHERE student_id = $1` predicate bound to the authenticated session's `user_id`. This applies to the following tables:
+
+* `courses`
+* `lesson_content` (via `courses.student_id`)
+* `section_feedback`
+* `submissions`
+* `grades`
+* `chat_messages`
+* `notifications`
+* `student_consent`
+
+No handler may issue a query on these tables without binding the session identity. The auth middleware injects `userID` and `role` into the request context; handlers extract these values and refuse to proceed if absent.
+
+Admin queries on student-owned tables must explicitly check `role = 'admin'` before omitting the `student_id` predicate.
+
+=== Database Layer (PostgreSQL RLS)
+
+Row-level security is enabled as a second defence-in-depth layer on all student-owned tables. The application must never connect as a superuser or a role with `BYPASSRLS`; `valory_app` is created with `NOBYPASSRLS` and `NOSUPERUSER` to ensure RLS policies are enforced on every query.
+
+[source,sql]
+----
+-- Application role: no superuser, no BYPASSRLS, no CREATEROLE.
+CREATE ROLE valory_app
+    NOLOGIN
+    NOINHERIT
+    NOSUPERUSER
+    NOCREATEDB
+    NOCREATEROLE
+    NOBYPASSRLS;
+
+GRANT CONNECT ON DATABASE valory TO valory_app;
+GRANT USAGE ON SCHEMA public TO valory_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO valory_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO valory_app;
+----
+
+The handler sets the session-local settings before executing queries:
+
+[source,go]
+----
+_, err = tx.Exec(ctx,
+    "SET LOCAL app.current_user_id = $1; SET LOCAL app.current_role = $2",
+    userID, role,
+)
+----
+
+[source,sql]
+----
+ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE courses FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY student_isolation ON courses
+    AS PERMISSIVE FOR ALL
+    TO valory_app
+    USING (
+        student_id = current_setting('app.current_user_id')::UUID
+        OR current_setting('app.current_role') = 'admin'
+    );
+
+ALTER TABLE lesson_content ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lesson_content FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY lesson_content_student_isolation ON lesson_content
+    AS PERMISSIVE FOR ALL
+    TO valory_app
+    USING (
+        EXISTS (
+            SELECT 1 FROM courses
+            WHERE courses.id = lesson_content.course_id
+              AND (courses.student_id = current_setting('app.current_user_id')::UUID
+                   OR current_setting('app.current_role') = 'admin')
+        )
+    );
+
+ALTER TABLE section_feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE section_feedback FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY section_feedback_student_isolation ON section_feedback
+    AS PERMISSIVE FOR ALL
+    TO valory_app
+    USING (
+        student_id = current_setting('app.current_user_id')::UUID
+        OR current_setting('app.current_role') = 'admin'
+    );
+----
+
+`lesson_content` isolates via a correlated subquery because it has no direct `student_id` column; `section_feedback` isolates directly via its `student_id` column. The same policy pattern applies to all remaining tables in the student-owned set listed above.
+
+// @{"req": ["REQ-SECURITY-004", "REQ-SYS-048"]}
+== CSRF Protection
+
+=== Token Issuance
+
+On successful login, the server generates a 32-byte random CSRF token and writes it as a cookie:
+
+[source,go]
+----
+http.SetCookie(w, &http.Cookie{
+    Name:     "__Host-csrf",
+    Value:    base64.RawURLEncoding.EncodeToString(token),
+    Path:     "/",
+    SameSite: http.SameSiteStrictMode,
+    HttpOnly: false, // must be readable by JS to set the request header
+    Secure:   true,
+})
+----
+
+`__Host-` prefix enforces that the cookie is only sent over HTTPS and is bound to the exact host, preventing subdomain injection.
+
+=== Token Validation Middleware
+
+[source,go]
+----
+func CSRFMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        switch r.Method {
+        case http.MethodGet, http.MethodHead, http.MethodOptions:
+            next.ServeHTTP(w, r)
+            return
+        }
+        cookie, err := r.Cookie("__Host-csrf")
+        if err != nil || cookie.Value == "" {
+            http.Error(w, "missing CSRF cookie", http.StatusForbidden)
+            return
+        }
+        header := r.Header.Get("X-CSRF-Token")
+        if !hmac.Equal([]byte(cookie.Value), []byte(header)) {
+            http.Error(w, "CSRF token mismatch", http.StatusForbidden)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+----
+
+`hmac.Equal` performs a constant-time comparison. All state-changing methods (POST, PATCH, PUT, DELETE) are gated. The Vue.js frontend reads the cookie value on login and attaches it as `X-CSRF-Token` on every mutating Axios request.
+
+// @{"req": ["REQ-SECURITY-003", "REQ-SYS-038"]}
+== Password-Reset Rate Limiting
+
+=== Database Schema
+
+[source,sql]
+----
+CREATE TABLE password_reset_attempts (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_pra_user_requested
+    ON password_reset_attempts (user_id, requested_at DESC);
+----
+
+Migration plan: additive. Rollback drops the table and index.
+
+=== Enforcement Logic
+
+Before issuing a reset token, the reset handler counts recent attempts:
+
+[source,go]
+----
+const resetWindowSeconds = 3600
+const resetMaxAttempts = 3
+
+var count int
+err = db.QueryRow(ctx,
+    `SELECT COUNT(*) FROM password_reset_attempts
+     WHERE user_id = $1
+       AND requested_at > NOW() - INTERVAL '1 hour'`,
+    userID,
+).Scan(&count)
+
+if count >= resetMaxAttempts {
+    w.WriteHeader(http.StatusTooManyRequests)
+    json.NewEncoder(w).Encode(map[string]string{
+        "error": "too_many_reset_requests",
+    })
+    return
+}
+
+// Record the attempt before issuing the token.
+_, err = db.Exec(ctx,
+    `INSERT INTO password_reset_attempts (user_id) VALUES ($1)`,
+    userID,
+)
+----
+
+Rate-limit state is database-backed and survives process restarts. Old attempt rows are pruned by a nightly cleanup query (DELETE WHERE `requested_at < NOW() - INTERVAL '7 days'`).
+
+// @{"req": ["REQ-SECURITY-005", "REQ-SYS-046"]}
+== AI Processing Consent
+
+=== Database Schema
+
+[source,sql]
+----
+CREATE TABLE student_consent (
+    student_id       UUID        PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    consented_at     TIMESTAMPTZ NOT NULL,
+    consent_version  VARCHAR(16) NOT NULL
+);
+----
+
+Migration plan: additive. Rollback drops the table.
+
+`consent_version` is a string such as `"1.0"`. It is stored as a key in `system_config` and is the authoritative source of truth for the current consent version. Admins increment it via `PATCH /api/v1/admin/config`. On every authenticated request, the auth middleware compares `student_consent.consent_version` against the current `system_config` value. If the student's stored version is lower than the current value, or if no consent record exists, the middleware returns HTTP 403 with body `{"error": "CONSENT_REQUIRED", "current_version": "..."}`. The frontend interprets this code to display the updated consent modal. After the student accepts, `POST /api/v1/consent` updates `student_consent.consent_version` to the current value.
+
+Consent is global — one record per student, applies to all courses.
+
+=== Consent Gate
+
+The auth middleware enforces the consent version check on all authenticated routes for student-role sessions before any handler logic executes:
+
+[source,go]
+----
+currentVersion := configService.GetString("consent_version")
+
+var storedVersion string
+err := db.QueryRow(ctx,
+    `SELECT consent_version FROM student_consent WHERE student_id = $1`,
+    userID,
+).Scan(&storedVersion)
+
+if errors.Is(err, pgx.ErrNoRows) || storedVersion < currentVersion {
+    w.WriteHeader(http.StatusForbidden)
+    json.NewEncoder(w).Encode(map[string]string{
+        "error":           "CONSENT_REQUIRED",
+        "current_version": currentVersion,
+    })
+    return
+}
+----
+
+=== Consent Recording
+
+`POST /api/v1/consent`
+
+Request:
+
+[source,json]
+----
+{"consent_version": "1.0"}
+----
+
+The handler inserts or upserts the `student_consent` row for the authenticated student and returns HTTP 200. The auth middleware proceeds on the next request once the stored version matches the current config value.
+
+// @{"req": ["REQ-SYS-002"]}
+== Role-Based Access Control
+
+Role enforcement is handled by the auth middleware and is documented in the Auth Module Design (SDD section 03). The security-relevant constraint applied in this module is:
+
+* Admin-role checks are enforced at the HTTP middleware layer before any handler logic executes.
+* Student handlers must not branch on role to grant elevated access; they must be written assuming the caller is always a student.
+* Any admin handler that bypasses the `student_id` predicate must assert `role == "admin"` from the middleware-injected context value, not from a query parameter or request body field.
+
+== Alternatives Considered
+
+* Storing CSRF tokens server-side (session-tied): ruled out because the `__Host-` double-submit cookie pattern achieves the same protection without requiring server-side token storage and its associated cache invalidation complexity.
+* Using a Redis-backed rate-limit counter for password resets: ruled out because the database-backed approach is sufficient for the expected volume and avoids adding a Redis dependency not present in the specified stack.
+* Delegating RLS entirely to the PostgreSQL policy layer without application-level `WHERE` predicates: ruled out as the sole defence because a misconfigured session setting would bypass RLS; defence-in-depth requires both layers.
+* Per-course consent records: ruled out in favour of a single global consent record per student. One record per student simplifies the consent gate check to a single row lookup and means the student only sees the re-consent modal once per version increment regardless of how many courses they are enrolled in.
+
+== Open Questions
+
+All open questions resolved.

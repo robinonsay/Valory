@@ -1,0 +1,290 @@
+= Authentication Module Design
+
+== Overview
+
+The authentication module issues and validates opaque session tokens, enforces role-based access control at the HTTP boundary, and protects credentials at rest and in transit. Opaque tokens are chosen over JWT because the server must be able to revoke sessions immediately on lockout and inactivity expiry; JWT's stateless nature makes server-side revocation impractical without a denylist that negates the statelessness benefit.
+
+== Requirements in Scope
+
+* REQ-AUTH-001, REQ-AUTH-002, REQ-AUTH-003, REQ-AUTH-004
+* REQ-AUTH-005, REQ-AUTH-006, REQ-AUTH-007, REQ-AUTH-008
+* REQ-SYS-001, REQ-SYS-002, REQ-SYS-024, REQ-SYS-037, REQ-SYS-040, REQ-SYS-041
+
+// @{"req": ["REQ-AUTH-001", "REQ-AUTH-002", "REQ-AUTH-003", "REQ-AUTH-005", "REQ-AUTH-006", "REQ-AUTH-008", "REQ-SYS-001", "REQ-SYS-024", "REQ-SYS-037", "REQ-SYS-041"]}
+== Data Model
+
+=== users table
+
+[source,sql]
+----
+CREATE TABLE users (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    username            TEXT        NOT NULL UNIQUE,
+    password_hash       TEXT        NOT NULL,
+    role                TEXT        NOT NULL CHECK (role IN ('student', 'admin')),
+    is_active           BOOLEAN     NOT NULL DEFAULT TRUE,
+    failed_login_count  INTEGER     NOT NULL DEFAULT 0,
+    locked_until        TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_username ON users (username);
+CREATE INDEX idx_users_locked_until ON users (locked_until)
+    WHERE locked_until IS NOT NULL;
+----
+
+`password_hash` stores the Argon2id output (encoded with algorithm tag, parameters, salt, and derived key). `locked_until` is NULL when the account is not locked; a non-NULL value in the future blocks authentication without touching `is_active`, so deactivation and lockout are independently observable.
+
+=== sessions table
+
+[source,sql]
+----
+CREATE TABLE sessions (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash      TEXT        NOT NULL UNIQUE,
+    role            TEXT        NOT NULL CHECK (role IN ('student', 'admin')),
+    last_active_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_sessions_token_hash ON sessions (token_hash);
+CREATE INDEX idx_sessions_user_id    ON sessions (user_id);
+CREATE INDEX idx_sessions_last_active_at ON sessions (last_active_at);
+----
+
+`token_hash` stores SHA-256 of the raw token (hex-encoded). The raw token is never persisted. `expires_at` is an absolute ceiling set at issuance (e.g. 24 h); `last_active_at` drives inactivity expiry independently.
+
+=== login_attempts table
+
+[source,sql]
+----
+CREATE TABLE login_attempts (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    success      BOOLEAN     NOT NULL
+);
+
+CREATE INDEX idx_login_attempts_user_id ON login_attempts (user_id, attempted_at DESC);
+----
+
+Retained for audit purposes. Brute-force counters are driven by `users.failed_login_count`; this table provides the historical log.
+
+=== Migration plan
+
+All tables are net-new. No destructive changes to existing schema. Rollback: `DROP TABLE login_attempts; DROP TABLE sessions;` and remove the new columns from `users` (if applied incrementally via ALTER TABLE migrations).
+
+// @{"req": ["REQ-AUTH-002", "REQ-AUTH-003", "REQ-AUTH-008", "REQ-SYS-001", "REQ-SYS-041"]}
+== Session Token Design
+
+A session token is a 256-bit value from `crypto/rand`. It is base64url-encoded and returned to the client. The server stores only `hex(SHA-256(raw_token))` in `sessions.token_hash`. This means:
+
+* A database dump exposes no usable tokens.
+* Revocation is a single `DELETE FROM sessions WHERE token_hash = $1`.
+* Role is stored in the session row, not decoded from the token, so role changes take effect on the next request without reissuance.
+
+SHA-256 is appropriate for a second-factor hash of a high-entropy random value; it is not used for password storage.
+
+// @{"req": ["REQ-AUTH-008", "REQ-SYS-041"]}
+== Password Hashing
+
+Argon2id via `golang.org/x/crypto/argon2` with parameters: time=1, memory=65536 KB (64 MB), threads=4, key length=32 bytes. Argon2id is memory-hard, providing stronger resistance to GPU-based offline attacks than bcrypt's CPU-only hardness. The stored value is a self-describing encoded string containing the algorithm tag, parameters, salt, and derived key, so the parameters are recoverable from the hash alone and can be updated transparently at next login.
+
+[source,go]
+----
+import (
+    "crypto/rand"
+    "encoding/base64"
+    "fmt"
+    "golang.org/x/crypto/argon2"
+)
+
+const (
+    argonTime    = 1
+    argonMemory  = 65536
+    argonThreads = 4
+    argonKeyLen  = 32
+    argonSaltLen = 16
+)
+
+func HashPassword(plain string) (string, error) {
+    salt := make([]byte, argonSaltLen)
+    if _, err := rand.Read(salt); err != nil {
+        return "", err
+    }
+    key := argon2.IDKey([]byte(plain), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+    encoded := fmt.Sprintf(
+        "$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
+        argonMemory, argonTime, argonThreads,
+        base64.RawStdEncoding.EncodeToString(salt),
+        base64.RawStdEncoding.EncodeToString(key),
+    )
+    return encoded, nil
+}
+
+func CheckPassword(plain, encoded string) (bool, error) {
+    // parse encoded to extract salt and params, then re-derive key and compare
+    // returns (true, nil) on match, (false, nil) on mismatch, (false, err) on malformed hash
+}
+----
+
+// @{"req": ["REQ-AUTH-004", "REQ-AUTH-005", "REQ-AUTH-003", "REQ-SYS-002", "REQ-SYS-024"]}
+== RBAC Middleware
+
+Every authenticated request passes through `AuthMiddleware`, which:
+
+1. Reads `Authorization: Bearer <token>` header.
+2. Computes `hex(SHA-256(token))` and queries `sessions` by `token_hash`.
+3. Rejects if no row found (401).
+4. Checks `NOW() - last_active_at > inactivity_period` (configurable via env); rejects with 401 and deletes the session row if expired.
+5. Checks `expires_at < NOW()`; rejects with 401 if the absolute ceiling is exceeded.
+6. Updates `last_active_at = NOW()`.
+7. Stores `session.role` and `session.user_id` in `context.Context`.
+
+`RequireRole(role string)` is a handler decorator that reads the role from context and returns 403 if it does not match. All `/api/v1/admin/` routes are wrapped with `RequireRole("admin")`.
+
+[source,go]
+----
+func RequireRole(role string) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            got, ok := RoleFromContext(r.Context())
+            if !ok || got != role {
+                http.Error(w, "forbidden", http.StatusForbidden)
+                return
+            }
+            next.ServeHTTP(w, r)
+        })
+    }
+}
+----
+
+// @{"req": ["REQ-AUTH-006", "REQ-SYS-037"]}
+== Brute-Force Lockout
+
+Login flow checks lockout before credential verification:
+
+1. Load `users` row by username.
+2. If `locked_until IS NOT NULL AND locked_until > NOW()`, return 401 with a `Retry-After` header. Do not increment `failed_login_count` during a lockout period.
+3. Run `CheckPassword`. On failure: `failed_login_count++`; if `failed_login_count >= 5`, set `locked_until = NOW() + $LOCKOUT_DURATION` (env var, default 15 min). Insert `login_attempts` row with `success = false`.
+4. On success: reset `failed_login_count = 0`, clear `locked_until = NULL`. Insert `login_attempts` row with `success = true`.
+
+The lockout duration is configurable via `AUTH_LOCKOUT_DURATION` (Go `time.Duration` format). The threshold of 5 failures is fixed per REQ-AUTH-006.
+
+// @{"req": ["REQ-AUTH-005", "REQ-SYS-024"]}
+== Session Expiry
+
+Two independent expiry conditions:
+
+* *Absolute expiry*: `sessions.expires_at` set at `NOW() + AUTH_SESSION_MAX_DURATION` (env var, default 24 h). Not renewable; user must re-authenticate.
+* *Inactivity expiry*: If `NOW() - sessions.last_active_at > AUTH_INACTIVITY_PERIOD` (env var, default 30 min), the session is invalid. `last_active_at` is updated on every authenticated request (see RBAC middleware above).
+
+Both checks occur in `AuthMiddleware` before the handler runs. Expired sessions are deleted at check time. A background job may sweep stale rows older than `AUTH_SESSION_MAX_DURATION` to keep the table compact, but correctness does not depend on it.
+
+// @{"req": ["REQ-AUTH-007", "REQ-SYS-040"]}
+== TLS Enforcement
+
+The Go HTTP server uses `golang.org/x/crypto/acme/autocert` to provision and renew TLS certificates automatically via the ACME protocol (Let's Encrypt). When the `ACME_DOMAIN` environment variable is set, an `autocert.Manager` is constructed for that domain; its `GetCertificate` function is wired into `tls.Config`. The manager handles certificate issuance, caching to disk, and renewal without operator intervention.
+
+When `ACME_DOMAIN` is absent (development), the server falls back to a self-signed certificate for local use only.
+
+[source,go]
+----
+import (
+    "crypto/tls"
+    "net/http"
+    "golang.org/x/crypto/acme/autocert"
+)
+
+func buildTLSConfig(acmeDomain string) (*tls.Config, http.Handler) {
+    tlsCfg := &tls.Config{
+        MinVersion: tls.VersionTLS12,
+        CurvePreferences: []tls.CurveID{
+            tls.X25519, tls.CurveP256,
+        },
+    }
+    if acmeDomain != "" {
+        m := &autocert.Manager{
+            Prompt:     autocert.AcceptTOS,
+            HostPolicy: autocert.HostWhitelist(acmeDomain),
+            Cache:      autocert.DirCache("autocert-cache"),
+        }
+        tlsCfg.GetCertificate = m.GetCertificate
+        return tlsCfg, m.HTTPHandler(nil) // handles ACME HTTP-01 challenges on :80
+    }
+    // dev fallback: self-signed cert loaded at startup
+    return tlsCfg, http.RedirectHandler("https://"+acmeDomain, http.StatusMovedPermanently)
+}
+----
+
+A separate server on `:80` runs the ACME HTTP handler (which responds to Let's Encrypt HTTP-01 challenges) and issues HTTP 301 redirects for all other traffic. Minimum TLS 1.2; TLS 1.3 preferred by Go's default cipher negotiation.
+
+// @{"req": ["REQ-AUTH-001", "REQ-AUTH-002", "REQ-AUTH-003", "REQ-AUTH-006", "REQ-SYS-001", "REQ-SYS-002"]}
+== API Contract
+
+=== POST /api/v1/auth/login
+
+Verifies credentials and issues a session token.
+
+*Request*
+
+[source,json]
+----
+{
+  "username": "alice",
+  "password": "s3cr3t!"
+}
+----
+
+*Response 200 OK*
+
+[source,json]
+----
+{
+  "token": "<base64url-256-bit-random>",
+  "role": "student",
+  "expires_at": "2026-04-26T10:00:00Z"
+}
+----
+
+*Error responses*
+
+|===
+| Status | Condition
+
+| 400 Bad Request
+| Missing or blank `username` / `password`
+
+| 401 Unauthorized
+| Invalid credentials or account locked; body: `{"error": "invalid credentials"}` or `{"error": "account locked", "retry_after": "<RFC3339>"}`
+
+| 401 Unauthorized
+| Account deactivated; body: `{"error": "account disabled"}`
+
+| 429 Too Many Requests
+| (Future: rate-limit at load balancer layer)
+|===
+
+=== POST /api/v1/auth/logout
+
+Requires `Authorization: Bearer <token>`. Deletes the session row.
+
+*Request*: no body.
+
+*Response 204 No Content*: session deleted.
+
+*Response 401 Unauthorized*: token not found or already expired.
+
+== Alternatives Considered
+
+* *JWT* — Stateless tokens avoid a DB lookup per request but cannot be revoked server-side without a denylist. A denylist reintroduces the DB lookup while adding complexity. Rejected.
+* *bcrypt* — CPU-only hardness is weaker than Argon2id against GPU-based offline attacks. Argon2id's memory-hard function forces attackers to provision large amounts of RAM per cracking thread, substantially increasing the cost of parallelized attacks. Rejected in favour of Argon2id.
+* *Cookie-based sessions* — Simplifies CSRF (can use `SameSite=Strict`), but complicates the Vue.js SPA and the planned API-first mobile client. Bearer token chosen for client flexibility.
+* *Manual TLS certificate management* — Supplying `TLS_CERT_FILE`/`TLS_KEY_FILE` requires operator-driven rotation and risks certificate expiry. `autocert` automates renewal and removes that operational burden. Manual paths retained only as a dev fallback.
+
+== Open Questions
+
+All open questions resolved.

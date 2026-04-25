@@ -1,0 +1,256 @@
+= Content Module Design
+
+== Overview
+
+The content module manages the storage, citation enforcement, export, and student feedback lifecycle for AI-generated lesson content. Content is authored by the Professor agent in AsciiDoc format and stored per-section in PostgreSQL. After generation, a Reviewer agent validates citation presence before the content is made available to students. Export to PDF and HTML is performed server-side via Asciidoctor. Section feedback drives conditional re-generation via the agent module.
+
+== Requirements in Scope
+
+* REQ-CONTENT-001 — Citation requirement in generated lesson content
+* REQ-CONTENT-002 — Course content PDF export
+* REQ-CONTENT-003 — Course content HTML export
+* REQ-CONTENT-004 — Section feedback submission
+* REQ-SYS-013 — Source citation in lesson content
+* REQ-SYS-022 — Content export to PDF and HTML
+* REQ-SYS-033 — Section-level student feedback
+
+// @{"req": ["REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004", "REQ-SYS-013", "REQ-SYS-022", "REQ-SYS-033"]}
+== Data Model
+
+[source,sql]
+----
+CREATE TABLE lesson_content (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id     UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    section_index INT         NOT NULL,
+    title         VARCHAR(255) NOT NULL,
+    content_adoc  TEXT        NOT NULL,
+    version       INT         NOT NULL DEFAULT 1,
+    citation_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (course_id, section_index, version)
+);
+
+CREATE INDEX idx_lesson_content_course_section
+    ON lesson_content (course_id, section_index);
+
+CREATE TABLE section_feedback (
+    id                      UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id              UUID          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id               UUID          NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    section_index           INT           NOT NULL,
+    feedback_text           VARCHAR(2000) NOT NULL,
+    submitted_at            TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    regeneration_triggered  BOOLEAN       NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX idx_section_feedback_student_course
+    ON section_feedback (student_id, course_id, section_index);
+----
+
+Migration plan: both tables are additive; no existing table is altered. Rollback removes the two tables and their indexes.
+
+`feedback_text` has a maximum length of 2000 characters, enforced at both the API validation layer and the database column definition (`VARCHAR(2000)`).
+
+=== Document Size Constraint
+
+Each `content_adoc` value must not exceed 500 lines. The Professor agent is instructed to emit sub-topic content via AsciiDoc `include::` directives referencing sibling documents when a section exceeds the limit. The Reviewer agent counts newlines before citation verification and rejects over-limit documents before citation checking proceeds.
+
+// @{"req": ["REQ-CONTENT-001", "REQ-SYS-013"]}
+== Citation Verification
+
+After the Professor agent writes a `lesson_content` row, the Reviewer agent reads `content_adoc` and applies the following check before setting `citation_verified = true`:
+
+[source,go]
+----
+// isCitationValid returns true when content_adoc contains a [bibliography]
+// section with at least one bibliography entry of the form "* [[[".
+func isCitationValid(adoc string) bool {
+    bibIdx := strings.Index(adoc, "[bibliography]")
+    if bibIdx == -1 {
+        return false
+    }
+    return strings.Contains(adoc[bibIdx:], "* [[[")
+}
+----
+
+If the check fails, the Reviewer agent returns a structured rejection to the orchestrator:
+
+[source,json]
+----
+{
+  "status": "rejected",
+  "reason": "missing_citation",
+  "section_index": 2
+}
+----
+
+The orchestrator re-queues the Professor agent for correction. The correction loop is bounded by the admin-configured maximum (REQ-ADMIN-002). Content with `citation_verified = false` is never served to the student.
+
+// @{"req": ["REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-SYS-022"]}
+== Content Export
+
+Exports are generated on-demand; no caching layer is implemented. Export is performed by the Go handler by writing `content_adoc` to a temporary file, invoking Asciidoctor via `exec.Command`, and streaming the result.
+
+=== PDF Export
+
+[source,go]
+----
+cmd := exec.CommandContext(ctx, "asciidoctor-pdf",
+    "-o", outputPath,
+    inputPath,
+)
+----
+
+The response sets `Content-Type: application/pdf` and `Content-Disposition: attachment; filename="<title>.pdf"`. The temporary files are removed after the response is sent.
+
+=== HTML Export
+
+[source,go]
+----
+cmd := exec.CommandContext(ctx, "asciidoctor",
+    "--backend", "html5",
+    "--standalone",
+    "-o", outputPath,
+    inputPath,
+)
+----
+
+The response sets `Content-Type: text/html; charset=utf-8`. Include files referenced by `include::` directives must be resolved before export; the handler materialises the full include tree under a temporary directory before invoking Asciidoctor.
+
+=== Export Endpoint
+
+`GET /api/v1/courses/:id/content/:section/export?format=pdf|html`
+
+The handler rejects requests where `citation_verified = false` with HTTP 422. If `asciidoctor` exits non-zero, the handler returns HTTP 500 with the tool's stderr captured in the error body (not exposed to students; logged server-side only).
+
+// @{"req": ["REQ-CONTENT-004", "REQ-SYS-033"]}
+== Section Feedback
+
+=== Submission Flow
+
+`POST /api/v1/courses/:id/content/:section/feedback`
+
+Request body:
+
+[source,json]
+----
+{
+  "feedback_text": "The explanation of gradient descent was unclear."
+}
+----
+
+The handler:
+
+1. Inserts a `section_feedback` row with `regeneration_triggered = false`.
+2. Classifies intent: if `feedback_text` contains any keyword in the configured change-request set (configurable; default includes "unclear", "wrong", "change", "redo", "regenerate", "incorrect"), set `regeneration_triggered = true` and update the row.
+3. If `regeneration_triggered = true`, publishes a `section.regenerate` event carrying `{course_id, section_index, feedback_id}` to the agent module's internal event channel.
+4. Returns HTTP 201 with the created feedback record.
+
+The agent module consumes `section.regenerate` events and executes REQ-AGENT-010 (section content regeneration).
+
+Response (HTTP 201):
+
+[source,json]
+----
+{
+  "id": "f1a2b3c4-...",
+  "section_index": 2,
+  "regeneration_triggered": true,
+  "submitted_at": "2026-04-25T10:00:00Z"
+}
+----
+
+== API Contract
+
+=== Get Section Content
+
+`GET /api/v1/courses/:id/content/:section`
+
+Authorization: student owning the course or admin.
+
+Response 200:
+
+[source,json]
+----
+{
+  "id": "...",
+  "course_id": "...",
+  "section_index": 1,
+  "title": "Introduction to Neural Networks",
+  "content_adoc": "= Introduction...",
+  "version": 1,
+  "citation_verified": true,
+  "created_at": "2026-04-25T09:00:00Z"
+}
+----
+
+Error cases:
+
+* 404 — section does not exist for this course
+* 403 — requester is not the course owner or admin
+* 422 — content exists but `citation_verified = false` (still in review)
+
+=== Export Content
+
+`GET /api/v1/courses/:id/content/:section/export?format=pdf|html`
+
+Authorization: student owning the course or admin.
+
+* 200 — file stream with appropriate `Content-Type`
+* 400 — invalid `format` parameter
+* 422 — content not yet citation-verified
+* 500 — Asciidoctor invocation failure (details in server log)
+
+=== Submit Section Feedback
+
+`POST /api/v1/courses/:id/content/:section/feedback`
+
+Authorization: student owning the course.
+
+Request: `{"feedback_text": "string (1–2000 chars)"}`
+
+* 201 — feedback recorded, body as shown above
+* 400 — missing or oversized `feedback_text`
+* 403 — student does not own this course
+* 404 — section not found
+
+=== Get Section Feedback History
+
+`GET /api/v1/courses/:id/content/:section/feedback`
+
+Authorization: student owning the course.
+
+Returns the list of all past feedback submissions by the authenticated student for the specified section, ordered by `submitted_at` descending.
+
+Response 200:
+
+[source,json]
+----
+{
+  "feedback": [
+    {
+      "id": "f1a2b3c4-...",
+      "section_index": 2,
+      "feedback_text": "The explanation of gradient descent was unclear.",
+      "regeneration_triggered": true,
+      "submitted_at": "2026-04-25T10:00:00Z"
+    }
+  ]
+}
+----
+
+Error cases:
+
+* 403 — student does not own this course
+* 404 — section not found
+
+== Alternatives Considered
+
+* Storing export artifacts in object storage rather than generating on demand: ruled out because content is small, generation is fast, and caching introduces cache-invalidation complexity after regeneration.
+* Client-side AsciiDoc rendering: ruled out because Asciidoctor-PDF is a Ruby tool with no reliable WASM port at this time; server-side keeps the rendering stack uniform.
+* Natural-language classification of feedback intent via LLM: ruled out for the keyword-match approach because it avoids an API round-trip on every feedback submission, and the keyword list is admin-configurable.
+
+== Open Questions
+
+All open questions resolved.

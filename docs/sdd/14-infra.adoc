@@ -1,0 +1,293 @@
+= Infrastructure Design
+
+== Overview
+
+The infrastructure layer provides the deployment topology, health observability, and transport security for Valory. The system runs as three Docker Compose services: a Go API server, a PostgreSQL database, and a Nginx-served Vue.js frontend. TLS is terminated at the Go HTTP server using ACME autocert for automatic certificate management. A health check endpoint surfaces subsystem status for use by load balancers and orchestrators.
+
+== Requirements in Scope
+
+* REQ-INFRA-001 — Health check endpoint
+* REQ-SYS-047 — Health check endpoint
+
+// @{"req": ["REQ-INFRA-001", "REQ-SYS-047"]}
+== Health Check Endpoint
+
+=== Endpoint Definition
+
+`GET /health`
+
+No authentication required. This endpoint is intentionally public so that load balancers and container orchestrators can probe it without session tokens.
+
+The handler checks three subsystems in parallel using a `sync.WaitGroup` and returns a composite status. If all subsystems report `"ok"`, the response is HTTP 200. If any subsystem reports `"degraded"` or `"error"`, the response is HTTP 503.
+
+=== Subsystem Checks
+
+[cols="2,3,2", options="header"]
+|===
+| Subsystem | Check | Failure condition
+
+| `postgres`   | `SELECT 1` via pgxpool.Ping with a 3-second timeout | context deadline exceeded or query error
+| `anthropic`  | `http.Head("https://api.anthropic.com")` with a 5-second timeout | non-2xx response or network error
+| `disk`       | Write then delete a temp file under the uploads directory path | OS error on write or delete
+|===
+
+=== Response Shapes
+
+HTTP 200 — all subsystems healthy:
+
+[source,json]
+----
+{
+  "status": "ok",
+  "subsystems": {
+    "postgres":  "ok",
+    "anthropic": "ok",
+    "disk":      "ok"
+  }
+}
+----
+
+HTTP 503 — one or more subsystems degraded:
+
+[source,json]
+----
+{
+  "status": "degraded",
+  "subsystems": {
+    "postgres":  "ok",
+    "anthropic": "degraded",
+    "disk":      "ok"
+  }
+}
+----
+
+The `status` field is `"ok"` only when all three subsystem values are `"ok"`; otherwise it is `"degraded"`.
+
+=== Handler Implementation
+
+[source,go]
+----
+type SubsystemStatus struct {
+    Postgres  string `json:"postgres"`
+    Anthropic string `json:"anthropic"`
+    Disk      string `json:"disk"`
+}
+
+type HealthResponse struct {
+    Status     string          `json:"status"`
+    Subsystems SubsystemStatus `json:"subsystems"`
+}
+
+func HealthHandler(db *pgxpool.Pool, uploadsDir string) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        var ss SubsystemStatus
+        var wg sync.WaitGroup
+
+        check := func(name *string, fn func() error) {
+            defer wg.Done()
+            if err := fn(); err != nil {
+                *name = "degraded"
+            } else {
+                *name = "ok"
+            }
+        }
+
+        wg.Add(3)
+        go check(&ss.Postgres,  func() error { return checkPostgres(r.Context(), db) })
+        go check(&ss.Anthropic, func() error { return checkAnthropic(r.Context()) })
+        go check(&ss.Disk,      func() error { return checkDisk(uploadsDir) })
+        wg.Wait()
+
+        overall := "ok"
+        if ss.Postgres != "ok" || ss.Anthropic != "ok" || ss.Disk != "ok" {
+            overall = "degraded"
+        }
+
+        code := http.StatusOK
+        if overall != "ok" {
+            code = http.StatusServiceUnavailable
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(code)
+        json.NewEncoder(w).Encode(HealthResponse{Status: overall, Subsystems: ss})
+    }
+}
+----
+
+The Anthropic check uses a package-level HTTP client with `Timeout: 5 * time.Second` and does not use the `ANTHROPIC_API_KEY`; the HEAD request checks network reachability only and requires no authentication.
+
+== Docker Compose Layout
+
+[source,yaml]
+----
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB:       valory
+      POSTGRES_USER:     valory_app
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valory_app -d valory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    ports:
+      - "8443:8443"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+      - acme_cache:/app/acme-cache
+    healthcheck:
+      test: ["CMD", "curl", "-kf", "https://localhost:8443/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  uploads:
+  acme_cache:
+----
+
+The `db` service does not expose a port to the host in `docker-compose.yml`. For development tooling (psql, TablePlus, etc.), a `docker-compose.dev.yml` override file adds `ports: ["5432:5432"]` to the `db` service. Run the development stack with:
+
+[source,sh]
+----
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+----
+
+Nginx is configured with `proxy_pass https://api:8443` (not `http://`) because the `api` service terminates TLS itself; Nginx must be configured to accept the self-signed certificate in development using `proxy_ssl_verify off`.
+
+Nginx listens on port 80 with a single redirect directive and handles all real traffic on port 443:
+
+[source,nginx]
+----
+server {
+    listen 80;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    # ... SSL and proxy_pass configuration
+}
+----
+
+=== Service Responsibilities
+
+* `db` — PostgreSQL 16. Only the `api` service connects to it. No port is exposed to the host in production deployments; use the dev override file for local tooling access.
+* `api` — Go binary serving the REST API and SSE pipeline events on port 8443 (TLS). Runs database migrations on startup before accepting connections.
+* `frontend` — Nginx serves the compiled Vue.js SPA and proxies `/api/` and `/health` requests to the `api` service. Handles HTTP-to-HTTPS redirect on port 80; all real traffic is served on port 443.
+
+=== Environment Variables
+
+`.env.example` (committed; `.env` is gitignored):
+
+[source]
+----
+ANTHROPIC_API_KEY=your-key-here
+DB_PASSWORD=changeme
+ACME_DOMAIN=example.com
+ACME_CACHE_DIR=/app/acme-cache
+SESSION_SECRET=changeme
+UPLOADS_DIR=/app/uploads
+SESSION_TIMEOUT_SECONDS=1800
+AGENT_RETRY_LIMIT=3
+CORRECTION_LOOP_MAX=5
+CONTENT_GENERATION_TIMEOUT_SECONDS=300
+----
+
+All values that are secrets are loaded via `os.Getenv` with a fail-fast check at startup (see Security Design, section on environment variable secrets).
+
+// @{"req": ["REQ-SYS-040"]}
+== TLS Configuration
+
+TLS is terminated at the Go HTTP server using `golang.org/x/crypto/acme/autocert` for automatic certificate management. The `autocert.Manager` is configured with the domain from the `ACME_DOMAIN` environment variable. Certificates are cached in the directory specified by `ACME_CACHE_DIR`.
+
+[source,go]
+----
+acmeDomain := os.Getenv("ACME_DOMAIN")
+acmeCacheDir := os.Getenv("ACME_CACHE_DIR")
+
+tlsCfg := &tls.Config{
+    MinVersion: tls.VersionTLS12,
+    CurvePreferences: []tls.CurveID{
+        tls.X25519,
+        tls.CurveP256,
+    },
+    PreferServerCipherSuites: true,
+}
+
+if acmeDomain != "" {
+    m := &autocert.Manager{
+        Prompt:     autocert.AcceptTOS,
+        HostPolicy: autocert.HostWhitelist(acmeDomain),
+        Cache:      autocert.DirCache(acmeCacheDir),
+    }
+    tlsCfg.GetCertificate = m.GetCertificate
+}
+
+server := &http.Server{
+    Addr:      ":8443",
+    Handler:   router,
+    TLSConfig: tlsCfg,
+}
+
+log.Fatal(server.ListenAndServeTLS("", ""))
+----
+
+When `ACME_DOMAIN` is set, `autocert` serves a valid certificate obtained from Let's Encrypt and renews it automatically before expiry. When `ACME_DOMAIN` is absent (development), `ListenAndServeTLS` falls back to a self-signed certificate generated by the Docker entrypoint (see below).
+
+TLS 1.2 is the minimum to support older clients while excluding deprecated protocol versions. TLS 1.3 is used automatically when the client supports it (Go's `crypto/tls` package enables TLS 1.3 by default alongside TLS 1.2 when `MinVersion = tls.VersionTLS12`).
+
+=== Development Self-Signed Certificate
+
+In development (when `ACME_DOMAIN` is absent), the `api` container's Docker entrypoint generates a self-signed certificate that is passed directly to `ListenAndServeTLS`:
+
+[source,sh]
+----
+if [ -z "$ACME_DOMAIN" ] && [ ! -f /tmp/dev-server.crt ]; then
+  openssl req -x509 -nodes -days 365 \
+    -newkey rsa:2048 \
+    -keyout /tmp/dev-server.key \
+    -out /tmp/dev-server.crt \
+    -subj "/CN=localhost"
+fi
+exec /app/valory
+----
+
+The Go server detects the absence of `ACME_DOMAIN` and calls `ListenAndServeTLS("/tmp/dev-server.crt", "/tmp/dev-server.key")` instead of the autocert path.
+
+== Alternatives Considered
+
+* TLS termination at a reverse proxy (e.g., Nginx or Caddy) in front of the Go server: a valid approach for production deployments behind a load balancer. Ruled out as the primary design because the requirements specify a minimal Docker Compose stack, and adding a proxy layer in front of the API adds configuration complexity without clear benefit at this scale.
+* Manual certificate management via `TLS_CERT_PATH` / `TLS_KEY_PATH` env vars: ruled out in favour of `autocert` because manual rotation is error-prone and `autocert` handles renewal automatically for internet-facing deployments.
+* Separate health check per service (e.g., a dedicated sidecar): unnecessary overhead for three services; a single endpoint in the API binary is sufficient.
+
+== Open Questions
+
+All open questions resolved.

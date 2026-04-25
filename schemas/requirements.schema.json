@@ -20,7 +20,7 @@
     },
     "description": {
       "type": "string",
-      "pattern": "^The .+ (module|system|agent|service) shall .+\\.$",
+      "pattern": "^The (.+ )?(module|system|agent|service) shall .+\\.$",
       "description": "Requirement statement in the canonical form: 'The <module> module shall <behavior>.'"
     },
     "rationale": {

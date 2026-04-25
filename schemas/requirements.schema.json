@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/requirements.schema.json",
+  "title": "Requirement",
+  "description": "Schema for a Valory software requirement.",
+  "type": "object",
+  "required": ["id", "title", "description", "rationale", "verification_method"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^REQ-[A-Z]+-[0-9]{3}$",
+      "description": "Unique requirement identifier in the format REQ-MODULE-NNN (e.g. REQ-AUTH-001)."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 100,
+      "description": "Short descriptive title for the requirement."
+    },
+    "description": {
+      "type": "string",
+      "pattern": "^The .+ (module|system|agent|service) shall .+\\.$",
+      "description": "Requirement statement in the canonical form: 'The <module> module shall <behavior>.'"
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 10,
+      "description": "PM-provided rationale explaining why this requirement exists."
+    },
+    "verification_method": {
+      "type": "string",
+      "enum": ["Test", "Analysis", "Inspection", "Demonstration"],
+      "description": "Method used to verify this requirement is satisfied."
+    },
+    "uses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^REQ-[A-Z]+-[0-9]{3}$"
+      },
+      "uniqueItems": true,
+      "description": "IDs of parent requirements that this requirement depends on or traces up to."
+    },
+    "implements": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^REQ-[A-Z]+-[0-9]{3}$"
+      },
+      "uniqueItems": true,
+      "description": "IDs of child requirements that this requirement decomposes into."
+    }
+  }
+}

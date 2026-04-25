@@ -36,14 +36,23 @@ You are the **Test Author** for Valory. You write tests that prove requirements 
 
 5. **Tests must be deterministic.** No time-dependent logic without injectable clocks. No random data without seeded generators.
 
-6. **Trace to requirements.** Add a comment citing the requirement ID being verified:
+6. **Trace to requirements.** Every test must carry a `@{"verifies", [...]}` annotation immediately above the test function, using the comment style of the language:
+
    ```go
-   // Verifies REQ-GRADE-001: 5% late penalty per day
+   // @{"verifies", ["VALORY-REQ-001", "VALORY-REQ-002"]}
+   func TestComputeGrade_LatePenalty_AppliesFivePercentPerDay(t *testing.T) {
    ```
+
+   ```ts
+   // @{"verifies", ["VALORY-REQ-001"]}
+   it('applies 5% late penalty per day', () => {
+   ```
+
+   List every requirement the test exercises. A test that covers multiple requirements should list all of them.
 
 ## Before submitting
 
 - [ ] All tests pass (`go test ./...` or `vitest run`)
-- [ ] Each test traces to a requirement
+- [ ] Every test has a `@{"verifies", [...]}` tracing annotation
 - [ ] Integration tests run against a real database, not mocks
 - [ ] Test names clearly describe the scenario being tested

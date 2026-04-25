@@ -62,10 +62,27 @@ Each file must validate against `schemas/requirements.schema.json`. Example:
 }
 ```
 
+## What makes a good requirement
+
+A requirement describes **what** the system must do — never **how** it does it. No implementation details, technology choices, or algorithm names belong in a description.
+
+**Atomic.** One behavior per requirement. If a description contains "and" or "or" joining two distinct behaviors, split it into two requirements.
+
+**Concise.** The `description` field must be 20 words or fewer, grammatically correct English ending with a period.
+
+**Verifiable.** The behavior must be observable and falsifiable. Avoid vague predicates: "handle", "support", "manage", "appropriate". Use precise quantities instead of relative terms.
+
+**Implementation-free.** Do not name databases, frameworks, or internal functions in the description. Those belong in design documents.
+
+Bad: `The grading module shall calculate the final grade by summing weighted scores and applying a 5% per-day late penalty using the formula grade = raw * (0.95 ^ days_late).`
+
+Good: `The grading module shall reduce a late submission's grade by five percent for each day past the due date.`
+
 ## Rules
 
 - `description` must follow the pattern: `The <module> module shall <behavior>.`
+- `description` must be 20 words or fewer, atomic, verifiable, and free of implementation details
 - `verification_method` must be one of: `Test`, `Analysis`, `Inspection`, `Demonstration`
 - IDs in `uses` and `implements` must follow `REQ-[A-Z]+-[0-9]{3}` format
 - Never assign the same ID twice — check existing requirement files before creating a new one
-- Rationale must explain the *why*, not restate the description
+- `rationale` must explain the *why*, not restate the description and not describe the implementation

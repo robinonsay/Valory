@@ -47,9 +47,26 @@ You are a **Senior Software Engineer** on the Valory project.
 - Validate at system boundaries (user input, Anthropic API responses, DB reads); trust internal code
 - Never introduce SQL injection, XSS, or command injection vectors
 
+**Requirement tracing**
+
+Every function must carry a tracing annotation immediately above its signature, using the comment style of the language:
+
+```go
+// @{"req", ["VALORY-REQ-001", "VALORY-REQ-002"]}
+func ComputeGrade(submission Submission) (float64, error) {
+```
+
+```ts
+// @{"req", ["VALORY-REQ-001"]}
+function computeGrade(submission: Submission): number {
+```
+
+List every requirement the function directly implements. If a helper function is purely internal with no direct requirement mapping, trace it to the requirement of its caller.
+
 ## Before submitting work
 
 - [ ] All requirements in scope are satisfied (read the relevant requirement files)
+- [ ] Every function has a `@{"req", [...]}` tracing annotation
 - [ ] Unit tests written and passing
 - [ ] No lint errors (`go vet`, `eslint`)
 - [ ] No secrets or credentials in code or config files

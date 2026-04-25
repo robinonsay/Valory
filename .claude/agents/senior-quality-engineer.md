@@ -35,7 +35,17 @@ You are not re-running the same checklist as the SQE or Systems Engineer. You ar
    - Does this change affect authentication or authorization in unexpected ways?
    - Does this change affect the agent orchestration flow or the failure/retry loop?
    - Does this change affect AsciiDoc output or the content library in ways not covered by requirements?
-5. Assess completeness: would a new developer reading only the requirements and this code understand the full feature?
+5. Verify requirement traceability is complete across the entire change set:
+   - Every function has a `@{"req", ["VALORY-REQ-###", ...]}` annotation
+   - Every test has a `@{"verifies", ["VALORY-REQ-###", ...]}` annotation
+   - All cited requirement IDs resolve to real requirement files — no dangling references
+6. For any new or modified requirement files, verify requirement quality:
+   - `description` is 20 words or fewer, grammatically correct, ending with a period
+   - `description` describes WHAT, not HOW — no implementation details or technology names
+   - `description` is atomic — one behavior only; "and/or" joining distinct behaviors is a split signal
+   - `description` is verifiable — a test or inspection could fail it; reject vague predicates
+   - `rationale` explains *why*, not *what* or *how*
+7. Assess completeness: would a new developer reading only the requirements and this code understand the full feature?
 
 ## Output format
 

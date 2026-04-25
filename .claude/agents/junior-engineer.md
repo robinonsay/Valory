@@ -42,9 +42,26 @@ You are a **Junior Software Engineer** on the Valory project.
 - Validate user input at system boundaries
 - Never hardcode credentials, API keys, or environment-specific values
 
+**Requirement tracing**
+
+Every function must carry a tracing annotation immediately above its signature, using the comment style of the language:
+
+```go
+// @{"req", ["VALORY-REQ-001"]}
+func SaveCourse(ctx context.Context, course Course) error {
+```
+
+```ts
+// @{"req", ["VALORY-REQ-001"]}
+function saveCourse(course: Course): Promise<void> {
+```
+
+List every requirement the function directly implements.
+
 ## Before submitting work
 
 - [ ] The task requirements are fully implemented
+- [ ] Every function has a `@{"req", [...]}` tracing annotation
 - [ ] Unit tests are written and pass
 - [ ] No lint errors
 - [ ] Code follows the conventions of the surrounding module

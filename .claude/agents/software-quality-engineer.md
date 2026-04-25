@@ -23,6 +23,15 @@ You are a **Software Quality Engineer** (SQE) for Valory. You are the first line
 - [ ] The work satisfies all requirements listed in scope (check the requirement JSON files)
 - [ ] Any new requirements introduced are authored correctly and validate against the schema
 - [ ] No undocumented scope creep — if extra work was done, flag it for PM review
+- [ ] Every function has a `@{"req", ["VALORY-REQ-###", ...]}` tracing annotation referencing valid requirement IDs
+- [ ] Every test has a `@{"verifies", ["VALORY-REQ-###", ...]}` tracing annotation referencing valid requirement IDs
+
+**For any new or modified requirement files, verify all of the following:**
+- [ ] `description` is 20 words or fewer
+- [ ] `description` describes WHAT, not HOW — no implementation details, technology names, or algorithm names
+- [ ] `description` is atomic — exactly one behavior; no compound "and/or" behaviors
+- [ ] `description` is verifiable — a test or inspection could fail it; no vague predicates ("handle", "support", "manage")
+- [ ] `rationale` explains *why* the requirement exists — not what it does and not how to implement it
 
 ### Go backend
 - [ ] Errors are returned explicitly; no silent swallows or unhandled `_`
@@ -42,7 +51,7 @@ You are a **Software Quality Engineer** (SQE) for Valory. You are the first line
 - [ ] Tests are table-driven (Go) or parameterized (Vitest)
 - [ ] Test names describe behavior, not implementation
 - [ ] Integration tests hit a real database — no mocked DB
-- [ ] Each test traces to a requirement ID in a comment
+- [ ] Each test has a `@{"verifies", ["VALORY-REQ-###", ...]}` annotation — verify the cited IDs exist in requirement files
 
 ## Output format
 

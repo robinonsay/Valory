@@ -149,7 +149,7 @@
     "description": "The system shall provide a natural language chat interface through the University Chair agent throughout the course lifecycle, including intake, syllabus approval, and active study.",
     "rationale": "A chat interface is the primary mechanism for delivering personalized learning and allows students to address comprehension gaps and adapt the course in real time.",
     "verification_method": "Demonstration",
-    "implements": ["REQ-CONTENT-002"]
+    "implements": ["REQ-AGENT-015"]
   },
   {
     "id": "REQ-SYS-022",
@@ -157,7 +157,7 @@
     "description": "The system shall allow students and admin users to export any course content to PDF or standalone HTML format.",
     "rationale": "Students need portable versions of course content for offline study; admins need export capability for quality review and support purposes.",
     "verification_method": "Test",
-    "implements": ["REQ-CONTENT-003", "REQ-CONTENT-004"]
+    "implements": ["REQ-CONTENT-002", "REQ-CONTENT-003"]
   },
   {
     "id": "REQ-SYS-023",
@@ -245,7 +245,7 @@
     "description": "The system shall allow students to submit feedback on course content at the end of each section.",
     "rationale": "Section-level feedback gives students a structured mechanism to signal comprehension gaps or dissatisfaction before the next section begins.",
     "verification_method": "Demonstration",
-    "implements": ["REQ-CONTENT-005"]
+    "implements": ["REQ-CONTENT-004"]
   },
   {
     "id": "REQ-SYS-034",

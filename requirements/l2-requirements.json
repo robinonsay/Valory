@@ -210,8 +210,8 @@
   {
     "id": "REQ-AGENT-004",
     "title": "Content Library Reuse Consent Check",
-    "description": "The agent module shall obtain explicit student consent before reusing content from the system content library.",
-    "rationale": "Student consent ensures reused material is acceptable for their learning context before generation proceeds.",
+    "description": "The agent module shall obtain explicit student consent before reusing or deriving content from the system content library.",
+    "rationale": "Student consent ensures that both reused and derived material is acceptable for their learning context before content generation proceeds.",
     "verification_method": "Demonstration",
     "uses": ["REQ-SYS-012"]
   },
@@ -304,15 +304,15 @@
     "uses": ["REQ-SYS-013"]
   },
   {
-    "id": "REQ-CONTENT-002",
+    "id": "REQ-AGENT-015",
     "title": "Natural Language Chat Interface",
-    "description": "The content module shall provide a chat interface for student interaction throughout the course lifecycle.",
+    "description": "The agent module shall provide a natural language chat interface for student interaction throughout the course lifecycle.",
     "rationale": "A chat interface is the primary mechanism for personalized learning and addressing comprehension gaps in real time.",
     "verification_method": "Demonstration",
     "uses": ["REQ-SYS-021"]
   },
   {
-    "id": "REQ-CONTENT-003",
+    "id": "REQ-CONTENT-002",
     "title": "Course Content PDF Export",
     "description": "The content module shall export any course content document to a PDF file upon request.",
     "rationale": "PDF export gives students and admins a portable, offline-usable version of course content.",
@@ -320,7 +320,7 @@
     "uses": ["REQ-SYS-022"]
   },
   {
-    "id": "REQ-CONTENT-004",
+    "id": "REQ-CONTENT-003",
     "title": "Course Content HTML Export",
     "description": "The content module shall export any course content document to a standalone HTML file upon request.",
     "rationale": "HTML export provides a self-contained, browser-viewable format for offline study and quality review.",
@@ -328,7 +328,7 @@
     "uses": ["REQ-SYS-022"]
   },
   {
-    "id": "REQ-CONTENT-005",
+    "id": "REQ-CONTENT-004",
     "title": "Section Feedback Submission",
     "description": "The content module shall allow a student to submit feedback on a course section upon completing it.",
     "rationale": "Section feedback gives students a structured mechanism to signal comprehension gaps before the next section begins.",

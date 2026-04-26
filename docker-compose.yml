@@ -20,6 +20,9 @@ services:
     env_file: .env
     ports:
       - "8443:8443"
+      # Port 80 is NOT mapped to the host here because the frontend service already
+      # binds host:80. The frontend (Nginx) proxies ACME HTTP-01 challenges to
+      # http://api:80 via Docker's internal network — no host binding is required.
     depends_on:
       db:
         condition: service_healthy

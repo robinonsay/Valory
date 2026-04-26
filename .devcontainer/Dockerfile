@@ -9,3 +9,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
         ruby-dev \
     && gem install asciidoctor asciidoctor-pdf --no-document \
     && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash valory
+
+USER valory
+WORKDIR /home/valory

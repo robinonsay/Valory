@@ -4,8 +4,8 @@ services:
       context: ..
       dockerfile: .devcontainer/Dockerfile
     volumes:
-      - ..:/workspace:cached
-      - go-mod-cache:/go/pkg/mod
+      - ..:/home/valory/workspace:cached
+      - go-mod-cache:/home/valory/go/pkg/mod
     command: sleep infinity
     environment:
       DATABASE_URL: postgres://valory_app:devpassword@db:5432/valory?sslmode=disable

@@ -2,17 +2,18 @@
   "name": "Valory Dev",
   "dockerComposeFile": "docker-compose.yml",
   "service": "devcontainer",
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/home/valory/workspace",
+  "remoteUser": "valory",
   "forwardPorts": [8443, 5432, 5173],
   "portsAttributes": {
     "8443": { "label": "API (TLS)", "onAutoForward": "notify" },
     "5432": { "label": "PostgreSQL", "onAutoForward": "silent" },
     "5173": { "label": "Vite Dev Server", "onAutoForward": "openBrowser" }
   },
-  "postCreateCommand": "[ -f /workspace/backend/go.mod ] && cd /workspace/backend && go mod download; [ -f /workspace/frontend/package.json ] && cd /workspace/frontend && npm ci; true",
+  "postCreateCommand": "[ -f /home/valory/workspace/backend/go.mod ] && cd /home/valory/workspace/backend && go mod download; [ -f /home/valory/workspace/frontend/package.json ] && cd /home/valory/workspace/frontend && npm ci; true",
   "remoteEnv": {
-    "GOPATH": "/go",
-    "PATH": "${containerEnv:PATH}:/go/bin"
+    "GOPATH": "/home/valory/go",
+    "PATH": "${containerEnv:PATH}:/home/valory/go/bin"
   },
   "customizations": {
     "vscode": {

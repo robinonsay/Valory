@@ -61,7 +61,7 @@ All requirement files must validate against `schemas/requirements.schema.json`. 
 
 ## Key conventions
 
-- No comments unless the *why* is non-obvious to a future reader
+- Always add comments so the *why* is obvious to a future reader
 - No speculative abstractions — implement exactly what requirements specify
 - No database mocks in integration tests — use a real PostgreSQL instance via Docker Compose
 - AsciiDoc course content: max 500 lines per document, use `include::` for composition

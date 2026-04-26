@@ -10,11 +10,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/valory/valory/internal/admin"
+	"github.com/valory/valory/internal/audit"
 	"github.com/valory/valory/internal/auth"
 	"github.com/valory/valory/internal/db"
 	"github.com/valory/valory/internal/infra"
+	"github.com/valory/valory/internal/security"
+	"github.com/valory/valory/internal/user"
 	"github.com/valory/valory/migrations"
 )
 
@@ -32,6 +37,15 @@ func main() {
 	sessionMaxDuration := parseDuration("AUTH_SESSION_MAX_DURATION", 24*time.Hour)
 	inactivityPeriod := parseDuration("AUTH_INACTIVITY_PERIOD", 30*time.Minute)
 
+	smtpHost := envOrDefault("SMTP_HOST", "")
+	smtpPort, err := strconv.Atoi(envOrDefault("SMTP_PORT", "587"))
+	if err != nil {
+		log.Fatalf("server: SMTP_PORT is not a valid integer: %v", err)
+	}
+	smtpFrom := envOrDefault("SMTP_FROM", "")
+	smtpPassword := envOrDefault("SMTP_PASSWORD", "")
+	passwordResetTTL := parseDuration("PASSWORD_RESET_TTL", 1*time.Hour)
+
 	// --- Database ---
 	pool, err := db.NewPool(ctx, databaseURL)
 	if err != nil {
@@ -43,11 +57,33 @@ func main() {
 		log.Fatalf("server: run migrations: %v", err)
 	}
 
+	// @{"req": ["REQ-SECURITY-005"]}
+	// --- Config service (provides consent version) ---
+	configSvc := admin.NewConfigService(pool)
+	if err := configSvc.Load(ctx); err != nil {
+		log.Fatalf("server: load config service: %v", err)
+	}
+
 	// --- Auth wiring ---
-	repo := auth.NewRepository(pool)
-	svc := auth.NewService(repo, lockoutDuration, sessionMaxDuration)
-	authHandler := auth.NewHandler(svc)
-	authMW := auth.NewAuthMiddleware(repo, pool, inactivityPeriod)
+	authRepo := auth.NewRepository(pool)
+	authSvc := auth.NewService(authRepo, lockoutDuration, sessionMaxDuration)
+	authHandler := auth.NewHandler(authSvc)
+	// authMW enforces session validity AND the consent gate (REQ-SECURITY-005).
+	authMW := auth.NewAuthMiddleware(authRepo, pool, inactivityPeriod, configSvc)
+	// authOnlyMW enforces session validity only — no consent gate. Used for the
+	// /consent endpoint itself so students can accept consent without being blocked
+	// by the gate they are trying to satisfy.
+	authOnlyMW := auth.NewAuthMiddleware(authRepo, pool, inactivityPeriod, nil)
+
+	// --- User module wiring ---
+	userRepo := user.NewRepository(pool)
+	auditRepo := audit.NewRepository(pool)
+	emailTransport := user.NewEmailTransport(smtpHost, smtpPort, smtpFrom, smtpPassword, log.Writer())
+	userSvc := user.NewService(pool, userRepo, auditRepo, emailTransport, passwordResetTTL, noopTerminator{})
+	userHandler := user.NewHandler(userSvc)
+
+	// --- Audit module wiring ---
+	auditHandler := audit.NewHandler(auditRepo)
 
 	// --- Router ---
 	r := chi.NewRouter()
@@ -62,10 +98,48 @@ func main() {
 			authHandler.Routes(r)
 		})
 
-		// All other /api/v1/* routes require a valid session.
+		// @{"req": ["REQ-USER-005", "REQ-USER-006"]}
+		// --- Public password-reset routes (no authentication required) ---
+		r.Route("/password-reset", func(r chi.Router) {
+			userHandler.PublicRoutes(r)
+		})
+
+		// @{"req": ["REQ-SECURITY-005"]}
+		// The consent endpoint uses authOnlyMW (no consent gate) so that a student
+		// who has not yet accepted consent can POST to /consent without being blocked
+		// by the gate they are trying to satisfy.
+		r.Group(func(r chi.Router) {
+			r.Use(authOnlyMW)
+			r.Use(security.CSRFMiddleware)
+			r.Route("/consent", func(r chi.Router) {
+				userHandler.StudentRoutes(r)
+			})
+		})
+
+		// @{"req": ["REQ-SECURITY-004"]}
+		// All other /api/v1/* routes require a valid session, CSRF protection, and
+		// accepted consent (enforced by authMW's consent gate).
 		r.Group(func(r chi.Router) {
 			r.Use(authMW)
-			// Additional module routes are registered here as modules are added.
+			r.Use(security.CSRFMiddleware)
+
+			// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-007"]}
+			// --- User admin routes (require admin role) ---
+			r.Route("/users", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireRole("admin"))
+					userHandler.AdminRoutes(r)
+				})
+			})
+
+			// @{"req": ["REQ-AUDIT-001", "REQ-AUDIT-002"]}
+			// --- Audit routes (require admin role) ---
+			r.Route("/audit", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireRole("admin"))
+					auditHandler.Routes(r)
+				})
+			})
 		})
 	})
 
@@ -95,6 +169,14 @@ func main() {
 
 	log.Printf("server: listening on :8443 (HTTPS)")
 	log.Fatal(httpsServer.ListenAndServeTLS("", ""))
+}
+
+// @{"req": ["REQ-USER-007"]}
+// noopTerminator is a no-op implementation of user.AgentTerminator for Sprint 2.
+type noopTerminator struct{}
+
+func (noopTerminator) TerminateStudentOperations(_ context.Context, _ uuid.UUID) error {
+	return nil
 }
 
 func mustEnv(key string) string {

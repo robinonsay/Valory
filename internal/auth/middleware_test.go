@@ -54,7 +54,7 @@ func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
 	}
 
 	repo := NewRepository(pool)
-	mw := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	srv := httptest.NewServer(mw(newInnerHandler()))
 	defer srv.Close()
 
@@ -86,7 +86,7 @@ func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
 // @{"verifies": ["REQ-AUTH-005"]}
 func TestAuthMiddleware_NoHeader_Returns401(t *testing.T) {
 	repo := NewRepository(pool)
-	mw := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	srv := httptest.NewServer(mw(newInnerHandler()))
 	defer srv.Close()
 
@@ -123,7 +123,7 @@ func TestAuthMiddleware_TamperedToken_Returns401(t *testing.T) {
 	}
 
 	repo := NewRepository(pool)
-	mw := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	srv := httptest.NewServer(mw(newInnerHandler()))
 	defer srv.Close()
 
@@ -167,7 +167,7 @@ func TestAuthMiddleware_ExpiredSession_Returns401(t *testing.T) {
 	}
 
 	repo := NewRepository(pool)
-	mw := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	srv := httptest.NewServer(mw(newInnerHandler()))
 	defer srv.Close()
 
@@ -212,7 +212,7 @@ func TestAuthMiddleware_InactiveSession_Returns401(t *testing.T) {
 	}
 
 	repo := NewRepository(pool)
-	mw := NewAuthMiddleware(repo, pool, inactivityPeriod)
+	mw := NewAuthMiddleware(repo, pool, inactivityPeriod, nil)
 	srv := httptest.NewServer(mw(newInnerHandler()))
 	defer srv.Close()
 
@@ -245,7 +245,7 @@ func TestRequireRole_WrongRole_Returns403(t *testing.T) {
 	}
 
 	repo := NewRepository(pool)
-	authMW := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	authMW := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	roleMW := RequireRole("admin")
 	handler := authMW(roleMW(newInnerHandler()))
 	srv := httptest.NewServer(handler)
@@ -280,7 +280,7 @@ func TestRequireRole_CorrectRole_PassesThrough(t *testing.T) {
 	}
 
 	repo := NewRepository(pool)
-	authMW := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	authMW := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	roleMW := RequireRole("admin")
 	handler := authMW(roleMW(newInnerHandler()))
 	srv := httptest.NewServer(handler)
@@ -326,7 +326,7 @@ func TestAuthMiddleware_TamperedRoleClaim_Returns401(t *testing.T) {
 	tampered := string(runes)
 
 	repo := NewRepository(pool)
-	mw := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	srv := httptest.NewServer(mw(newInnerHandler()))
 	defer srv.Close()
 
@@ -380,7 +380,7 @@ func TestAuthMiddleware_RLSParamsSetInContext(t *testing.T) {
 	})
 
 	repo := NewRepository(pool)
-	mw := NewAuthMiddleware(repo, pool, 30*time.Minute)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
 	srv := httptest.NewServer(mw(rlsHandler))
 	defer srv.Close()
 
@@ -430,5 +430,226 @@ func TestRequireRole_NoContext_Returns403(t *testing.T) {
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403 when no role in context, got %d", resp.StatusCode)
+	}
+}
+
+// mockConsentProvider is a test double for ConsentVersionProvider that returns
+// a fixed string for the given key.
+type mockConsentProvider struct {
+	values map[string]string
+}
+
+func (m *mockConsentProvider) GetString(key string) string {
+	return m.values[key]
+}
+
+// @{"verifies": ["REQ-SECURITY-005"]}
+func TestAuthMiddleware_StudentWithoutConsent_Returns403(t *testing.T) {
+	if pool == nil {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	createTestUserWithPassword(ctx, t, pool, "consent_missing", "pass", "student")
+
+	svc := newTestService(30*time.Minute, 24*time.Hour)
+	rawToken, _, err := svc.Login(ctx, "consent_missing", "pass")
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	provider := &mockConsentProvider{values: map[string]string{"consent_version": "1.0"}}
+	repo := NewRepository(pool)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, provider)
+	srv := httptest.NewServer(mw(newInnerHandler()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req.Header.Set("Authorization", "Bearer "+rawToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", resp.StatusCode)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body["error"] != "CONSENT_REQUIRED" {
+		t.Errorf("expected error %q, got %q", "CONSENT_REQUIRED", body["error"])
+	}
+	if body["current_version"] != "1.0" {
+		t.Errorf("expected current_version %q, got %q", "1.0", body["current_version"])
+	}
+}
+
+// @{"verifies": ["REQ-SECURITY-005"]}
+func TestAuthMiddleware_StudentWithMatchingConsent_Passes(t *testing.T) {
+	if pool == nil {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	userID := createTestUserWithPassword(ctx, t, pool, "consent_match", "pass", "student")
+
+	// Insert a matching consent row for the student.
+	_, err := pool.Exec(ctx,
+		`INSERT INTO student_consent (student_id, consented_at, consent_version)
+		 VALUES ($1, NOW(), $2)`,
+		userID, "1.0",
+	)
+	if err != nil {
+		t.Fatalf("failed to insert student_consent: %v", err)
+	}
+
+	svc := newTestService(30*time.Minute, 24*time.Hour)
+	rawToken, _, err := svc.Login(ctx, "consent_match", "pass")
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	provider := &mockConsentProvider{values: map[string]string{"consent_version": "1.0"}}
+	repo := NewRepository(pool)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, provider)
+	srv := httptest.NewServer(mw(newInnerHandler()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req.Header.Set("Authorization", "Bearer "+rawToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+// @{"verifies": ["REQ-SECURITY-005"]}
+func TestAuthMiddleware_StudentWithStaleConsent_Returns403(t *testing.T) {
+	if pool == nil {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	userID := createTestUserWithPassword(ctx, t, pool, "consent_stale", "pass", "student")
+
+	// Insert a stale consent row: version "0.9" < current "1.0".
+	_, err := pool.Exec(ctx,
+		`INSERT INTO student_consent (student_id, consented_at, consent_version)
+		 VALUES ($1, NOW(), $2)`,
+		userID, "0.9",
+	)
+	if err != nil {
+		t.Fatalf("failed to insert student_consent: %v", err)
+	}
+
+	svc := newTestService(30*time.Minute, 24*time.Hour)
+	rawToken, _, err := svc.Login(ctx, "consent_stale", "pass")
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	provider := &mockConsentProvider{values: map[string]string{"consent_version": "1.0"}}
+	repo := NewRepository(pool)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, provider)
+	srv := httptest.NewServer(mw(newInnerHandler()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req.Header.Set("Authorization", "Bearer "+rawToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", resp.StatusCode)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body["error"] != "CONSENT_REQUIRED" {
+		t.Errorf("expected error %q, got %q", "CONSENT_REQUIRED", body["error"])
+	}
+}
+
+// @{"verifies": ["REQ-SECURITY-005"]}
+func TestAuthMiddleware_AdminSkipsConsentGate(t *testing.T) {
+	if pool == nil {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	// Admin has no consent row — the gate must not apply.
+	createTestUserWithPassword(ctx, t, pool, "consent_admin", "pass", "admin")
+
+	svc := newTestService(30*time.Minute, 24*time.Hour)
+	rawToken, _, err := svc.Login(ctx, "consent_admin", "pass")
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	provider := &mockConsentProvider{values: map[string]string{"consent_version": "1.0"}}
+	repo := NewRepository(pool)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, provider)
+	srv := httptest.NewServer(mw(newInnerHandler()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req.Header.Set("Authorization", "Bearer "+rawToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for admin bypassing consent gate, got %d", resp.StatusCode)
+	}
+}
+
+// @{"verifies": ["REQ-SECURITY-005"]}
+func TestAuthMiddleware_NilConsentProvider_SkipsGate(t *testing.T) {
+	if pool == nil {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	// Student has no consent row, but nil provider means no gate is applied.
+	createTestUserWithPassword(ctx, t, pool, "consent_nil_provider", "pass", "student")
+
+	svc := newTestService(30*time.Minute, 24*time.Hour)
+	rawToken, _, err := svc.Login(ctx, "consent_nil_provider", "pass")
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	repo := NewRepository(pool)
+	// Pass nil explicitly — the consent gate must be skipped entirely.
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
+	srv := httptest.NewServer(mw(newInnerHandler()))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	req.Header.Set("Authorization", "Bearer "+rawToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 when consentProvider is nil, got %d", resp.StatusCode)
 	}
 }

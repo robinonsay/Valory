@@ -12,10 +12,10 @@ import (
 var pool *pgxpool.Pool
 
 func TestMain(m *testing.M) {
-	dbURL := os.Getenv("DATABASE_URL")
+	dbURL := os.Getenv("TEST_DATABASE_URL")
 	if dbURL == "" {
-		// No DB available; individual tests skip via pool == nil guard.
-		os.Exit(0)
+		// No DB available; run tests anyway — DB-dependent ones self-skip via pool == nil guard.
+		os.Exit(m.Run())
 	}
 
 	var err error
@@ -109,6 +109,12 @@ func applyMigration(ctx context.Context, p *pgxpool.Pool) error {
 
 	CREATE INDEX IF NOT EXISTS idx_login_attempts_user_id ON login_attempts (user_id, attempted_at DESC);
 
+	CREATE TABLE IF NOT EXISTS student_consent (
+	    student_id       UUID        PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+	    consented_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	    consent_version  VARCHAR(16) NOT NULL
+	);
+
 	COMMIT;
 	`
 	_, err := p.Exec(ctx, migration)
@@ -121,6 +127,7 @@ func truncateTables(ctx context.Context, p *pgxpool.Pool) error {
 	// present on some pgx builds. Separate calls guarantee all three tables are cleared.
 	statements := []string{
 		`TRUNCATE TABLE login_attempts CASCADE`,
+		`TRUNCATE TABLE student_consent CASCADE`,
 		`TRUNCATE TABLE sessions CASCADE`,
 		`TRUNCATE TABLE users CASCADE`,
 	}

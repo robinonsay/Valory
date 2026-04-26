@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/valory/valory/internal/security"
 )
 
 // @{"req": ["REQ-AUTH-001", "REQ-AUTH-002", "REQ-AUTH-003", "REQ-AUTH-006"]}
@@ -66,6 +67,16 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+
+	// @{"req": ["REQ-SECURITY-004"]}
+	// Issue a CSRF token as a Secure, SameSite=Strict cookie so the browser
+	// attaches it automatically and the frontend can echo it in X-CSRF-Token.
+	csrfToken, err := security.GenerateCSRFToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	security.SetCSRFCookie(w, csrfToken)
 
 	resp := map[string]interface{}{
 		"token":      rawToken,

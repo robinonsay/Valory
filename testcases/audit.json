@@ -1,0 +1,145 @@
+[
+  {
+    "id": "TC-AUDIT-001",
+    "title": "Admin create-user action produces a tamper-evident log entry",
+    "requirement_ids": ["REQ-AUDIT-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists and is authenticated.",
+      "The audit module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Perform an admin create-user action via the API.",
+      "Query the audit log table for the most recent entry.",
+      "Verify the entry records the actor ID, action type create-user, target resource, and timestamp.",
+      "Verify the entry includes a cryptographic digest or hash field computed over the log record content."
+    ],
+    "expected_result": "A log entry exists with correct metadata fields and a non-empty cryptographic hash value that covers the record content."
+  },
+  {
+    "id": "TC-AUDIT-002",
+    "title": "Admin modify-user action produces a tamper-evident log entry",
+    "requirement_ids": ["REQ-AUDIT-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists and is authenticated.",
+      "A target student account exists.",
+      "The audit module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Perform an admin modify-user action that changes a profile field on the target account.",
+      "Query the audit log table for the entry matching this action.",
+      "Verify the entry records the actor ID, action type modify-user, target account ID, changed field, and timestamp.",
+      "Verify a cryptographic hash field is present and non-empty."
+    ],
+    "expected_result": "A log entry capturing all required metadata fields and a cryptographic hash is present for the modify-user action."
+  },
+  {
+    "id": "TC-AUDIT-003",
+    "title": "Admin deactivate-user action produces a tamper-evident log entry",
+    "requirement_ids": ["REQ-AUDIT-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists and is authenticated.",
+      "An active student account exists.",
+      "The audit module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Perform an admin deactivate-user action on the student account.",
+      "Query the audit log table for the matching entry.",
+      "Verify the entry records actor ID, action type deactivate-user, target account ID, and timestamp.",
+      "Verify the cryptographic hash field is present."
+    ],
+    "expected_result": "A tamper-evident log entry for the deactivate-user action is present with all required metadata and a cryptographic hash."
+  },
+  {
+    "id": "TC-AUDIT-004",
+    "title": "Admin policy-change action produces a tamper-evident log entry",
+    "requirement_ids": ["REQ-AUDIT-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists and is authenticated.",
+      "The audit module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Perform an admin policy-change action, such as updating the agent retry limit.",
+      "Query the audit log table for the matching entry.",
+      "Verify the entry records actor ID, action type policy-change, the policy key and new value, and timestamp.",
+      "Verify the cryptographic hash field is present and non-empty."
+    ],
+    "expected_result": "A tamper-evident log entry for the policy-change action exists with all required fields and a valid cryptographic hash."
+  },
+  {
+    "id": "TC-AUDIT-005",
+    "title": "Non-admin action does not produce an audit log entry",
+    "requirement_ids": ["REQ-AUDIT-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The audit module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Record the current count of rows in the audit log table.",
+      "Perform a student-scoped action such as submitting section feedback.",
+      "Query the audit log table and compare the row count to the recorded value."
+    ],
+    "expected_result": "The audit log row count is unchanged; no entry is created for the student action."
+  },
+  {
+    "id": "TC-AUDIT-006",
+    "title": "Unmodified audit log passes integrity verification",
+    "requirement_ids": ["REQ-AUDIT-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "At least three admin actions have been performed and their log entries exist in the database.",
+      "The audit module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Invoke the audit log integrity verification endpoint or function.",
+      "Observe the verification result."
+    ],
+    "expected_result": "The integrity verification reports that all log entries are unaltered and the verification result indicates success."
+  },
+  {
+    "id": "TC-AUDIT-007",
+    "title": "Altered audit log entry fails integrity verification",
+    "requirement_ids": ["REQ-AUDIT-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "At least one admin action log entry exists in the database.",
+      "The audit module and PostgreSQL database are running via Docker Compose.",
+      "Direct database write access is available to simulate tampering."
+    ],
+    "steps": [
+      "Directly update the action_type field of one audit log row in the database without recomputing its hash.",
+      "Invoke the audit log integrity verification endpoint or function.",
+      "Observe the verification result."
+    ],
+    "expected_result": "The integrity verification detects the mismatch between the stored hash and the current row content and reports the entry as tampered."
+  },
+  {
+    "id": "TC-AUDIT-008",
+    "title": "Deleted audit log entry is detected by integrity verification",
+    "requirement_ids": ["REQ-AUDIT-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A sequence of admin action log entries exists in the database with a chained or sequential integrity structure.",
+      "The audit module and PostgreSQL database are running via Docker Compose.",
+      "Direct database write access is available to simulate tampering."
+    ],
+    "steps": [
+      "Directly delete one audit log row from the middle of the sequence.",
+      "Invoke the audit log integrity verification endpoint or function.",
+      "Observe the verification result."
+    ],
+    "expected_result": "The integrity verification detects the gap caused by the deleted entry and reports the log as invalid."
+  }
+]

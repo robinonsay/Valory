@@ -1,0 +1,382 @@
+[
+  {
+    "id": "TC-USER-001",
+    "title": "Admin successfully creates a new student account",
+    "requirement_ids": ["REQ-USER-001", "REQ-USER-004"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated",
+      "No existing account with username 'alice'"
+    ],
+    "steps": [
+      "POST /api/admin/users with body {\"username\":\"alice\",\"role\":\"student\",\"email\":\"alice@example.com\"}"
+    ],
+    "expected_result": "HTTP 201 response; new student account record exists in the database with role 'student' and active status."
+  },
+  {
+    "id": "TC-USER-002",
+    "title": "Admin successfully creates a new admin account",
+    "requirement_ids": ["REQ-USER-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated",
+      "No existing account with username 'carol'"
+    ],
+    "steps": [
+      "POST /api/admin/users with body {\"username\":\"carol\",\"role\":\"admin\",\"email\":\"carol@example.com\"}"
+    ],
+    "expected_result": "HTTP 201 response; new account record exists in the database with role 'admin' and active status."
+  },
+  {
+    "id": "TC-USER-003",
+    "title": "Non-admin user is rejected when attempting to create an account",
+    "requirement_ids": ["REQ-USER-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Student user is authenticated"
+    ],
+    "steps": [
+      "POST /api/admin/users with body {\"username\":\"dave\",\"role\":\"student\",\"email\":\"dave@example.com\"}"
+    ],
+    "expected_result": "HTTP 403 response; no new account record is created in the database."
+  },
+  {
+    "id": "TC-USER-004",
+    "title": "Admin is rejected when creating an account with a duplicate username",
+    "requirement_ids": ["REQ-USER-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Account with username 'alice' already exists"
+    ],
+    "steps": [
+      "POST /api/admin/users with body {\"username\":\"alice\",\"role\":\"student\",\"email\":\"alice2@example.com\"}"
+    ],
+    "expected_result": "HTTP 409 response; only one account record with username 'alice' exists in the database."
+  },
+  {
+    "id": "TC-USER-005",
+    "title": "Admin is rejected when creating an account with a missing required field",
+    "requirement_ids": ["REQ-USER-001"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated"
+    ],
+    "steps": [
+      "POST /api/admin/users with body {\"role\":\"student\",\"email\":\"noname@example.com\"} (username omitted)"
+    ],
+    "expected_result": "HTTP 400 response with a validation error indicating 'username' is required; no account is created."
+  },
+  {
+    "id": "TC-USER-006",
+    "title": "Admin successfully modifies a student account email",
+    "requirement_ids": ["REQ-USER-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Student account with id 'stu-1' exists with email 'old@example.com'"
+    ],
+    "steps": [
+      "PATCH /api/admin/users/stu-1 with body {\"email\":\"new@example.com\"}"
+    ],
+    "expected_result": "HTTP 200 response; the account record in the database has email 'new@example.com'."
+  },
+  {
+    "id": "TC-USER-007",
+    "title": "Admin successfully modifies a user account username",
+    "requirement_ids": ["REQ-USER-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Account with id 'stu-2' exists with username 'oldname'"
+    ],
+    "steps": [
+      "PATCH /api/admin/users/stu-2 with body {\"username\":\"newname\"}"
+    ],
+    "expected_result": "HTTP 200 response; the account record in the database has username 'newname'."
+  },
+  {
+    "id": "TC-USER-008",
+    "title": "Admin modification of non-existent account returns not-found",
+    "requirement_ids": ["REQ-USER-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin user is authenticated",
+      "No account with id 'ghost-999' exists"
+    ],
+    "steps": [
+      "PATCH /api/admin/users/ghost-999 with body {\"email\":\"x@example.com\"}"
+    ],
+    "expected_result": "HTTP 404 response; no database record is created or modified."
+  },
+  {
+    "id": "TC-USER-009",
+    "title": "Account modification with empty body is rejected",
+    "requirement_ids": ["REQ-USER-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Account with id 'stu-3' exists"
+    ],
+    "steps": [
+      "PATCH /api/admin/users/stu-3 with an empty JSON body {}"
+    ],
+    "expected_result": "HTTP 400 response indicating at least one modifiable field must be provided; the database record is unchanged."
+  },
+  {
+    "id": "TC-USER-010",
+    "title": "Admin successfully deactivates an active student account",
+    "requirement_ids": ["REQ-USER-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Active student account with id 'stu-4' exists"
+    ],
+    "steps": [
+      "POST /api/admin/users/stu-4/deactivate"
+    ],
+    "expected_result": "HTTP 200 response; the account record in the database has status 'deactivated'; all other record fields are preserved."
+  },
+  {
+    "id": "TC-USER-011",
+    "title": "Admin deactivation of an already-deactivated account is idempotent",
+    "requirement_ids": ["REQ-USER-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Account with id 'stu-5' has status 'deactivated'"
+    ],
+    "steps": [
+      "POST /api/admin/users/stu-5/deactivate"
+    ],
+    "expected_result": "HTTP 200 or 409 response; account record status remains 'deactivated'; no data is deleted."
+  },
+  {
+    "id": "TC-USER-012",
+    "title": "Non-admin cannot deactivate an account",
+    "requirement_ids": ["REQ-USER-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Student user is authenticated",
+      "Active account with id 'stu-6' exists"
+    ],
+    "steps": [
+      "POST /api/admin/users/stu-6/deactivate"
+    ],
+    "expected_result": "HTTP 403 response; the account status in the database remains 'active'."
+  },
+  {
+    "id": "TC-USER-013",
+    "title": "Deactivated account login attempt is rejected",
+    "requirement_ids": ["REQ-USER-004"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Account with username 'inactive-user' has status 'deactivated'"
+    ],
+    "steps": [
+      "POST /api/auth/login with body {\"username\":\"inactive-user\",\"password\":\"ValidPass1!\"}"
+    ],
+    "expected_result": "HTTP 401 or 403 response; no session token is issued; error message indicates the account is inactive."
+  },
+  {
+    "id": "TC-USER-014",
+    "title": "Deactivated admin account login is rejected regardless of role",
+    "requirement_ids": ["REQ-USER-004"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated",
+      "No existing account with username 'admin-b'"
+    ],
+    "steps": [
+      "POST /api/admin/users with body {\"username\":\"admin-b\",\"role\":\"admin\",\"email\":\"admin-b@example.com\"} to create admin account",
+      "POST /api/admin/users/{admin-b_id}/deactivate to deactivate the newly created admin account",
+      "POST /api/auth/login with body {\"username\":\"admin-b\",\"password\":\"ValidPass1!\"}"
+    ],
+    "expected_result": "HTTP 401 response; no session token is issued; the admin role does not bypass the deactivation check."
+  },
+  {
+    "id": "TC-USER-015",
+    "title": "Password reset token is delivered to registered contact",
+    "requirement_ids": ["REQ-USER-005"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Active account with username 'bob' has registered email 'bob@example.com'"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset/request with body {\"username\":\"bob\"}",
+      "Inspect the outbound notification queue or test mail sink for a message addressed to 'bob@example.com'"
+    ],
+    "expected_result": "HTTP 202 response; exactly one password-reset credential is delivered to 'bob@example.com' via the out-of-band channel."
+  },
+  {
+    "id": "TC-USER-016",
+    "title": "Password reset request for unknown username does not reveal existence",
+    "requirement_ids": ["REQ-USER-005"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "No account with username 'nobody' exists"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset/request with body {\"username\":\"nobody\"}"
+    ],
+    "expected_result": "HTTP 202 response with the same generic message as a successful request; no reset token is generated or delivered."
+  },
+  {
+    "id": "TC-USER-017",
+    "title": "Reset token is delivered only to the registered contact, not returned in the API response",
+    "requirement_ids": ["REQ-USER-005"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Active account with username 'carol' has registered email 'carol@example.com'"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset/request with body {\"username\":\"carol\"}",
+      "Inspect the HTTP response body"
+    ],
+    "expected_result": "The HTTP response body does not contain the reset token value; the token is present only in the out-of-band delivery."
+  },
+  {
+    "id": "TC-USER-018",
+    "title": "Password reset token can be used exactly once",
+    "requirement_ids": ["REQ-USER-006"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Active account with username 'dave' exists",
+      "A valid password-reset token 'tok-abc' has been issued for 'dave'"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset/confirm with body {\"token\":\"tok-abc\",\"new_password\":\"NewPass1!\"}",
+      "Confirm HTTP 200 response",
+      "POST /api/auth/password-reset/confirm with body {\"token\":\"tok-abc\",\"new_password\":\"AnotherPass1!\"}"
+    ],
+    "expected_result": "First confirm returns HTTP 200 and updates the password. Second confirm returns HTTP 400 or 410; token is no longer valid."
+  },
+  {
+    "id": "TC-USER-019",
+    "title": "Expired password reset token is rejected",
+    "requirement_ids": ["REQ-USER-006"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Active account with username 'eve' exists",
+      "A password-reset token 'tok-expired' for 'eve' has passed its expiry time"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset/confirm with body {\"token\":\"tok-expired\",\"new_password\":\"NewPass1!\"}"
+    ],
+    "expected_result": "HTTP 400 or 410 response; the account password is not changed; the token record is marked invalid."
+  },
+  {
+    "id": "TC-USER-020",
+    "title": "Already-used reset token cannot be reused after successful reset",
+    "requirement_ids": ["REQ-USER-006"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Password-reset token 'tok-used' is stored in the database with status 'consumed'"
+    ],
+    "steps": [
+      "Call the token-validation function with token value 'tok-used'"
+    ],
+    "expected_result": "The function returns an invalid-token error; password update is not invoked."
+  },
+  {
+    "id": "TC-USER-021",
+    "title": "Authorized deletion permanently removes all student personal data",
+    "requirement_ids": ["REQ-USER-007"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Student account with id 'stu-8' exists with associated profile, course, and submission records"
+    ],
+    "steps": [
+      "DELETE /api/admin/users/stu-8",
+      "Query the database for any records referencing 'stu-8' across all personal data tables"
+    ],
+    "expected_result": "HTTP 200 response; no personal data rows referencing 'stu-8' exist in the database after deletion."
+  },
+  {
+    "id": "TC-USER-022",
+    "title": "Deletion request for non-existent student returns not-found",
+    "requirement_ids": ["REQ-USER-007"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin user is authenticated",
+      "No account with id 'ghost-42' exists"
+    ],
+    "steps": [
+      "DELETE /api/admin/users/ghost-42"
+    ],
+    "expected_result": "HTTP 404 response; no database state is changed."
+  },
+  {
+    "id": "TC-USER-023",
+    "title": "Non-admin cannot delete a student account",
+    "requirement_ids": ["REQ-USER-007"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Student user is authenticated",
+      "Student account with id 'stu-9' exists"
+    ],
+    "steps": [
+      "DELETE /api/admin/users/stu-9"
+    ],
+    "expected_result": "HTTP 403 response; the account and all associated records remain in the database."
+  },
+  {
+    "id": "TC-USER-024",
+    "title": "Deletion of student with no associated records removes only the account row",
+    "requirement_ids": ["REQ-USER-007"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Student account with id 'stu-10' exists with no course, submission, or grade records"
+    ],
+    "steps": [
+      "DELETE /api/admin/users/stu-10",
+      "Query the database for any row referencing 'stu-10'"
+    ],
+    "expected_result": "HTTP 200 response; no rows referencing 'stu-10' remain in any table."
+  },
+  {
+    "id": "TC-USER-025",
+    "title": "Deleting Student A does not cascade-delete or corrupt Student B records",
+    "requirement_ids": ["REQ-USER-007"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Student A (id 'stu-11') has active courses, submissions, grades, and chat history",
+      "Student B (id 'stu-12') has active courses, submissions, grades, and chat history"
+    ],
+    "steps": [
+      "DELETE /api/admin/users/stu-11",
+      "GET /api/student/courses as Student B",
+      "GET /api/student/courses/{courseId}/submissions as Student B",
+      "GET /api/student/courses/{courseId}/grades as Student B"
+    ],
+    "expected_result": "HTTP 200 response for Student A deletion; Student B's courses, submissions, grades, and chat history are all accessible and unaltered after Student A's deletion."
+  }
+]

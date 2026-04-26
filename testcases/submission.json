@@ -1,0 +1,236 @@
+[
+  {
+    "id": "TC-SUBMISSION-001",
+    "title": "LaTeX file upload is accepted",
+    "requirement_ids": ["REQ-SUBMISSION-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Prepare a well-formed LaTeX file with a .tex extension.",
+      "Send a multipart POST request to the submission upload endpoint with the .tex file.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The submission module returns 201 Created and persists the submission record referencing the uploaded LaTeX file."
+  },
+  {
+    "id": "TC-SUBMISSION-002",
+    "title": "Markdown file upload is accepted",
+    "requirement_ids": ["REQ-SUBMISSION-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Prepare a well-formed Markdown file with a .md extension.",
+      "Send a multipart POST request to the submission upload endpoint with the .md file.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The submission module returns 201 Created and persists the submission record referencing the uploaded Markdown file."
+  },
+  {
+    "id": "TC-SUBMISSION-003",
+    "title": "AsciiDoc file upload is accepted",
+    "requirement_ids": ["REQ-SUBMISSION-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Prepare a well-formed AsciiDoc file with an .adoc extension.",
+      "Send a multipart POST request to the submission upload endpoint with the .adoc file.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The submission module returns 201 Created and persists the submission record referencing the uploaded AsciiDoc file."
+  },
+  {
+    "id": "TC-SUBMISSION-004",
+    "title": "DOCX file upload is rejected",
+    "requirement_ids": ["REQ-SUBMISSION-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Prepare a file with a .docx extension.",
+      "Send a multipart POST request to the submission upload endpoint with the .docx file.",
+      "Observe the HTTP response status code and error message."
+    ],
+    "expected_result": "The submission module returns 415 Unsupported Media Type, and no submission record is persisted in the database."
+  },
+  {
+    "id": "TC-SUBMISSION-005",
+    "title": "PDF file upload is rejected",
+    "requirement_ids": ["REQ-SUBMISSION-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Prepare a file with a .pdf extension.",
+      "Send a multipart POST request to the submission upload endpoint with the .pdf file.",
+      "Observe the HTTP response status code and error message."
+    ],
+    "expected_result": "The submission module returns 415 Unsupported Media Type, and no submission record is persisted in the database."
+  },
+  {
+    "id": "TC-SUBMISSION-006",
+    "title": "File upload at exactly the size limit is accepted",
+    "requirement_ids": ["REQ-SUBMISSION-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The configured maximum file size is known.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Generate a valid Markdown file whose byte size is exactly equal to the configured maximum.",
+      "Send a multipart POST request to the submission upload endpoint with this file.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The submission module returns 201 Created, accepting a file at the exact size boundary."
+  },
+  {
+    "id": "TC-SUBMISSION-007",
+    "title": "File upload one byte over the size limit is rejected",
+    "requirement_ids": ["REQ-SUBMISSION-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The configured maximum file size is known.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Generate a valid Markdown file whose byte size is one byte greater than the configured maximum.",
+      "Send a multipart POST request to the submission upload endpoint with this file.",
+      "Observe the HTTP response status code and error message."
+    ],
+    "expected_result": "The submission module returns 413 Request Entity Too Large, and no submission record is persisted."
+  },
+  {
+    "id": "TC-SUBMISSION-008",
+    "title": "File upload well under the size limit is accepted",
+    "requirement_ids": ["REQ-SUBMISSION-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Prepare a minimal valid AsciiDoc file of a few hundred bytes.",
+      "Send a multipart POST request to the submission upload endpoint with this file.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The submission module returns 201 Created, accepting the small file without error."
+  },
+  {
+    "id": "TC-SUBMISSION-009",
+    "title": "File with .tex extension containing non-LaTeX content is rejected",
+    "requirement_ids": ["REQ-SUBMISSION-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Create a file named submission.tex whose content is arbitrary binary data, not valid LaTeX.",
+      "Send a multipart POST request to the submission upload endpoint with this file.",
+      "Observe the HTTP response status code and error message."
+    ],
+    "expected_result": "The submission module returns 422 Unprocessable Entity indicating the file content does not conform to the LaTeX format, and no submission record is persisted."
+  },
+  {
+    "id": "TC-SUBMISSION-010",
+    "title": "File with .md extension containing well-formed Markdown is accepted",
+    "requirement_ids": ["REQ-SUBMISSION-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Create a file named submission.md whose content is well-formed Markdown with headings and paragraphs.",
+      "Send a multipart POST request to the submission upload endpoint with this file.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The submission module returns 201 Created, confirming that valid Markdown content passes format validation."
+  },
+  {
+    "id": "TC-SUBMISSION-011",
+    "title": "File with .adoc extension containing non-AsciiDoc binary content is rejected",
+    "requirement_ids": ["REQ-SUBMISSION-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Create a file named submission.adoc whose content is a PNG image binary renamed with the .adoc extension.",
+      "Send a multipart POST request to the submission upload endpoint with this file.",
+      "Observe the HTTP response status code and error message."
+    ],
+    "expected_result": "The submission module returns 422 Unprocessable Entity because the binary content does not conform to the AsciiDoc format, and no submission record is persisted."
+  },
+  {
+    "id": "TC-SUBMISSION-012",
+    "title": "Multipart upload with path traversal filename is rejected or sanitized",
+    "requirement_ids": ["REQ-SUBMISSION-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active course with an open homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "POST /api/student/courses/{courseId}/submissions with a multipart body whose file content is valid Markdown but whose filename field is set to '../../malicious.md'.",
+      "Verify the filesystem state of the configured upload directory to confirm no file was written outside that directory."
+    ],
+    "expected_result": "Either HTTP 400 is returned with the filename rejected outright, or HTTP 201 is returned with the filename sanitized so that all path components and special characters are stripped before storage. In no case is a file written outside the intended upload directory."
+  },
+  {
+    "id": "TC-SUBMISSION-013",
+    "title": "Submission content containing SQL injection payload is stored as literal text",
+    "requirement_ids": ["REQ-SUBMISSION-001"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active course with an open homework assignment.",
+      "The submission module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "POST /api/student/courses/{courseId}/submissions with a valid Markdown file whose body contains the SQL injection payload: # Homework\\n\\n'; DROP TABLE submissions; --",
+      "Query the submission count and table list in the PostgreSQL database after the request completes."
+    ],
+    "expected_result": "The API returns HTTP 201. The submission is persisted with the injection string stored verbatim as literal text. The submissions table and all other database tables remain intact with their original row counts, confirming parameterized queries prevented any SQL execution."
+  }
+]

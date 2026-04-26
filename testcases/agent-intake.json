@@ -1,0 +1,293 @@
+[
+  {
+    "id": "TC-AGENT-001",
+    "title": "Intake questionnaire is presented before syllabus generation begins",
+    "requirement_ids": ["REQ-AGENT-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has no active course"
+    ],
+    "steps": [
+      "Student submits a course creation request for topic 'Introduction to Rust'",
+      "Observe the agent module response before any syllabus is generated"
+    ],
+    "expected_result": "The agent returns a structured questionnaire collecting knowledge level, learning objectives, and availability. No syllabus content is returned in this response."
+  },
+  {
+    "id": "TC-AGENT-002",
+    "title": "Syllabus generation is blocked when questionnaire has not been completed",
+    "requirement_ids": ["REQ-AGENT-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has no active course",
+      "The intake questionnaire has not been submitted"
+    ],
+    "steps": [
+      "Student sends a direct request to generate a syllabus without first completing the questionnaire"
+    ],
+    "expected_result": "The agent rejects the syllabus generation request and returns an error indicating that the intake questionnaire must be completed first."
+  },
+  {
+    "id": "TC-AGENT-003",
+    "title": "Questionnaire with empty knowledge level field is rejected",
+    "requirement_ids": ["REQ-AGENT-001"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists and is authenticated"
+    ],
+    "steps": [
+      "Student submits the intake questionnaire with the knowledge_level field left blank",
+      "Observe the agent module validation response"
+    ],
+    "expected_result": "The agent returns a validation error identifying knowledge_level as a required field and does not proceed to syllabus generation."
+  },
+  {
+    "id": "TC-AGENT-004",
+    "title": "Grade distribution matches point weights defined in approved syllabus",
+    "requirement_ids": ["REQ-AGENT-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student has completed the intake questionnaire",
+      "The agent has generated a syllabus specifying 60% homework and 40% final project",
+      "The student has approved the syllabus"
+    ],
+    "steps": [
+      "Retrieve the grade distribution record created for the course",
+      "Compare homework weight and final project weight against syllabus values"
+    ],
+    "expected_result": "The grade distribution record shows homework_weight=60 and final_project_weight=40, matching the approved syllabus exactly."
+  },
+  {
+    "id": "TC-AGENT-005",
+    "title": "Grade distribution is not derived from a fixed institutional default",
+    "requirement_ids": ["REQ-AGENT-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Two students have approved different syllabi: Student A with 70% homework and Student B with 50% homework"
+    ],
+    "steps": [
+      "Retrieve the grade distribution for Student A's course",
+      "Retrieve the grade distribution for Student B's course",
+      "Compare the two distributions"
+    ],
+    "expected_result": "Student A's grade distribution shows homework_weight=70 and Student B's shows homework_weight=50, confirming distributions are syllabus-driven and not fixed."
+  },
+  {
+    "id": "TC-AGENT-006",
+    "title": "Grade distribution record is absent before syllabus approval",
+    "requirement_ids": ["REQ-AGENT-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student has a generated syllabus in pending-approval state"
+    ],
+    "steps": [
+      "Query the grade distribution record for the student's course"
+    ],
+    "expected_result": "No grade distribution record exists for the course. The system returns an empty result or 404, confirming distribution is not created until approval."
+  },
+  {
+    "id": "TC-AGENT-007",
+    "title": "Content generation pipeline starts immediately after syllabus approval",
+    "requirement_ids": ["REQ-AGENT-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student has a syllabus in pending-approval state",
+      "The content generation pipeline is observable via status events"
+    ],
+    "steps": [
+      "Student approves the syllabus",
+      "Poll the pipeline status endpoint for the course"
+    ],
+    "expected_result": "Within the observable polling window the pipeline status transitions to an in-progress state and at least one lesson generation event is recorded."
+  },
+  {
+    "id": "TC-AGENT-008",
+    "title": "Content generation does not start before syllabus approval",
+    "requirement_ids": ["REQ-AGENT-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student has a syllabus in pending-approval state"
+    ],
+    "steps": [
+      "Query the pipeline status for the course without approving the syllabus"
+    ],
+    "expected_result": "The pipeline status is not in-progress. No lesson or homework generation events exist for the course."
+  },
+  {
+    "id": "TC-AGENT-009",
+    "title": "All lessons and homework are included in the generation trigger",
+    "requirement_ids": ["REQ-AGENT-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student has approved a syllabus containing exactly 3 lessons and 3 homework assignments"
+    ],
+    "steps": [
+      "Wait for the content generation pipeline to complete",
+      "Count lesson records and homework records created in the database"
+    ],
+    "expected_result": "Exactly 3 lesson records and 3 homework records are present in the database, confirming all content types were generated."
+  },
+  {
+    "id": "TC-AGENT-010",
+    "title": "Agent prompts for consent before using content library material",
+    "requirement_ids": ["REQ-AGENT-004"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "The content library contains existing material relevant to the student's approved syllabus topic",
+      "A student has approved a syllabus"
+    ],
+    "steps": [
+      "Begin content generation for the course",
+      "Observe the agent interaction for a consent prompt before library content is accessed"
+    ],
+    "expected_result": "The agent emits a consent prompt to the student before accessing or deriving from content library material. Generation is paused pending the student's response."
+  },
+  {
+    "id": "TC-AGENT-011",
+    "title": "Content library material is not used when student denies consent",
+    "requirement_ids": ["REQ-AGENT-004"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "The content library contains existing material relevant to the student's approved syllabus topic",
+      "A student has approved a syllabus and has been prompted for library reuse consent"
+    ],
+    "steps": [
+      "Student responds to the consent prompt with denial",
+      "Allow content generation to complete",
+      "Inspect generated content for references to library source identifiers"
+    ],
+    "expected_result": "Generated content contains no references to content library source identifiers. All content is freshly generated."
+  },
+  {
+    "id": "TC-AGENT-012",
+    "title": "Content library material is reused when student grants consent",
+    "requirement_ids": ["REQ-AGENT-004"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "The content library contains existing material relevant to the student's approved syllabus topic",
+      "A student has approved a syllabus and has been prompted for library reuse consent"
+    ],
+    "steps": [
+      "Student responds to the consent prompt with approval",
+      "Allow content generation to complete",
+      "Inspect the generated content metadata for library reuse markers"
+    ],
+    "expected_result": "Generated content metadata includes at least one library reuse marker referencing the consented source, confirming library content was incorporated."
+  },
+  {
+    "id": "TC-AGENT-013",
+    "title": "Internet search queries are issued during content generation",
+    "requirement_ids": ["REQ-AGENT-005"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student has approved a syllabus",
+      "The agent module is configured with a search tool integration",
+      "Search query logs are accessible"
+    ],
+    "steps": [
+      "Trigger content generation for the course",
+      "Allow at least one lesson to be generated",
+      "Retrieve the search query log for this generation run"
+    ],
+    "expected_result": "At least one internet search query is recorded in the search query log associated with the generation run, confirming external sources were consulted."
+  },
+  {
+    "id": "TC-AGENT-014",
+    "title": "Content generation run with no search tool configured does not proceed silently",
+    "requirement_ids": ["REQ-AGENT-005"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student has approved a syllabus",
+      "The agent module search tool integration is disabled or misconfigured"
+    ],
+    "steps": [
+      "Attempt to trigger content generation for the course",
+      "Observe the agent startup response"
+    ],
+    "expected_result": "The agent returns an error or warning indicating that the internet search tool is unavailable and content generation does not start."
+  },
+  {
+    "id": "TC-AGENT-015",
+    "title": "Search queries are topic-relevant and not generic",
+    "requirement_ids": ["REQ-AGENT-005"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student has approved a syllabus for topic 'Distributed Systems'",
+      "Search query logs are accessible"
+    ],
+    "steps": [
+      "Trigger content generation for the course",
+      "Retrieve the search query log after the first lesson is generated",
+      "Inspect query strings for topic relevance"
+    ],
+    "expected_result": "All recorded search queries contain terms related to 'Distributed Systems' or its subtopics, confirming queries are scoped to lesson content."
+  },
+  {
+    "id": "TC-AGENT-016",
+    "title": "Pipeline status events are emitted for each generation stage",
+    "requirement_ids": ["REQ-AGENT-006"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student has approved a syllabus",
+      "The pipeline status stream endpoint is accessible"
+    ],
+    "steps": [
+      "Subscribe to the pipeline status stream for the course",
+      "Approve the syllabus to trigger generation",
+      "Collect all status events until the pipeline reaches a terminal state"
+    ],
+    "expected_result": "At least one status event is received for each named pipeline stage (e.g., lesson generation, homework generation, review). Each event includes a stage name and a status value."
+  },
+  {
+    "id": "TC-AGENT-017",
+    "title": "No status events are emitted before generation is triggered",
+    "requirement_ids": ["REQ-AGENT-006"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student has a syllabus in pending-approval state",
+      "The pipeline status stream endpoint is accessible"
+    ],
+    "steps": [
+      "Subscribe to the pipeline status stream for the course",
+      "Wait 5 seconds without approving the syllabus",
+      "Collect any status events received"
+    ],
+    "expected_result": "Zero status events are received during the observation window, confirming the pipeline does not emit status before generation is triggered."
+  },
+  {
+    "id": "TC-AGENT-018",
+    "title": "Status events are delivered in pipeline stage order",
+    "requirement_ids": ["REQ-AGENT-006"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student has approved a syllabus with at least 2 lessons",
+      "The pipeline status stream endpoint is accessible"
+    ],
+    "steps": [
+      "Subscribe to the pipeline status stream",
+      "Allow generation to complete",
+      "Record the sequence of stage names in the received events"
+    ],
+    "expected_result": "Status events arrive in the documented pipeline stage order. No later stage appears before an earlier stage in the received sequence."
+  }
+]

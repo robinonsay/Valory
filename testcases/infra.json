@@ -1,0 +1,77 @@
+[
+  {
+    "id": "TC-INFRA-001",
+    "title": "Health check returns 200 when all critical subsystems are operational",
+    "requirement_ids": ["REQ-INFRA-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "All critical subsystems (database, AI API client, notification service) are running and reachable.",
+      "The infra module HTTP server is running via Docker Compose."
+    ],
+    "steps": [
+      "Send a GET request to the health check endpoint.",
+      "Observe the HTTP response status code.",
+      "Parse the response body as JSON.",
+      "Verify that each critical subsystem is represented as a key in the response.",
+      "Verify that every subsystem reports an operational status."
+    ],
+    "expected_result": "The endpoint returns HTTP 200 and a JSON body containing a status entry for each critical subsystem, each reporting an operational state."
+  },
+  {
+    "id": "TC-INFRA-002",
+    "title": "Health check reports degraded status when the database is unreachable",
+    "requirement_ids": ["REQ-INFRA-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "The infra module HTTP server is running.",
+      "The PostgreSQL database container has been stopped to simulate a failure."
+    ],
+    "steps": [
+      "Send a GET request to the health check endpoint.",
+      "Observe the HTTP response status code.",
+      "Parse the response body as JSON.",
+      "Inspect the status field for the database subsystem."
+    ],
+    "expected_result": "The endpoint returns a non-200 status code (e.g. 503 Service Unavailable) and the JSON body includes the database subsystem with a non-operational status, while other subsystem entries remain present."
+  },
+  {
+    "id": "TC-INFRA-003",
+    "title": "Health check response includes all required critical subsystem keys",
+    "requirement_ids": ["REQ-INFRA-001"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "All critical subsystems are running and reachable.",
+      "The infra module HTTP server is running via Docker Compose."
+    ],
+    "steps": [
+      "Send a GET request to the health check endpoint.",
+      "Parse the response body as JSON.",
+      "Enumerate the subsystem keys present in the response.",
+      "Verify that at minimum the database, AI API client, and notification service keys are all present."
+    ],
+    "expected_result": "The JSON response body contains at least the database, AI API client, and notification service subsystem keys. No critical subsystem is silently omitted from the report."
+  },
+  {
+    "id": "TC-INFRA-004",
+    "title": "Health check reports degraded status when the AI API client is unreachable",
+    "requirement_ids": ["REQ-INFRA-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "The infra module HTTP server is running.",
+      "The AI API client is configured to point to an unreachable address to simulate a failure.",
+      "The database and notification service are running normally."
+    ],
+    "steps": [
+      "Send a GET request to the health check endpoint.",
+      "Observe the HTTP response status code.",
+      "Parse the response body as JSON.",
+      "Inspect the status field for the AI API client subsystem.",
+      "Inspect the status fields for the other subsystems."
+    ],
+    "expected_result": "The endpoint returns a non-200 status code and the JSON body shows the AI API client subsystem as non-operational while the database and notification service subsystems report operational status."
+  }
+]

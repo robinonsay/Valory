@@ -1,0 +1,342 @@
+[
+  {
+    "id": "TC-COURSE-001",
+    "title": "Student cannot start a second course while one is active",
+    "requirement_ids": ["REQ-COURSE-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-1",
+      "student-1 has an active course with id course-100"
+    ],
+    "steps": [
+      "Authenticate as student-1",
+      "Send POST /courses with a valid new course payload",
+      "Capture the HTTP response status and body"
+    ],
+    "expected_result": "The API returns HTTP 409 and an error indicating the student already has an active course. No new course record is created in the database."
+  },
+  {
+    "id": "TC-COURSE-002",
+    "title": "Student can start a course when no active course exists",
+    "requirement_ids": ["REQ-COURSE-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-2",
+      "student-2 has no active course"
+    ],
+    "steps": [
+      "Authenticate as student-2",
+      "Send POST /courses with a valid new course payload",
+      "Capture the HTTP response status and body"
+    ],
+    "expected_result": "The API returns HTTP 201 and the response body contains the new course id with status active."
+  },
+  {
+    "id": "TC-COURSE-003",
+    "title": "Student with only an archived course can start a new course",
+    "requirement_ids": ["REQ-COURSE-001"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists with id student-3",
+      "student-3 has exactly one course with status archived"
+    ],
+    "steps": [
+      "Authenticate as student-3",
+      "Send POST /courses with a valid new course payload",
+      "Capture the HTTP response status and body"
+    ],
+    "expected_result": "The API returns HTTP 201. The new course is created with status active. The pre-existing archived course remains archived."
+  },
+  {
+    "id": "TC-COURSE-004",
+    "title": "Admin receives a listing of all courses with their statuses",
+    "requirement_ids": ["REQ-COURSE-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists",
+      "The database contains courses owned by multiple students with statuses active and archived"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send GET /admin/courses",
+      "Capture the HTTP response body"
+    ],
+    "expected_result": "The API returns HTTP 200 with an array containing every course in the database. Each entry includes course id, owner student id, and current status."
+  },
+  {
+    "id": "TC-COURSE-005",
+    "title": "Non-admin student is rejected from the admin course listing endpoint",
+    "requirement_ids": ["REQ-COURSE-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-4"
+    ],
+    "steps": [
+      "Authenticate as student-4",
+      "Send GET /admin/courses",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 403. No course data is included in the response body."
+  },
+  {
+    "id": "TC-COURSE-006",
+    "title": "Admin course listing returns empty array when no courses exist",
+    "requirement_ids": ["REQ-COURSE-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "An admin account exists",
+      "The database contains no courses"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send GET /admin/courses",
+      "Capture the HTTP response body"
+    ],
+    "expected_result": "The API returns HTTP 200 with an empty array. No error is returned."
+  },
+  {
+    "id": "TC-COURSE-007",
+    "title": "Withdrawing from an active course sets its status to archived",
+    "requirement_ids": ["REQ-COURSE-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-5",
+      "student-5 has an active course with id course-200"
+    ],
+    "steps": [
+      "Authenticate as student-5",
+      "Send POST /courses/course-200/withdraw",
+      "Query the database for the status of course-200"
+    ],
+    "expected_result": "The API returns HTTP 200. The database record for course-200 has status archived."
+  },
+  {
+    "id": "TC-COURSE-008",
+    "title": "Attempting to withdraw from a course not owned by the student is rejected",
+    "requirement_ids": ["REQ-COURSE-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Student accounts student-5 and student-6 exist",
+      "student-5 owns active course course-200",
+      "student-6 is authenticated"
+    ],
+    "steps": [
+      "Authenticate as student-6",
+      "Send POST /courses/course-200/withdraw",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 403. The status of course-200 remains active in the database."
+  },
+  {
+    "id": "TC-COURSE-009",
+    "title": "Withdrawing from an already-archived course is a no-op rejection",
+    "requirement_ids": ["REQ-COURSE-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists with id student-7",
+      "student-7 has an archived course with id course-300"
+    ],
+    "steps": [
+      "Authenticate as student-7",
+      "Send POST /courses/course-300/withdraw",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 409 indicating the course is not active. The database record for course-300 remains archived."
+  },
+  {
+    "id": "TC-COURSE-010",
+    "title": "Student can resume an archived course, restoring it to active",
+    "requirement_ids": ["REQ-COURSE-004"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-8",
+      "student-8 has an archived course with id course-400 and no active course"
+    ],
+    "steps": [
+      "Authenticate as student-8",
+      "Send POST /courses/course-400/resume",
+      "Query the database for the status of course-400"
+    ],
+    "expected_result": "The API returns HTTP 200. The database record for course-400 has status active."
+  },
+  {
+    "id": "TC-COURSE-011",
+    "title": "Student with an active course cannot resume a second archived course",
+    "requirement_ids": ["REQ-COURSE-004", "REQ-COURSE-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-9",
+      "student-9 has an active course course-500 and an archived course course-501"
+    ],
+    "steps": [
+      "Authenticate as student-9",
+      "Send POST /courses/course-501/resume",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 409 indicating the student already has an active course. course-501 remains archived in the database."
+  },
+  {
+    "id": "TC-COURSE-012",
+    "title": "Resuming an active course is rejected",
+    "requirement_ids": ["REQ-COURSE-004"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists with id student-10",
+      "student-10 has an active course with id course-600"
+    ],
+    "steps": [
+      "Authenticate as student-10",
+      "Send POST /courses/course-600/resume",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 409. The status of course-600 remains active in the database."
+  },
+  {
+    "id": "TC-COURSE-013",
+    "title": "Student submits a syllabus modification request and it is persisted",
+    "requirement_ids": ["REQ-COURSE-005"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-11",
+      "student-11 has an active course course-700 with a generated syllabus awaiting approval"
+    ],
+    "steps": [
+      "Authenticate as student-11",
+      "Send POST /courses/course-700/syllabus/modification-request with body containing requested changes",
+      "Query the database for modification requests associated with course-700"
+    ],
+    "expected_result": "The API returns HTTP 201. The database contains a modification request record linked to course-700 with the submitted change details and a pending status."
+  },
+  {
+    "id": "TC-COURSE-014",
+    "title": "Syllabus modification request with empty body is rejected",
+    "requirement_ids": ["REQ-COURSE-005"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-11",
+      "student-11 has an active course course-700 with a generated syllabus awaiting approval"
+    ],
+    "steps": [
+      "Authenticate as student-11",
+      "Send POST /courses/course-700/syllabus/modification-request with an empty body",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 400. No modification request record is created in the database."
+  },
+  {
+    "id": "TC-COURSE-015",
+    "title": "Content generation is blocked when syllabus is not yet approved",
+    "requirement_ids": ["REQ-COURSE-006"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-12",
+      "student-12 has an active course course-800 with a generated syllabus in pending-approval state"
+    ],
+    "steps": [
+      "Authenticate as student-12",
+      "Send POST /courses/course-800/generate-content",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 409 indicating the syllabus has not been approved. No content generation job is created or started."
+  },
+  {
+    "id": "TC-COURSE-016",
+    "title": "Content generation proceeds after student approves syllabus",
+    "requirement_ids": ["REQ-COURSE-006"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-13",
+      "student-13 has an active course course-900 with a syllabus that has been approved"
+    ],
+    "steps": [
+      "Authenticate as student-13",
+      "Send POST /courses/course-900/generate-content",
+      "Capture the HTTP response status and job identifier"
+    ],
+    "expected_result": "The API returns HTTP 202 and a job identifier. A content generation job record is created in the database for course-900."
+  },
+  {
+    "id": "TC-COURSE-017",
+    "title": "Approved syllabus due dates are stored in the database",
+    "requirement_ids": ["REQ-COURSE-007"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-14",
+      "student-14 has an active course course-1000 with an approved syllabus containing three homework items with distinct due dates"
+    ],
+    "steps": [
+      "Authenticate as student-14",
+      "Send POST /courses/course-1000/due-dates/confirm to finalize the schedule",
+      "Query the database for due date records linked to course-1000"
+    ],
+    "expected_result": "The database contains exactly three due date records for course-1000, each storing a homework id and an ISO-8601 date matching those defined in the syllabus."
+  },
+  {
+    "id": "TC-COURSE-018",
+    "title": "Due dates are not persisted when syllabus has not been approved",
+    "requirement_ids": ["REQ-COURSE-007"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-15",
+      "student-15 has an active course course-1100 with a syllabus in pending-approval state"
+    ],
+    "steps": [
+      "Authenticate as student-15",
+      "Send POST /courses/course-1100/due-dates/confirm",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 409. No due date records are created in the database for course-1100."
+  },
+  {
+    "id": "TC-COURSE-019",
+    "title": "Student explicitly agrees to due date schedule before finalization",
+    "requirement_ids": ["REQ-COURSE-008"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-16",
+      "student-16 has an active course course-1200 with an approved syllabus and a proposed due date schedule"
+    ],
+    "steps": [
+      "Authenticate as student-16",
+      "Send POST /courses/course-1200/due-dates/agree with body agreeing to the schedule",
+      "Query the database for the agreement record on course-1200"
+    ],
+    "expected_result": "The API returns HTTP 200. The database records that student-16 has explicitly agreed to the due date schedule for course-1200, and the schedule status is finalized."
+  },
+  {
+    "id": "TC-COURSE-020",
+    "title": "Due date schedule is not finalized without student agreement",
+    "requirement_ids": ["REQ-COURSE-008"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-17",
+      "student-17 has an active course course-1300 with an approved syllabus and a proposed due date schedule with no agreement recorded"
+    ],
+    "steps": [
+      "Authenticate as student-17",
+      "Attempt to submit homework for course-1300 without having agreed to the schedule",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 409 indicating the due date schedule has not been agreed to. No submission is accepted."
+  }
+]

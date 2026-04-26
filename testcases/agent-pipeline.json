@@ -1,0 +1,451 @@
+[
+  {
+    "id": "TC-AGENT-019",
+    "title": "Correction loop stops at the admin-configured maximum iteration count",
+    "requirement_ids": ["REQ-AGENT-007"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin has set the correction loop maximum to 3 iterations",
+      "A content section is in review and requires correction",
+      "The correction agent is configured to always request further correction"
+    ],
+    "steps": [
+      "Trigger the content correction loop for the section",
+      "Allow the loop to run until it terminates",
+      "Retrieve the iteration count from the correction run record"
+    ],
+    "expected_result": "The correction loop terminates after exactly 3 iterations. No fourth iteration is attempted."
+  },
+  {
+    "id": "TC-AGENT-020",
+    "title": "Correction loop does not execute beyond the configured limit",
+    "requirement_ids": ["REQ-AGENT-007"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin has set the correction loop maximum to 3 iterations",
+      "A content section correction loop has already completed 3 iterations without success"
+    ],
+    "steps": [
+      "Attempt to trigger a 4th correction iteration manually",
+      "Observe the agent response"
+    ],
+    "expected_result": "The agent refuses to execute the 4th iteration and returns an error indicating the loop cap has been reached."
+  },
+  {
+    "id": "TC-AGENT-021",
+    "title": "Correction loop terminates exactly at the limit boundary",
+    "requirement_ids": ["REQ-AGENT-007"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Admin has set the correction loop maximum to 1 iteration"
+    ],
+    "steps": [
+      "Trigger a correction loop for a section that will not pass on the first attempt",
+      "Observe whether a second iteration is started"
+    ],
+    "expected_result": "The correction loop executes exactly 1 iteration and stops. No second iteration is initiated, confirming a limit of 1 is respected."
+  },
+  {
+    "id": "TC-AGENT-022",
+    "title": "Admin receives escalation notification when correction loop is exhausted",
+    "requirement_ids": ["REQ-AGENT-008"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin has set the correction loop maximum to 2 iterations",
+      "A content section correction loop has completed 2 iterations without producing passing content",
+      "An admin notification channel is configured and observable"
+    ],
+    "steps": [
+      "Allow the correction loop to exhaust its iterations",
+      "Check the admin notification channel for an escalation message"
+    ],
+    "expected_result": "An escalation notification is delivered to the admin channel containing the course ID, section ID, and iteration count at time of exhaustion."
+  },
+  {
+    "id": "TC-AGENT-023",
+    "title": "No admin escalation is sent when correction loop succeeds within the limit",
+    "requirement_ids": ["REQ-AGENT-008"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin has set the correction loop maximum to 5 iterations",
+      "A content section correction loop succeeds on the 2nd iteration",
+      "An admin notification channel is configured and observable"
+    ],
+    "steps": [
+      "Allow the correction loop to run until the section passes",
+      "Check the admin notification channel for any escalation messages"
+    ],
+    "expected_result": "No escalation notification is delivered to the admin channel. The correction run record shows status succeeded."
+  },
+  {
+    "id": "TC-AGENT-024",
+    "title": "Escalation notification is sent even when loop limit is set to 1",
+    "requirement_ids": ["REQ-AGENT-008"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin has set the correction loop maximum to 1 iteration",
+      "A content section correction fails on the first and only attempt"
+    ],
+    "steps": [
+      "Trigger the correction loop for the failing section",
+      "Check the admin notification channel after the single iteration completes"
+    ],
+    "expected_result": "An escalation notification is delivered to the admin channel after the single failed iteration, confirming escalation fires even at the minimum cap."
+  },
+  {
+    "id": "TC-AGENT-025",
+    "title": "Homework due dates are calculated from the approved course syllabus",
+    "requirement_ids": ["REQ-AGENT-009"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student has approved a syllabus specifying homework due 7 days after each lesson",
+      "The syllabus approval timestamp is recorded"
+    ],
+    "steps": [
+      "Allow content generation to complete",
+      "Retrieve the due date for the first homework assignment",
+      "Compare it to the expected date derived from the syllabus schedule"
+    ],
+    "expected_result": "The first homework due date is exactly 7 calendar days after the lesson start date specified in the syllabus, confirming syllabus-driven calculation."
+  },
+  {
+    "id": "TC-AGENT-026",
+    "title": "Homework due dates are not generated for an unapproved syllabus",
+    "requirement_ids": ["REQ-AGENT-009"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student has a generated syllabus in pending-approval state"
+    ],
+    "steps": [
+      "Query the homework due date records for the student's course"
+    ],
+    "expected_result": "No homework due date records exist for the course, confirming due dates are only assigned after syllabus approval."
+  },
+  {
+    "id": "TC-AGENT-027",
+    "title": "Due dates for all homework assignments span the full syllabus schedule",
+    "requirement_ids": ["REQ-AGENT-009"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student has approved a syllabus containing exactly 4 homework assignments spread across 4 weeks"
+    ],
+    "steps": [
+      "Allow content generation to complete",
+      "Retrieve all homework due date records for the course",
+      "Verify count and chronological ordering"
+    ],
+    "expected_result": "Exactly 4 homework due date records exist, each assigned to a different week, ordered chronologically from earliest to latest."
+  },
+  {
+    "id": "TC-AGENT-028",
+    "title": "Section content is regenerated when student submits a change request",
+    "requirement_ids": ["REQ-AGENT-010"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A course section has been generated and delivered to the student",
+      "The student has not yet submitted feedback for the section"
+    ],
+    "steps": [
+      "Student submits a change request for the section with feedback 'Please include more examples'",
+      "Poll the section status until it reaches a regenerated state",
+      "Retrieve the new section content"
+    ],
+    "expected_result": "The section record shows a new version with updated content. The previous version is preserved. The new content differs from the original."
+  },
+  {
+    "id": "TC-AGENT-029",
+    "title": "Section regeneration is rejected when no change request is submitted",
+    "requirement_ids": ["REQ-AGENT-010"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A course section has been generated and delivered to the student"
+    ],
+    "steps": [
+      "Trigger section regeneration for the section without providing any student feedback",
+      "Observe the agent response"
+    ],
+    "expected_result": "The agent returns an error indicating that a student change request is required before section regeneration can proceed."
+  },
+  {
+    "id": "TC-AGENT-030",
+    "title": "Section regeneration preserves the original section version",
+    "requirement_ids": ["REQ-AGENT-010"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A course section has been generated",
+      "The original content hash is recorded"
+    ],
+    "steps": [
+      "Student submits a change request for the section",
+      "Wait for regeneration to complete",
+      "Retrieve the version history for the section"
+    ],
+    "expected_result": "The section version history contains at least two entries: the original version and the regenerated version. The original content hash is unchanged in the historical record."
+  },
+  {
+    "id": "TC-AGENT-031",
+    "title": "Content generation halts when an AI API call exhausts all retries",
+    "requirement_ids": ["REQ-AGENT-011"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin has configured 2 retries before halt",
+      "The AI API is configured to return a non-retryable error on every call",
+      "A student's content generation pipeline is in progress"
+    ],
+    "steps": [
+      "Allow the generation pipeline to attempt an AI API call",
+      "Observe the pipeline state after all retries are exhausted"
+    ],
+    "expected_result": "The content generation pipeline transitions to a halted state. No further generation tasks are started. The halt reason references API failure."
+  },
+  {
+    "id": "TC-AGENT-032",
+    "title": "Content generation continues when AI API call succeeds within retry limit",
+    "requirement_ids": ["REQ-AGENT-011"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin has configured 3 retries",
+      "The AI API is configured to fail on the first call and succeed on the second",
+      "A student's content generation pipeline is in progress"
+    ],
+    "steps": [
+      "Allow the generation pipeline to attempt and retry the AI API call",
+      "Observe the pipeline state after the successful retry"
+    ],
+    "expected_result": "The pipeline does not halt. Content generation continues and the pipeline reaches a non-halted state after the successful retry."
+  },
+  {
+    "id": "TC-AGENT-033",
+    "title": "Partial content is not delivered to student when pipeline halts on API failure",
+    "requirement_ids": ["REQ-AGENT-011"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin has configured 1 retry",
+      "The AI API fails after generating 1 of 3 lessons",
+      "A student's content generation pipeline is in progress"
+    ],
+    "steps": [
+      "Allow the pipeline to halt after the API failure",
+      "Check the student-facing course content view"
+    ],
+    "expected_result": "The student-facing view shows the pipeline as halted and does not present the partially generated lesson as complete course content."
+  },
+  {
+    "id": "TC-AGENT-034",
+    "title": "Retry delays increase exponentially after consecutive rate-limit responses",
+    "requirement_ids": ["REQ-AGENT-012"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "The agent retry scheduler uses an injectable clock and delay recorder",
+      "The AI API is stubbed to return rate-limit responses for the first 3 calls"
+    ],
+    "steps": [
+      "Trigger an AI API call that receives 3 consecutive rate-limit responses",
+      "Record the delay applied before each retry attempt",
+      "Verify the delay sequence"
+    ],
+    "expected_result": "Each recorded delay is greater than the previous delay. The ratio between consecutive delays is consistent with a configured exponential base (e.g., delay_n = base^n * initial_delay)."
+  },
+  {
+    "id": "TC-AGENT-035",
+    "title": "No retry delay is applied after a successful AI API call",
+    "requirement_ids": ["REQ-AGENT-012"],
+    "type": "unit",
+    "category": "negative",
+    "preconditions": [
+      "The agent retry scheduler uses an injectable clock",
+      "The AI API is stubbed to return success on the first call"
+    ],
+    "steps": [
+      "Trigger an AI API call that succeeds immediately",
+      "Check whether any retry delay was recorded"
+    ],
+    "expected_result": "No retry delay is recorded. The call succeeds on the first attempt without any backoff being applied."
+  },
+  {
+    "id": "TC-AGENT-036",
+    "title": "Generation halts after max retries are exhausted due to rate limiting",
+    "requirement_ids": ["REQ-AGENT-012"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Admin has configured max retries to 3",
+      "The AI API is stubbed to always return rate-limit responses",
+      "The agent retry scheduler uses an injectable clock"
+    ],
+    "steps": [
+      "Trigger an AI API call",
+      "Allow the backoff loop to exhaust all 3 retries",
+      "Observe the final outcome"
+    ],
+    "expected_result": "After 3 failed retries the agent stops attempting and returns a rate-limit exhaustion error. Exactly 3 backoff delays are recorded before termination."
+  },
+  {
+    "id": "TC-AGENT-037",
+    "title": "All in-flight generation operations are terminated before account deletion executes",
+    "requirement_ids": ["REQ-AGENT-013"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student has an active content generation pipeline in progress",
+      "An admin has initiated a deletion request for the student account"
+    ],
+    "steps": [
+      "Observe the agent module response to the deletion signal",
+      "Verify all active generation tasks for the student reach a terminated state",
+      "Verify the account deletion then proceeds"
+    ],
+    "expected_result": "All in-flight generation tasks show a terminated status before the account deletion completes. No orphaned generation tasks remain after deletion."
+  },
+  {
+    "id": "TC-AGENT-038",
+    "title": "Account deletion does not proceed while generation tasks are still active",
+    "requirement_ids": ["REQ-AGENT-013"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student has an active content generation pipeline in progress",
+      "The termination signal to the agent module is intentionally delayed"
+    ],
+    "steps": [
+      "Initiate account deletion without waiting for agent termination to complete",
+      "Attempt to read the deletion completion timestamp before generation tasks have terminated"
+    ],
+    "expected_result": "The account deletion is not marked complete while any generation task for the student remains in an active state."
+  },
+  {
+    "id": "TC-AGENT-039",
+    "title": "Safe termination completes successfully when no generation is in flight",
+    "requirement_ids": ["REQ-AGENT-013"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student has no active generation tasks",
+      "An admin has initiated a deletion request for the student account"
+    ],
+    "steps": [
+      "Send the termination signal to the agent module for the student",
+      "Observe the termination response"
+    ],
+    "expected_result": "The agent module acknowledges termination immediately with a success response and zero tasks terminated, allowing deletion to proceed."
+  },
+  {
+    "id": "TC-AGENT-040",
+    "title": "Timeout is detected when content generation exceeds the configured time limit",
+    "requirement_ids": ["REQ-AGENT-014"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin has configured the content generation timeout to 5 seconds",
+      "The AI API is stubbed to respond after 10 seconds",
+      "A student's content generation pipeline is in progress"
+    ],
+    "steps": [
+      "Trigger content generation for a lesson",
+      "Wait for the timeout period to elapse",
+      "Inspect the pipeline run record for a timeout event"
+    ],
+    "expected_result": "The pipeline run record contains a timeout event with a timestamp within the configured timeout window. The generation task is marked as timed out."
+  },
+  {
+    "id": "TC-AGENT-041",
+    "title": "No timeout event is recorded when generation completes within the time limit",
+    "requirement_ids": ["REQ-AGENT-014"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin has configured the content generation timeout to 30 seconds",
+      "The AI API is stubbed to respond in 2 seconds",
+      "A student's content generation pipeline is in progress"
+    ],
+    "steps": [
+      "Trigger content generation for a lesson",
+      "Wait for generation to complete",
+      "Inspect the pipeline run record for timeout events"
+    ],
+    "expected_result": "No timeout event is present in the pipeline run record. The generation task shows a completed status."
+  },
+  {
+    "id": "TC-AGENT-042",
+    "title": "Timeout is detected when generation completes exactly at the limit boundary",
+    "requirement_ids": ["REQ-AGENT-014"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Admin has configured the content generation timeout to 10 seconds",
+      "The agent module uses an injectable clock",
+      "The stubbed AI response arrives at exactly 10 seconds elapsed"
+    ],
+    "steps": [
+      "Trigger content generation with the injectable clock at T=0",
+      "Advance the clock to exactly 10 seconds",
+      "Observe whether a timeout event is recorded"
+    ],
+    "expected_result": "A timeout event is recorded when elapsed time equals the configured limit, confirming the boundary is treated as a timeout condition."
+  },
+  {
+    "id": "TC-AGENT-043",
+    "title": "Student receives a response to a natural language question via the chat interface",
+    "requirement_ids": ["REQ-AGENT-015"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student has an active course",
+      "The chat interface endpoint is available"
+    ],
+    "steps": [
+      "Student sends the message 'Can you explain what a mutex is?' via the chat interface",
+      "Wait for the agent response"
+    ],
+    "expected_result": "The chat interface returns a natural language response to the student's question. The response is non-empty and pertains to the topic of mutexes."
+  },
+  {
+    "id": "TC-AGENT-044",
+    "title": "Chat interface rejects messages from unauthenticated users",
+    "requirement_ids": ["REQ-AGENT-015"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "No authenticated session exists"
+    ],
+    "steps": [
+      "Send a chat message to the chat interface endpoint without an authentication token",
+      "Observe the HTTP response"
+    ],
+    "expected_result": "The endpoint returns a 401 Unauthorized response. No AI processing is performed."
+  },
+  {
+    "id": "TC-AGENT-045",
+    "title": "Chat interface maintains context across multiple messages in a session",
+    "requirement_ids": ["REQ-AGENT-015"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student has an active course",
+      "The chat interface endpoint is available"
+    ],
+    "steps": [
+      "Student sends 'My topic is sorting algorithms'",
+      "Wait for agent acknowledgment",
+      "Student sends 'What did I just tell you my topic was?'",
+      "Observe the agent response"
+    ],
+    "expected_result": "The agent's second response correctly identifies 'sorting algorithms' as the topic the student provided, confirming conversational context is maintained within the session."
+  }
+]

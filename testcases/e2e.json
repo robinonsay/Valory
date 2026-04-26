@@ -1,0 +1,464 @@
+[
+  {
+    "id": "TC-SYSFLOW-001",
+    "title": "Full course lifecycle happy path: intake through content generation",
+    "requirement_ids": ["REQ-SYS-001", "REQ-SYS-009", "REQ-SYS-010", "REQ-SYS-011", "REQ-SYS-029", "REQ-SYS-030", "REQ-SYS-031", "REQ-SYS-032"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with valid credentials",
+      "The AI API is reachable and returns successful responses",
+      "No active course exists for the student"
+    ],
+    "steps": [
+      "Student authenticates with valid username and password",
+      "Student initiates a new course and the Chair agent begins intake questionnaire",
+      "Student answers all intake questions covering topic, knowledge level, objectives, and weekly availability",
+      "Chair agent presents a generated syllabus with point distribution across homework and final project",
+      "Student requests a modification to the syllabus and the Chair agent produces a revised version",
+      "Student explicitly approves the revised syllabus",
+      "Chair agent assigns homework due dates derived from the syllabus and presents the schedule",
+      "Student agrees to the due date schedule",
+      "System generates all lesson content and homework assignments upfront"
+    ],
+    "expected_result": "The course transitions to active status with all lesson content and homework assignments available. Due dates are stored as agreed. The student's dashboard reflects the new active course with the approved syllabus and point distribution."
+  },
+  {
+    "id": "TC-SYSFLOW-002",
+    "title": "Content generation does not proceed before student approves syllabus",
+    "requirement_ids": ["REQ-SYS-030", "REQ-SYS-011"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "Chair agent has completed intake and presented an initial syllabus",
+      "Student has not yet approved the syllabus"
+    ],
+    "steps": [
+      "Confirm the course status is pending syllabus approval",
+      "Attempt to access generated lesson content before approving the syllabus",
+      "Verify the system has not initiated or completed any content generation"
+    ],
+    "expected_result": "No lesson content or homework assignments exist for the course. The API returns a 404 or equivalent error indicating content is unavailable. Course status remains in syllabus-pending state."
+  },
+  {
+    "id": "TC-SYSFLOW-003",
+    "title": "Single active course enforcement: second course request rejected",
+    "requirement_ids": ["REQ-SYS-008"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student already has one active course"
+    ],
+    "steps": [
+      "Student attempts to initiate a second course by sending a new course request",
+      "System evaluates the student's current active course count"
+    ],
+    "expected_result": "The system rejects the new course request with an error indicating the student already has an active course. No new course record is created. The existing active course is unaffected."
+  },
+  {
+    "id": "TC-SYSFLOW-004",
+    "title": "Single active course enforcement: course initiation succeeds after previous course is archived",
+    "requirement_ids": ["REQ-SYS-008", "REQ-SYS-027"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has one active course"
+    ],
+    "steps": [
+      "Student withdraws from the active course",
+      "Verify the course status changes to archived",
+      "Student initiates a new course request",
+      "Verify the Chair agent begins intake for the new course"
+    ],
+    "expected_result": "After archival of the first course, the system accepts the new course request and the Chair agent proceeds with intake. The archived course record is preserved with archived status."
+  },
+  {
+    "id": "TC-SYSFLOW-005",
+    "title": "Student data privacy: student cannot access another student's course data",
+    "requirement_ids": ["REQ-SYS-023"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "Student A and Student B both have accounts and active courses with lesson content",
+      "Student A is authenticated"
+    ],
+    "steps": [
+      "Student A retrieves their own course ID from the dashboard",
+      "Student A constructs a request for Student B's course data using Student B's course ID",
+      "Student A sends the request to the course content endpoint",
+      "Repeat for submissions, grades, and chat history endpoints"
+    ],
+    "expected_result": "All cross-student data requests are rejected with 403 Forbidden responses. Student A's authenticated session cannot retrieve any data belonging to Student B, including course content, submissions, grades, and chat history."
+  },
+  {
+    "id": "TC-SYSFLOW-006",
+    "title": "Course archival and resumption restores exact course state",
+    "requirement_ids": ["REQ-SYS-027", "REQ-SYS-028"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has an active course with two completed homework submissions and one section in progress"
+    ],
+    "steps": [
+      "Record the current course state: completed submissions, grades, current section, and due dates",
+      "Student withdraws from the course",
+      "Verify the course status is archived and the student has no active course",
+      "Student requests to resume the archived course",
+      "Verify the course status returns to active",
+      "Verify all prior submissions, grades, current section, and due dates are unchanged"
+    ],
+    "expected_result": "The resumed course matches the pre-archival state exactly. No submissions, grades, section progress, or due dates are lost or altered during the archive-resume cycle."
+  },
+  {
+    "id": "TC-SYSFLOW-007",
+    "title": "Late submission triggers five-percent-per-day penalty",
+    "requirement_ids": ["REQ-SYS-017", "REQ-SYS-018"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has an active course with a homework assignment whose due date is two calendar days in the past",
+      "The homework has not yet been submitted"
+    ],
+    "steps": [
+      "Student uploads a valid Markdown homework file for the overdue assignment",
+      "System accepts the submission and records the submission timestamp",
+      "Grading agent evaluates the submission content and assigns a raw score",
+      "System applies the late penalty for two days overdue"
+    ],
+    "expected_result": "The final recorded grade equals the raw score minus ten percent (two days multiplied by five percent per day). The grade record includes the raw score, penalty amount, days late, and final score as separate fields."
+  },
+  {
+    "id": "TC-SYSFLOW-008",
+    "title": "On-time submission receives no late penalty",
+    "requirement_ids": ["REQ-SYS-017", "REQ-SYS-018"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has an active course with a homework assignment whose due date is tomorrow"
+    ],
+    "steps": [
+      "Student uploads a valid AsciiDoc homework file before the due date",
+      "System accepts the submission",
+      "Grading agent produces a raw score",
+      "System calculates the final grade"
+    ],
+    "expected_result": "The final grade equals the raw score with zero penalty applied. The days-late field in the grade record is zero."
+  },
+  {
+    "id": "TC-SYSFLOW-009",
+    "title": "Badge awarded at milestone and final grade improvement applied",
+    "requirement_ids": ["REQ-SYS-019", "REQ-SYS-052"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has an active course configured with a badge milestone for scoring above 90 on three consecutive homework assignments",
+      "The student has scored above 90 on two consecutive assignments"
+    ],
+    "steps": [
+      "Student submits the third consecutive homework and receives a raw score above 90",
+      "System evaluates milestone criteria and determines the badge threshold is met",
+      "System awards the milestone badge to the student's account",
+      "System applies the configured final grade improvement associated with the badge",
+      "Student views their badge collection and updated grade projection"
+    ],
+    "expected_result": "The badge appears in the student's badge collection with the correct milestone description. The final grade projection reflects the improvement reward. The badge award and grade adjustment are recorded as separate events in the student's grade record."
+  },
+  {
+    "id": "TC-SYSFLOW-010",
+    "title": "Badge late-penalty waiver redeemed on a late submission",
+    "requirement_ids": ["REQ-SYS-053", "REQ-SYS-019"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student holds an unspent late-penalty waiver badge",
+      "The student has an active course with a homework assignment that is one calendar day overdue"
+    ],
+    "steps": [
+      "Student submits a valid LaTeX homework file for the overdue assignment",
+      "System records the submission as one day late",
+      "Grading agent assigns a raw score",
+      "Student redeems the late-penalty waiver badge against this submission",
+      "System recalculates the grade with the waiver applied"
+    ],
+    "expected_result": "The late penalty is fully waived. The final grade equals the raw score. The waiver badge is marked as spent and cannot be redeemed again. The grade record documents the waiver redemption event."
+  },
+  {
+    "id": "TC-SYSFLOW-011",
+    "title": "Spent waiver badge cannot be redeemed a second time",
+    "requirement_ids": ["REQ-SYS-053"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has already redeemed their late-penalty waiver badge on a previous submission"
+    ],
+    "steps": [
+      "Student submits another late homework assignment",
+      "Student attempts to redeem the already-spent waiver badge",
+      "System evaluates the badge redemption request"
+    ],
+    "expected_result": "The system rejects the redemption with an error indicating the badge has already been used. The full late penalty is applied to the grade. The badge remains in spent state."
+  },
+  {
+    "id": "TC-SYSFLOW-012",
+    "title": "Account deletion safely terminates in-flight content generation",
+    "requirement_ids": ["REQ-SYS-025", "REQ-SYS-045"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists",
+      "Content generation for the student's course is currently in progress",
+      "An admin user is authenticated"
+    ],
+    "steps": [
+      "Verify the generation pipeline reports an in-progress status for the student's course",
+      "Admin submits an authorized deletion request for the student account",
+      "System signals termination to the in-flight generation operation",
+      "System waits for the generation operation to reach a safe stop point",
+      "System permanently deletes all personal data associated with the student account"
+    ],
+    "expected_result": "The generation operation terminates without partial writes or orphaned resources. All personal data including course records, submissions, grades, chat history, and authentication credentials is permanently deleted. No data belonging to the deleted account is retrievable afterward."
+  },
+  {
+    "id": "TC-SYSFLOW-013",
+    "title": "AI API exhausts retries: student notified and generation halted",
+    "requirement_ids": ["REQ-SYS-035", "REQ-SYS-036"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has approved a syllabus and content generation has begun",
+      "The AI API is configured to fail on all calls with a non-retryable error after exhausting the configured retry limit"
+    ],
+    "steps": [
+      "Content generation begins and the system issues an AI API call",
+      "The AI API returns an error; the system retries up to the configured limit",
+      "All retries are exhausted without a successful response",
+      "System halts the content generation pipeline",
+      "System sends a failure notification to the student"
+    ],
+    "expected_result": "Content generation stops completely with no partial or corrupted content written to the course. The student receives a notification describing the failure. The course status reflects a generation-failed state, not an active or completed state."
+  },
+  {
+    "id": "TC-SYSFLOW-014",
+    "title": "Content generation timeout triggers student notification",
+    "requirement_ids": ["REQ-SYS-043"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has approved a syllabus and content generation has begun",
+      "The content generation timeout is configured to a short interval for testing",
+      "The AI API is responding slowly such that generation will not complete within the timeout"
+    ],
+    "steps": [
+      "Content generation begins after syllabus approval",
+      "The configurable time limit elapses before generation completes",
+      "System detects the timeout condition",
+      "System dispatches a timeout notification to the student"
+    ],
+    "expected_result": "The student receives a notification indicating content generation did not complete within the expected time limit. The notification is delivered while the course is still in a generation-in-progress state, allowing the student to contact support."
+  },
+  {
+    "id": "TC-SYSFLOW-015",
+    "title": "Admin audit trail records create, modify, and deactivate actions",
+    "requirement_ids": ["REQ-SYS-042"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists and is authenticated",
+      "The audit log is empty or scoped to this admin's session for verification"
+    ],
+    "steps": [
+      "Admin creates a new student account with username, email, and role",
+      "Admin modifies the student account by updating the email address",
+      "Admin deactivates the student account",
+      "Admin retrieves the audit log entries filtered by the target student account ID"
+    ],
+    "expected_result": "Three audit log entries exist for the target account: one for create, one for modify, and one for deactivate. Each entry records the admin's identity, the action type, a timestamp, and the before/after state of the affected fields. No entries are missing or duplicated."
+  },
+  {
+    "id": "TC-SYSFLOW-016",
+    "title": "Brute-force lockout: five consecutive failures lock the account",
+    "requirement_ids": ["REQ-SYS-037"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with a known username",
+      "The account is not currently locked"
+    ],
+    "steps": [
+      "Submit five consecutive login attempts with an incorrect password for the student account",
+      "Attempt a sixth login with the correct password"
+    ],
+    "expected_result": "After the fifth consecutive failure the account is locked. The sixth login attempt with the correct password is rejected with an account-locked error, not an invalid-credentials error. The lockout persists for the configured duration."
+  },
+  {
+    "id": "TC-SYSFLOW-017",
+    "title": "Brute-force lockout edge case: four failures then success resets counter",
+    "requirement_ids": ["REQ-SYS-037"],
+    "type": "e2e",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists with known correct credentials",
+      "The account is not currently locked"
+    ],
+    "steps": [
+      "Submit four consecutive login attempts with an incorrect password",
+      "Submit one login attempt with the correct password",
+      "Verify the student is authenticated and the account is not locked",
+      "Submit five more consecutive login attempts with an incorrect password"
+    ],
+    "expected_result": "After four failures and one success the account remains unlocked and the failure counter resets to zero. The subsequent five failures then trigger a lockout, confirming the counter was correctly reset by the successful login."
+  },
+  {
+    "id": "TC-SYSFLOW-018",
+    "title": "Password reset flow: token delivered, used once, second use rejected",
+    "requirement_ids": ["REQ-SYS-026", "REQ-SYS-038"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with a registered email address",
+      "The student is not authenticated"
+    ],
+    "steps": [
+      "Student submits a password reset request for their username",
+      "System delivers a reset token via the out-of-band channel to the registered email",
+      "Student submits the token along with a new password",
+      "System validates the token and updates the password",
+      "Student authenticates successfully with the new password",
+      "Student submits the same reset token a second time with another new password"
+    ],
+    "expected_result": "The first use of the reset token succeeds and the password is updated. The second use of the same token is rejected with a token-already-used or token-expired error. The password remains as set by the first successful reset."
+  },
+  {
+    "id": "TC-SYSFLOW-019",
+    "title": "Password reset rate limit: fourth request within one hour is rejected",
+    "requirement_ids": ["REQ-SYS-038"],
+    "type": "e2e",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists",
+      "No password reset requests have been made in the current hour"
+    ],
+    "steps": [
+      "Submit three password reset requests for the account within the same hour",
+      "Submit a fourth password reset request for the same account within the same hour"
+    ],
+    "expected_result": "The first three reset requests are accepted and tokens are issued. The fourth request within the same hour is rejected with a rate-limit error. No token is issued for the fourth request."
+  },
+  {
+    "id": "TC-SYSFLOW-020",
+    "title": "CSRF protection: state-changing request without valid token is rejected",
+    "requirement_ids": ["REQ-SYS-048"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated with an active session"
+    ],
+    "steps": [
+      "Construct a state-changing POST request to the homework submission endpoint",
+      "Send the request with a missing CSRF token",
+      "Construct the same request with a malformed CSRF token",
+      "Send the malformed-token request"
+    ],
+    "expected_result": "Both requests are rejected with 403 Forbidden responses. No submission is recorded. The student's session remains valid and unaffected by the rejected requests."
+  },
+  {
+    "id": "TC-SYSFLOW-021",
+    "title": "Per-student token cap: AI processing halts when limit is reached",
+    "requirement_ids": ["REQ-SYS-049"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student's per-course AI token cap is configured to a low value for testing",
+      "The student's active course has consumed tokens up to within a small margin of the cap"
+    ],
+    "steps": [
+      "Student submits a chat message to the Chair agent that would require an AI API call",
+      "The AI API call would push total token expenditure past the configured per-course cap",
+      "System checks current token usage against the cap before issuing the API call"
+    ],
+    "expected_result": "The system halts AI processing without issuing the API call. The student receives an informative error indicating the token limit for this course has been reached. No additional AI API calls are made for this student's course until the cap is adjusted by an admin."
+  },
+  {
+    "id": "TC-SYSFLOW-022",
+    "title": "Section feedback triggers regeneration of that section's content",
+    "requirement_ids": ["REQ-SYS-033", "REQ-SYS-034"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has an active course with at least one fully generated section",
+      "The AI API is reachable and returns successful responses"
+    ],
+    "steps": [
+      "Student reaches the end of a section and submits feedback requesting a change in explanation depth",
+      "System records the feedback and signals the content-generation agent to regenerate the section",
+      "Agent regenerates the section content incorporating the student's feedback",
+      "Student retrieves the updated section content"
+    ],
+    "expected_result": "The section content is replaced with a newly generated version. The new content is different from the original and reflects the student's feedback. The course record shows the section was regenerated, and no other sections are affected."
+  },
+  {
+    "id": "TC-SYSFLOW-023",
+    "title": "Section feedback without change request does not trigger regeneration",
+    "requirement_ids": ["REQ-SYS-033", "REQ-SYS-034"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has an active course with at least one fully generated section"
+    ],
+    "steps": [
+      "Student submits positive feedback at the end of a section indicating satisfaction with the content",
+      "System records the feedback",
+      "Verify no regeneration job is queued or executed for the section"
+    ],
+    "expected_result": "The section content remains unchanged. No regeneration API call is issued. The feedback is recorded in the course record as a positive review without triggering any content pipeline activity."
+  },
+  {
+    "id": "TC-SYSFLOW-024",
+    "title": "Admin oversight: admin can view all courses and statuses system-wide",
+    "requirement_ids": ["REQ-SYS-005"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "Three student accounts exist with courses in different states: one active, one archived, one completed",
+      "An admin account exists and is authenticated"
+    ],
+    "steps": [
+      "Admin requests the system-wide course list",
+      "Admin filters the list by status to view only active courses",
+      "Admin filters the list by status to view only archived courses",
+      "Admin filters the list by status to view only completed courses"
+    ],
+    "expected_result": "The system-wide course list returns all courses across all students. Each filter returns only courses matching the requested status. Each course entry includes the student identity, course topic, current status, and last-modified timestamp."
+  },
+  {
+    "id": "TC-SYSFLOW-025",
+    "title": "File submission format validation: non-conforming file is rejected",
+    "requirement_ids": ["REQ-SYS-017"],
+    "type": "e2e",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated",
+      "The student has an active course with an outstanding homework assignment"
+    ],
+    "steps": [
+      "Student uploads a file with a .pdf extension for the homework submission",
+      "Student uploads a file with a .docx extension for the homework submission",
+      "Student uploads a file with a .txt extension for the homework submission"
+    ],
+    "expected_result": "All three upload attempts are rejected with format-validation errors indicating only LaTeX, Markdown, and AsciiDoc formats are accepted. No submission record is created for any rejected file. The assignment remains outstanding."
+  }
+]

@@ -1,0 +1,281 @@
+[
+  {
+    "id": "TC-GRADE-001",
+    "title": "Submission on the due date incurs zero late penalty",
+    "requirement_ids": ["REQ-GRADE-001"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "A submission exists with due date 2026-04-10T23:59:59Z and submitted_at 2026-04-10T23:59:59Z",
+      "Raw score is 80"
+    ],
+    "steps": [
+      "Call ComputeFinalScore(rawScore=80, daysLate=0, penaltyRatePerDay=0.05)",
+      "Capture the returned final score"
+    ],
+    "expected_result": "The returned final score is 80. No deduction is applied when days late equals zero."
+  },
+  {
+    "id": "TC-GRADE-002",
+    "title": "Submission one day late deducts five percent from raw score",
+    "requirement_ids": ["REQ-GRADE-001"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "Raw score is 100",
+      "Submission is exactly 1 calendar day past the due date"
+    ],
+    "steps": [
+      "Call ComputeFinalScore(rawScore=100, daysLate=1, penaltyRatePerDay=0.05)",
+      "Capture the returned final score"
+    ],
+    "expected_result": "The returned final score is 95. Exactly 5 points are deducted for 1 day late."
+  },
+  {
+    "id": "TC-GRADE-003",
+    "title": "Submission three days late deducts fifteen percent from raw score",
+    "requirement_ids": ["REQ-GRADE-001"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "Raw score is 100",
+      "Submission is exactly 3 calendar days past the due date"
+    ],
+    "steps": [
+      "Call ComputeFinalScore(rawScore=100, daysLate=3, penaltyRatePerDay=0.05)",
+      "Capture the returned final score"
+    ],
+    "expected_result": "The returned final score is 85. A 15-point deduction is applied for 3 days late at 5% per day."
+  },
+  {
+    "id": "TC-GRADE-004",
+    "title": "Submission twenty days late is capped at zero and not negative",
+    "requirement_ids": ["REQ-GRADE-001"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Raw score is 80",
+      "Submission is exactly 20 calendar days past the due date"
+    ],
+    "steps": [
+      "Call ComputeFinalScore(rawScore=80, daysLate=20, penaltyRatePerDay=0.05)",
+      "Capture the returned final score"
+    ],
+    "expected_result": "The returned final score is 0. The penalty of 100% equals the raw score; the grade does not go below zero."
+  },
+  {
+    "id": "TC-GRADE-005",
+    "title": "Submission twenty-one days late produces a zero score not a negative score",
+    "requirement_ids": ["REQ-GRADE-001"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Raw score is 80",
+      "Submission is exactly 21 calendar days past the due date"
+    ],
+    "steps": [
+      "Call ComputeFinalScore(rawScore=80, daysLate=21, penaltyRatePerDay=0.05)",
+      "Capture the returned final score"
+    ],
+    "expected_result": "The returned final score is 0. Accumulated penalty exceeds the raw score; the grade is floored at zero."
+  },
+  {
+    "id": "TC-GRADE-006",
+    "title": "Admin-configured penalty rate of ten percent is applied instead of the default five percent",
+    "requirement_ids": ["REQ-GRADE-002"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "Admin has configured late_penalty_rate_per_day = 0.10",
+      "Raw score is 100",
+      "Submission is 2 days late"
+    ],
+    "steps": [
+      "Call ComputeFinalScore(rawScore=100, daysLate=2, penaltyRatePerDay=0.10)",
+      "Capture the returned final score"
+    ],
+    "expected_result": "The returned final score is 80. The configured 10% rate is used, not the default 5% rate."
+  },
+  {
+    "id": "TC-GRADE-007",
+    "title": "Admin-configured penalty rate of zero percent results in no late deduction",
+    "requirement_ids": ["REQ-GRADE-002"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Admin has configured late_penalty_rate_per_day = 0.00",
+      "Raw score is 70",
+      "Submission is 5 days late"
+    ],
+    "steps": [
+      "Call ComputeFinalScore(rawScore=70, daysLate=5, penaltyRatePerDay=0.00)",
+      "Capture the returned final score"
+    ],
+    "expected_result": "The returned final score is 70. A zero penalty rate produces no deduction regardless of days late."
+  },
+  {
+    "id": "TC-GRADE-008",
+    "title": "Penalty rate above one hundred percent is rejected as invalid configuration",
+    "requirement_ids": ["REQ-GRADE-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "An admin account exists"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send PUT /admin/config with body setting late_penalty_rate_per_day to 1.10",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 422. The configuration is not updated in the database."
+  },
+  {
+    "id": "TC-GRADE-009",
+    "title": "Admin-configured grade weights are applied to compute a weighted final grade",
+    "requirement_ids": ["REQ-GRADE-003"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "Admin has configured homework_weight = 0.60 and final_project_weight = 0.40",
+      "Student average homework score is 80",
+      "Student final project score is 90"
+    ],
+    "steps": [
+      "Call ComputeWeightedGrade(homeworkAvg=80, finalProjectScore=90, homeworkWeight=0.60, finalProjectWeight=0.40)",
+      "Capture the returned weighted grade"
+    ],
+    "expected_result": "The returned weighted grade is 84. Computed as (80 * 0.60) + (90 * 0.40) = 48 + 36 = 84."
+  },
+  {
+    "id": "TC-GRADE-010",
+    "title": "Grade weights that do not sum to one hundred percent are rejected",
+    "requirement_ids": ["REQ-GRADE-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "An admin account exists"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send PUT /admin/config with body setting homework_weight to 0.50 and final_project_weight to 0.30",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 422 indicating the weights do not sum to 1.0. The configuration is not updated in the database."
+  },
+  {
+    "id": "TC-GRADE-011",
+    "title": "Grade weights of one hundred percent homework and zero final project are valid",
+    "requirement_ids": ["REQ-GRADE-003"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Admin has configured homework_weight = 1.00 and final_project_weight = 0.00",
+      "Student average homework score is 75",
+      "Student final project score is 95"
+    ],
+    "steps": [
+      "Call ComputeWeightedGrade(homeworkAvg=75, finalProjectScore=95, homeworkWeight=1.00, finalProjectWeight=0.00)",
+      "Capture the returned weighted grade"
+    ],
+    "expected_result": "The returned weighted grade is 75. The final project score contributes nothing when its weight is zero."
+  },
+  {
+    "id": "TC-GRADE-012",
+    "title": "Earned grade-improvement badge increases final grade by the badge reward amount",
+    "requirement_ids": ["REQ-GRADE-004"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "Student has a weighted final grade of 78",
+      "Student has earned a grade-improvement badge with reward_value = 5"
+    ],
+    "steps": [
+      "Call ApplyBadgeRewards(weightedGrade=78, badges=[{type: grade_improvement, reward_value: 5}])",
+      "Capture the returned adjusted grade"
+    ],
+    "expected_result": "The returned adjusted grade is 83. The badge reward of 5 points is added to the weighted final grade."
+  },
+  {
+    "id": "TC-GRADE-013",
+    "title": "Grade-improvement badge does not raise final grade above one hundred",
+    "requirement_ids": ["REQ-GRADE-004"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Student has a weighted final grade of 98",
+      "Student has earned a grade-improvement badge with reward_value = 5"
+    ],
+    "steps": [
+      "Call ApplyBadgeRewards(weightedGrade=98, badges=[{type: grade_improvement, reward_value: 5}])",
+      "Capture the returned adjusted grade"
+    ],
+    "expected_result": "The returned adjusted grade is 100. The grade is capped at 100 and does not exceed the maximum."
+  },
+  {
+    "id": "TC-GRADE-014",
+    "title": "No badge earned means no grade improvement is applied",
+    "requirement_ids": ["REQ-GRADE-004"],
+    "type": "unit",
+    "category": "negative",
+    "preconditions": [
+      "Student has a weighted final grade of 78",
+      "Student has no earned badges"
+    ],
+    "steps": [
+      "Call ApplyBadgeRewards(weightedGrade=78, badges=[])",
+      "Capture the returned adjusted grade"
+    ],
+    "expected_result": "The returned adjusted grade is 78. No change is made when there are no badge rewards to apply."
+  },
+  {
+    "id": "TC-GRADE-015",
+    "title": "Redeeming a late-penalty waiver badge removes the late deduction from the submission",
+    "requirement_ids": ["REQ-GRADE-005"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "Raw score is 90",
+      "Submission is 2 days late resulting in a penalized score of 81",
+      "Student has earned a late-penalty waiver badge for this submission"
+    ],
+    "steps": [
+      "Call ApplyLatePenaltyWaiver(rawScore=90, daysLate=2, penaltyRatePerDay=0.05, waiverApplied=true)",
+      "Capture the returned score"
+    ],
+    "expected_result": "The returned score is 90. The late penalty of 9 points is waived and the raw score is returned unchanged."
+  },
+  {
+    "id": "TC-GRADE-016",
+    "title": "Late-penalty waiver badge does not affect scores for on-time submissions",
+    "requirement_ids": ["REQ-GRADE-005"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Raw score is 90",
+      "Submission is on time with days late equal to zero",
+      "Student has a late-penalty waiver badge"
+    ],
+    "steps": [
+      "Call ApplyLatePenaltyWaiver(rawScore=90, daysLate=0, penaltyRatePerDay=0.05, waiverApplied=true)",
+      "Capture the returned score"
+    ],
+    "expected_result": "The returned score is 90. Applying a waiver to an on-time submission produces no change."
+  },
+  {
+    "id": "TC-GRADE-017",
+    "title": "Late penalty is applied normally when no waiver badge is redeemed",
+    "requirement_ids": ["REQ-GRADE-005"],
+    "type": "unit",
+    "category": "negative",
+    "preconditions": [
+      "Raw score is 90",
+      "Submission is 2 days late",
+      "Student has no late-penalty waiver badge"
+    ],
+    "steps": [
+      "Call ApplyLatePenaltyWaiver(rawScore=90, daysLate=2, penaltyRatePerDay=0.05, waiverApplied=false)",
+      "Capture the returned score"
+    ],
+    "expected_result": "The returned score is 81. The full late penalty of 9 points is applied because no waiver is active."
+  }
+]

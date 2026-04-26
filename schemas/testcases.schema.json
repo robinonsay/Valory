@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/testcases.schema.json",
+  "title": "TestCaseFile",
+  "description": "Schema for a Valory test case file. Each file is an array of test case objects covering one module.",
+  "type": "array",
+  "minItems": 1,
+  "uniqueItems": true,
+  "items": {
+    "title": "TestCase",
+    "description": "A single Valory test case.",
+    "type": "object",
+    "required": [
+      "id",
+      "title",
+      "requirement_ids",
+      "type",
+      "category",
+      "preconditions",
+      "steps",
+      "expected_result"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^TC-[A-Z]+-[0-9]{3}$",
+        "description": "Unique test case identifier in the format TC-MODULE-NNN (e.g. TC-AUTH-001)."
+      },
+      "title": {
+        "type": "string",
+        "minLength": 5,
+        "maxLength": 120,
+        "description": "Short descriptive name for the test case."
+      },
+      "requirement_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^REQ-[A-Z]+-[0-9]{3}$"
+        },
+        "minItems": 1,
+        "uniqueItems": true,
+        "description": "One or more requirement IDs that this test case verifies."
+      },
+      "type": {
+        "type": "string",
+        "enum": ["unit", "integration", "e2e"],
+        "description": "Classification of the test by scope: unit, integration, or end-to-end."
+      },
+      "category": {
+        "type": "string",
+        "enum": ["positive", "negative", "edge"],
+        "description": "Classification of the test by intent: positive (happy path), negative (error path), or edge (boundary condition)."
+      },
+      "preconditions": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Ordered list of setup state required before the test runs. May be empty."
+      },
+      "steps": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1,
+        "description": "Ordered actions to execute during the test. At least one step is required."
+      },
+      "expected_result": {
+        "type": "string",
+        "minLength": 10,
+        "maxLength": 500,
+        "description": "Observable outcome that constitutes a pass for this test case."
+      }
+    }
+  }
+}

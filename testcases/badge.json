@@ -1,0 +1,150 @@
+[
+  {
+    "id": "TC-BADGE-001",
+    "title": "Badge is awarded when a student reaches a defined academic milestone",
+    "requirement_ids": ["REQ-BADGE-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with id student-20",
+      "A badge milestone is configured: all homework in course-2000 submitted on time",
+      "student-20 has submitted all homework for course-2000 on time"
+    ],
+    "steps": [
+      "Trigger the milestone evaluation for student-20 on course-2000",
+      "Query the database for badge records belonging to student-20"
+    ],
+    "expected_result": "The database contains a badge record for student-20 linked to the on-time-homework milestone for course-2000 with an awarded status."
+  },
+  {
+    "id": "TC-BADGE-002",
+    "title": "Badge is not awarded when the academic milestone has not been reached",
+    "requirement_ids": ["REQ-BADGE-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with id student-21",
+      "A badge milestone is configured: all homework in course-2001 submitted on time",
+      "student-21 has one late submission in course-2001"
+    ],
+    "steps": [
+      "Trigger the milestone evaluation for student-21 on course-2001",
+      "Query the database for badge records belonging to student-21 for this milestone"
+    ],
+    "expected_result": "No badge record is created for student-21 for the on-time-homework milestone on course-2001."
+  },
+  {
+    "id": "TC-BADGE-003",
+    "title": "Badge is not awarded a second time when the same milestone is reached again",
+    "requirement_ids": ["REQ-BADGE-001"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists with id student-22",
+      "student-22 already has a badge awarded for the on-time-homework milestone on course-2002"
+    ],
+    "steps": [
+      "Trigger the milestone evaluation for student-22 on course-2002 a second time",
+      "Query the database for badge records belonging to student-22 for this milestone"
+    ],
+    "expected_result": "Exactly one badge record exists for student-22 for the on-time-homework milestone on course-2002. No duplicate is created."
+  },
+  {
+    "id": "TC-BADGE-004",
+    "title": "Grade-improvement badge carries a positive numeric reward value",
+    "requirement_ids": ["REQ-BADGE-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send POST /admin/badges with body: type=grade_improvement, reward_value=5, milestone_id=milestone-1",
+      "Query the database for the created badge definition"
+    ],
+    "expected_result": "The API returns HTTP 201. The database record for the badge has type grade_improvement and reward_value equal to 5."
+  },
+  {
+    "id": "TC-BADGE-005",
+    "title": "Grade-improvement badge with zero reward value is rejected",
+    "requirement_ids": ["REQ-BADGE-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "An admin account exists"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send POST /admin/badges with body: type=grade_improvement, reward_value=0, milestone_id=milestone-2",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 422. No badge definition record is created in the database."
+  },
+  {
+    "id": "TC-BADGE-006",
+    "title": "Grade-improvement badge reward value greater than one hundred points is rejected",
+    "requirement_ids": ["REQ-BADGE-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "An admin account exists"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send POST /admin/badges with body: type=grade_improvement, reward_value=101, milestone_id=milestone-3",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 422. No badge definition record is created in the database."
+  },
+  {
+    "id": "TC-BADGE-007",
+    "title": "Late-penalty waiver badge carries a waiver entitlement flag",
+    "requirement_ids": ["REQ-BADGE-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "An admin account exists"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send POST /admin/badges with body: type=late_penalty_waiver, milestone_id=milestone-4",
+      "Query the database for the created badge definition"
+    ],
+    "expected_result": "The API returns HTTP 201. The database record for the badge has type late_penalty_waiver and a waiver_entitlement field set to true."
+  },
+  {
+    "id": "TC-BADGE-008",
+    "title": "Late-penalty waiver badge cannot be created with a grade_improvement reward_value field",
+    "requirement_ids": ["REQ-BADGE-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "An admin account exists"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send POST /admin/badges with body: type=late_penalty_waiver, reward_value=5, milestone_id=milestone-5",
+      "Capture the HTTP response status"
+    ],
+    "expected_result": "The API returns HTTP 422 indicating that a late-penalty waiver badge must not carry a grade improvement reward value. No badge definition is created."
+  },
+  {
+    "id": "TC-BADGE-009",
+    "title": "Grade-improvement badge and late-penalty waiver badge are stored as distinct types",
+    "requirement_ids": ["REQ-BADGE-002", "REQ-BADGE-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "An admin account exists",
+      "A grade_improvement badge with id badge-10 exists in the database",
+      "A late_penalty_waiver badge with id badge-11 exists in the database"
+    ],
+    "steps": [
+      "Authenticate as the admin",
+      "Send GET /admin/badges/badge-10 and capture the type field",
+      "Send GET /admin/badges/badge-11 and capture the type field"
+    ],
+    "expected_result": "badge-10 returns type grade_improvement with a numeric reward_value. badge-11 returns type late_penalty_waiver with a waiver_entitlement of true and no reward_value field. The two types are distinct and non-overlapping."
+  }
+]

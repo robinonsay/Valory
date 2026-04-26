@@ -1,0 +1,179 @@
+[
+  {
+    "id": "TC-CONTENT-001",
+    "title": "Lesson content with at least one citation is accepted",
+    "requirement_ids": ["REQ-CONTENT-001"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [],
+    "steps": [
+      "Construct a lesson content document containing a references section with one cited source.",
+      "Submit the document to the content module citation validator."
+    ],
+    "expected_result": "The content module accepts the document and returns no citation validation error."
+  },
+  {
+    "id": "TC-CONTENT-002",
+    "title": "Lesson content with no citations is rejected",
+    "requirement_ids": ["REQ-CONTENT-001"],
+    "type": "unit",
+    "category": "negative",
+    "preconditions": [],
+    "steps": [
+      "Construct a lesson content document that contains no references or citations.",
+      "Submit the document to the content module citation validator."
+    ],
+    "expected_result": "The content module rejects the document with an error indicating at least one citation is required."
+  },
+  {
+    "id": "TC-CONTENT-003",
+    "title": "Lesson content with an empty citations list is rejected",
+    "requirement_ids": ["REQ-CONTENT-001"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [],
+    "steps": [
+      "Construct a lesson content document that contains a references section header but zero citation entries.",
+      "Submit the document to the content module citation validator."
+    ],
+    "expected_result": "The content module rejects the document because zero citation entries do not satisfy the minimum-one-citation requirement."
+  },
+  {
+    "id": "TC-CONTENT-004",
+    "title": "Course content document exports to a valid PDF file",
+    "requirement_ids": ["REQ-CONTENT-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A course content document exists in the system with known content.",
+      "The content module PDF export service is running."
+    ],
+    "steps": [
+      "Send a PDF export request for the course content document.",
+      "Receive the response body.",
+      "Verify the response Content-Type is application/pdf.",
+      "Verify the response body begins with the PDF magic bytes %PDF."
+    ],
+    "expected_result": "The content module returns a valid PDF binary whose first bytes are the PDF file signature and whose Content-Type is application/pdf."
+  },
+  {
+    "id": "TC-CONTENT-005",
+    "title": "PDF export of a non-existent document returns an error",
+    "requirement_ids": ["REQ-CONTENT-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "The content module PDF export service is running.",
+      "No document with the requested ID exists in the database."
+    ],
+    "steps": [
+      "Send a PDF export request referencing a document ID that does not exist.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The content module returns a 404 Not Found response and does not produce a PDF file."
+  },
+  {
+    "id": "TC-CONTENT-006",
+    "title": "Course content document exports to a standalone HTML file",
+    "requirement_ids": ["REQ-CONTENT-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A course content document exists in the system with known content.",
+      "The content module HTML export service is running."
+    ],
+    "steps": [
+      "Send an HTML export request for the course content document.",
+      "Receive the response body.",
+      "Verify the response Content-Type is text/html.",
+      "Verify the response body contains a complete HTML document structure with html, head, and body tags."
+    ],
+    "expected_result": "The content module returns a self-contained HTML document with a valid structure and Content-Type of text/html."
+  },
+  {
+    "id": "TC-CONTENT-007",
+    "title": "HTML export of a non-existent document returns an error",
+    "requirement_ids": ["REQ-CONTENT-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "The content module HTML export service is running.",
+      "No document with the requested ID exists in the database."
+    ],
+    "steps": [
+      "Send an HTML export request referencing a document ID that does not exist.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The content module returns a 404 Not Found response and does not produce an HTML file."
+  },
+  {
+    "id": "TC-CONTENT-008",
+    "title": "HTML export document is standalone and contains all section text",
+    "requirement_ids": ["REQ-CONTENT-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A course content document with multiple sections and embedded images exists in the system.",
+      "The content module HTML export service is running."
+    ],
+    "steps": [
+      "Send an HTML export request for the multi-section document.",
+      "Parse the returned HTML.",
+      "Verify no external stylesheet or script links are required for rendering.",
+      "Verify all section text from the source document appears in the HTML output."
+    ],
+    "expected_result": "The returned HTML file is self-contained: all content is embedded inline and no external resource references are required to render the document."
+  },
+  {
+    "id": "TC-CONTENT-009",
+    "title": "Student submits section feedback after completing a section",
+    "requirement_ids": ["REQ-CONTENT-004"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active course with at least one completed section.",
+      "The content module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Send a POST request to the section feedback endpoint with the completed section ID and a non-empty feedback body.",
+      "Verify the HTTP response status code.",
+      "Query the database to confirm the feedback record was persisted with the correct student ID, section ID, and timestamp."
+    ],
+    "expected_result": "The content module returns 201 Created, and the database contains a feedback row matching the submitted student ID, section ID, and feedback text."
+  },
+  {
+    "id": "TC-CONTENT-010",
+    "title": "Submitting feedback for an incomplete section is rejected",
+    "requirement_ids": ["REQ-CONTENT-004"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active course with a section that has not been marked complete.",
+      "The content module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Send a POST request to the section feedback endpoint referencing the incomplete section ID.",
+      "Observe the HTTP response status code and error body."
+    ],
+    "expected_result": "The content module returns a 422 Unprocessable Entity response indicating feedback cannot be submitted for an incomplete section, and no record is persisted."
+  },
+  {
+    "id": "TC-CONTENT-011",
+    "title": "Submitting empty feedback text is rejected",
+    "requirement_ids": ["REQ-CONTENT-004"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists and is authenticated.",
+      "The student has an active course with at least one completed section.",
+      "The content module and PostgreSQL database are running via Docker Compose."
+    ],
+    "steps": [
+      "Send a POST request to the section feedback endpoint with the completed section ID and an empty string as the feedback body.",
+      "Observe the HTTP response status code."
+    ],
+    "expected_result": "The content module returns a 400 Bad Request response indicating feedback text must not be empty, and no record is persisted."
+  }
+]

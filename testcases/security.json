@@ -1,0 +1,304 @@
+[
+  {
+    "id": "TC-SECURITY-001",
+    "title": "Student cannot access another student's course data",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student account 'alice' owns course with id 'course-alice-1'",
+      "Student account 'bob' has a valid session token"
+    ],
+    "steps": [
+      "Send GET /api/student/courses/course-alice-1 with bob's session token in the Authorization header"
+    ],
+    "expected_result": "HTTP 403 response; no course data belonging to alice is returned."
+  },
+  {
+    "id": "TC-SECURITY-002",
+    "title": "Student can access their own course data",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student account 'alice' owns course with id 'course-alice-1'",
+      "alice has a valid session token"
+    ],
+    "steps": [
+      "Send GET /api/student/courses/course-alice-1 with alice's session token in the Authorization header"
+    ],
+    "expected_result": "HTTP 200 response; the response body contains alice's course data."
+  },
+  {
+    "id": "TC-SECURITY-003",
+    "title": "Student cannot access another student's submission",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student account 'alice' has a submission with id 'sub-alice-1'",
+      "Student account 'bob' has a valid session token"
+    ],
+    "steps": [
+      "Send GET /api/student/submissions/sub-alice-1 with bob's session token in the Authorization header"
+    ],
+    "expected_result": "HTTP 403 response; no submission data belonging to alice is returned."
+  },
+  {
+    "id": "TC-SECURITY-004",
+    "title": "Student cannot access another student's grades",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student account 'alice' has a grade record with id 'grade-alice-1'",
+      "Student account 'bob' has a valid session token"
+    ],
+    "steps": [
+      "Send GET /api/student/grades/grade-alice-1 with bob's session token in the Authorization header"
+    ],
+    "expected_result": "HTTP 403 response; no grade data belonging to alice is returned."
+  },
+  {
+    "id": "TC-SECURITY-005",
+    "title": "Student cannot access another student's chat history",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student account 'alice' has chat history entries for course 'course-alice-1'",
+      "Student account 'bob' has a valid session token"
+    ],
+    "steps": [
+      "Send GET /api/student/courses/course-alice-1/chat with bob's session token in the Authorization header"
+    ],
+    "expected_result": "HTTP 403 response; no chat history belonging to alice is returned."
+  },
+  {
+    "id": "TC-SECURITY-006",
+    "title": "Data isolation enforced at the database query level",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "unit",
+    "category": "positive",
+    "preconditions": [
+      "Two student records exist in the test database with distinct student_id values"
+    ],
+    "steps": [
+      "Call the course-query function with student_id set to alice's id",
+      "Assert that all returned records have owner_student_id equal to alice's id"
+    ],
+    "expected_result": "Every record in the result set has owner_student_id matching alice's id; no records belonging to another student are present."
+  },
+  {
+    "id": "TC-SECURITY-007",
+    "title": "Three password-reset requests within one hour all succeed",
+    "requirement_ids": ["REQ-SECURITY-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "User account 'alice' exists",
+      "No password-reset requests have been made for 'alice' in the last hour"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset with body {\"username\":\"alice\"} three times in sequence"
+    ],
+    "expected_result": "All three requests return HTTP 200 or HTTP 202; each triggers a reset credential delivery."
+  },
+  {
+    "id": "TC-SECURITY-008",
+    "title": "Fourth password-reset request within one hour is rejected",
+    "requirement_ids": ["REQ-SECURITY-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "User account 'alice' exists",
+      "Three password-reset requests have already been made for 'alice' within the current hour"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset with body {\"username\":\"alice\"}"
+    ],
+    "expected_result": "HTTP 429 response; the request is rejected and no additional reset credential is issued."
+  },
+  {
+    "id": "TC-SECURITY-009",
+    "title": "Password-reset rate limit resets after one hour elapses",
+    "requirement_ids": ["REQ-SECURITY-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Rate-limit window is configured to 5 seconds for the test",
+      "User account 'alice' exists and has already exhausted the three-request limit"
+    ],
+    "steps": [
+      "Wait for the rate-limit window to elapse",
+      "POST /api/auth/password-reset with body {\"username\":\"alice\"}"
+    ],
+    "expected_result": "HTTP 200 or HTTP 202 response; the request succeeds after the rate-limit window resets."
+  },
+  {
+    "id": "TC-SECURITY-010",
+    "title": "Rate-limit counter is per-account and does not bleed between accounts",
+    "requirement_ids": ["REQ-SECURITY-003"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "User account 'alice' has exhausted the three-request limit",
+      "User account 'bob' has made zero password-reset requests"
+    ],
+    "steps": [
+      "POST /api/auth/password-reset with body {\"username\":\"bob\"}"
+    ],
+    "expected_result": "HTTP 200 or HTTP 202 response; bob's request succeeds because alice's counter does not affect bob's limit."
+  },
+  {
+    "id": "TC-SECURITY-011",
+    "title": "State-changing request with valid CSRF token is accepted",
+    "requirement_ids": ["REQ-SECURITY-004"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student 'alice' has a valid session and a valid CSRF token obtained from the server"
+    ],
+    "steps": [
+      "Send POST /api/student/courses with alice's session token and the valid CSRF token in the X-CSRF-Token header",
+      "Include a valid course creation payload in the request body"
+    ],
+    "expected_result": "HTTP 200 or HTTP 201 response; the state-changing request is processed successfully."
+  },
+  {
+    "id": "TC-SECURITY-012",
+    "title": "State-changing request with missing CSRF token is rejected",
+    "requirement_ids": ["REQ-SECURITY-004"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student 'alice' has a valid session token"
+    ],
+    "steps": [
+      "Send POST /api/student/courses with alice's session token but without an X-CSRF-Token header",
+      "Include a valid course creation payload in the request body"
+    ],
+    "expected_result": "HTTP 403 response; the request is rejected before any state change is applied."
+  },
+  {
+    "id": "TC-SECURITY-013",
+    "title": "State-changing request with invalid CSRF token is rejected",
+    "requirement_ids": ["REQ-SECURITY-004"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student 'alice' has a valid session token"
+    ],
+    "steps": [
+      "Send POST /api/student/courses with alice's session token and the value 'invalid-csrf-token' in the X-CSRF-Token header",
+      "Include a valid course creation payload in the request body"
+    ],
+    "expected_result": "HTTP 403 response; the request is rejected before any state change is applied."
+  },
+  {
+    "id": "TC-SECURITY-014",
+    "title": "Read-only GET request is not blocked when CSRF token is absent",
+    "requirement_ids": ["REQ-SECURITY-004"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student 'alice' has a valid session token"
+    ],
+    "steps": [
+      "Send GET /api/student/courses with alice's session token and no X-CSRF-Token header"
+    ],
+    "expected_result": "HTTP 200 response; read-only requests are not subject to CSRF token validation and are processed normally."
+  },
+  {
+    "id": "TC-SECURITY-015",
+    "title": "CSRF token validation unit test rejects mismatched token",
+    "requirement_ids": ["REQ-SECURITY-004"],
+    "type": "unit",
+    "category": "negative",
+    "preconditions": [],
+    "steps": [
+      "Call the CSRF validation function with session-bound expected token 'tok-abc' and presented token 'tok-xyz'"
+    ],
+    "expected_result": "The function returns a validation failure; the tokens do not match and the call is not authorized."
+  },
+  {
+    "id": "TC-SECURITY-016",
+    "title": "Replayed CSRF token on a second request in the same session is rejected with HTTP 403",
+    "requirement_ids": ["REQ-SECURITY-004"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student 'alice' has a valid session token",
+      "A valid single-use CSRF token has been obtained from the server for alice's session"
+    ],
+    "steps": [
+      "Send POST /api/student/courses with alice's session token and the valid CSRF token in the X-CSRF-Token header; include a valid course creation payload — assert HTTP 200 or HTTP 201",
+      "Send POST /api/student/courses again with alice's session token and the same CSRF token value in the X-CSRF-Token header; include a valid course creation payload"
+    ],
+    "expected_result": "HTTP 403 response on the second request; the server rejects the replayed CSRF token because it is single-use or bound to the prior request context, even though the token passes signature and format checks."
+  },
+  {
+    "id": "TC-SECURITY-017",
+    "title": "CSRF token from Student A's session is rejected when presented with Student B's auth token",
+    "requirement_ids": ["REQ-SECURITY-004"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student 'alice' has a valid session token and has obtained a valid CSRF token bound to her session",
+      "Student 'bob' has a valid session token"
+    ],
+    "steps": [
+      "Send POST /api/student/courses with bob's session token in the Authorization header and alice's CSRF token in the X-CSRF-Token header; include a valid course creation payload"
+    ],
+    "expected_result": "HTTP 403 response; the server rejects the request because the CSRF token is bound to alice's session and does not match bob's session context."
+  },
+  {
+    "id": "TC-SECURITY-018",
+    "title": "Student B cannot submit to a course owned by Student A via POST submissions endpoint",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student account 'alice' owns course with id 'course-alice-1'",
+      "Student account 'bob' has a valid session token and a valid CSRF token"
+    ],
+    "steps": [
+      "Send POST /api/student/courses/course-alice-1/submissions with bob's session token in the Authorization header and a valid submission payload",
+      "Query the database to check whether any submission record was created for course-alice-1 by bob"
+    ],
+    "expected_result": "HTTP 403 response; no submission record is created in the database for course-alice-1 attributed to bob or any other student."
+  },
+  {
+    "id": "TC-SECURITY-019",
+    "title": "Student B cannot post a chat message to a course owned by Student A via POST chat endpoint",
+    "requirement_ids": ["REQ-SECURITY-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "PostgreSQL instance is running via Docker Compose",
+      "Student account 'alice' owns course with id 'course-alice-1'",
+      "Student account 'bob' has a valid session token and a valid CSRF token"
+    ],
+    "steps": [
+      "Send POST /api/student/courses/course-alice-1/chat with bob's session token in the Authorization header and a valid chat message payload",
+      "Query the database to check whether any chat record was created for course-alice-1 by bob"
+    ],
+    "expected_result": "HTTP 403 response; no chat record is created in the database for course-alice-1 attributed to bob or any other student."
+  }
+]

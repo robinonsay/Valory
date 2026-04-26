@@ -1,0 +1,245 @@
+[
+  {
+    "id": "TC-ADMIN-001",
+    "title": "Admin successfully sets the agent retry limit to a valid value",
+    "requirement_ids": ["REQ-ADMIN-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"agent_retry_limit\":5}"
+    ],
+    "expected_result": "HTTP 200 response; the agent_retry_limit configuration value in the database is 5."
+  },
+  {
+    "id": "TC-ADMIN-002",
+    "title": "Admin setting agent retry limit to zero is rejected",
+    "requirement_ids": ["REQ-ADMIN-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Current agent_retry_limit is 3"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"agent_retry_limit\":0}"
+    ],
+    "expected_result": "HTTP 400 response with a validation error; agent_retry_limit remains 3 in the database."
+  },
+  {
+    "id": "TC-ADMIN-003",
+    "title": "Non-admin is rejected when attempting to set the agent retry limit",
+    "requirement_ids": ["REQ-ADMIN-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Student user is authenticated",
+      "Current agent_retry_limit is 3"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"agent_retry_limit\":10}"
+    ],
+    "expected_result": "HTTP 403 response; agent_retry_limit remains 3 in the database."
+  },
+  {
+    "id": "TC-ADMIN-004",
+    "title": "Agent retry limit update is reflected in subsequent agent invocations",
+    "requirement_ids": ["REQ-ADMIN-001"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated",
+      "A student course generation task is pending"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"agent_retry_limit\":2}",
+      "Trigger a content generation task that will encounter AI API errors",
+      "Observe agent retry behavior in system logs"
+    ],
+    "expected_result": "The agent retries at most 2 times before escalating; no more than 2 retry attempts are recorded in the logs."
+  },
+  {
+    "id": "TC-ADMIN-005",
+    "title": "Agent retry limit set to a negative value is rejected",
+    "requirement_ids": ["REQ-ADMIN-001"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated"
+    ],
+    "steps": [
+      "Call the config validation function with agent_retry_limit value of -1"
+    ],
+    "expected_result": "The validation function returns an error indicating the value must be a positive integer; no config update is persisted."
+  },
+  {
+    "id": "TC-ADMIN-006",
+    "title": "Admin successfully sets the correction loop limit to a valid value",
+    "requirement_ids": ["REQ-ADMIN-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"correction_loop_limit\":4}"
+    ],
+    "expected_result": "HTTP 200 response; the correction_loop_limit configuration value in the database is 4."
+  },
+  {
+    "id": "TC-ADMIN-007",
+    "title": "Admin setting correction loop limit to a non-integer is rejected",
+    "requirement_ids": ["REQ-ADMIN-002"],
+    "type": "unit",
+    "category": "negative",
+    "preconditions": [
+      "Admin user is authenticated"
+    ],
+    "steps": [
+      "Call the config validation function with correction_loop_limit value of 2.5"
+    ],
+    "expected_result": "The validation function returns a type error; no config update is persisted."
+  },
+  {
+    "id": "TC-ADMIN-008",
+    "title": "Correction loop stops after reaching the configured limit",
+    "requirement_ids": ["REQ-ADMIN-002"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "Admin has set correction_loop_limit to 3",
+      "A content generation task is in progress that produces content failing validation on every iteration"
+    ],
+    "steps": [
+      "Allow the correction loop to run until it halts",
+      "Inspect system logs for the number of correction iterations recorded"
+    ],
+    "expected_result": "The correction loop halts after exactly 3 iterations; the system logs a failure and escalates to admin without further loop iterations."
+  },
+  {
+    "id": "TC-ADMIN-009",
+    "title": "Correction loop limit of 1 stops after the first failed correction",
+    "requirement_ids": ["REQ-ADMIN-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin has set correction_loop_limit to 1",
+      "A content correction task is triggered that fails validation"
+    ],
+    "steps": [
+      "Trigger a content generation task that will fail correction validation",
+      "Observe system logs"
+    ],
+    "expected_result": "The correction loop makes exactly 1 iteration and then halts; admin escalation is triggered."
+  },
+  {
+    "id": "TC-ADMIN-010",
+    "title": "Admin successfully sets per-student AI token cost limit",
+    "requirement_ids": ["REQ-ADMIN-003"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "Admin user is authenticated"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"per_student_token_limit\":100000}"
+    ],
+    "expected_result": "HTTP 200 response; the per_student_token_limit value in the database is 100000."
+  },
+  {
+    "id": "TC-ADMIN-011",
+    "title": "Admin setting per-student token limit to zero is rejected",
+    "requirement_ids": ["REQ-ADMIN-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin user is authenticated",
+      "Current per_student_token_limit is 50000"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"per_student_token_limit\":0}"
+    ],
+    "expected_result": "HTTP 400 response; per_student_token_limit remains 50000 in the database."
+  },
+  {
+    "id": "TC-ADMIN-012",
+    "title": "Non-admin cannot set the per-student token limit",
+    "requirement_ids": ["REQ-ADMIN-003"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Student user is authenticated",
+      "Current per_student_token_limit is 50000"
+    ],
+    "steps": [
+      "PUT /api/admin/config with body {\"per_student_token_limit\":999999}"
+    ],
+    "expected_result": "HTTP 403 response; per_student_token_limit remains 50000 in the database."
+  },
+  {
+    "id": "TC-ADMIN-013",
+    "title": "Per-student token limit set to maximum allowed boundary value is accepted",
+    "requirement_ids": ["REQ-ADMIN-003"],
+    "type": "unit",
+    "category": "edge",
+    "preconditions": [
+      "Admin user is authenticated"
+    ],
+    "steps": [
+      "Call the config validation function with per_student_token_limit set to the system-defined maximum allowed value"
+    ],
+    "expected_result": "The validation function returns no error; the value is accepted and can be persisted."
+  },
+  {
+    "id": "TC-ADMIN-014",
+    "title": "AI processing halts when a student course reaches the configured token limit",
+    "requirement_ids": ["REQ-ADMIN-004"],
+    "type": "e2e",
+    "category": "positive",
+    "preconditions": [
+      "Admin has set per_student_token_limit to 500",
+      "Student account with id 'stu-cap-1' has an active course",
+      "Token usage for 'stu-cap-1' on that course is at 499"
+    ],
+    "steps": [
+      "Trigger an AI processing action for 'stu-cap-1' that would consume at least 2 tokens",
+      "Observe whether the action proceeds or is halted",
+      "Query the database for the final token usage value for 'stu-cap-1'"
+    ],
+    "expected_result": "The AI processing action is halted before or upon reaching 500 tokens; no further AI API calls are made for this course; an appropriate error or status is recorded."
+  },
+  {
+    "id": "TC-ADMIN-015",
+    "title": "AI processing is rejected when token usage already equals the configured limit",
+    "requirement_ids": ["REQ-ADMIN-004"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "Admin has set per_student_token_limit to 1000",
+      "Student account with id 'stu-cap-2' has token usage of 1000 for the current course"
+    ],
+    "steps": [
+      "Trigger any AI processing action for course owned by 'stu-cap-2'"
+    ],
+    "expected_result": "HTTP 402 or 429 response or an internal cap-exceeded error; no AI API call is made; token usage for 'stu-cap-2' remains 1000."
+  },
+  {
+    "id": "TC-ADMIN-016",
+    "title": "Token cap enforcement is per-course, not per-student globally",
+    "requirement_ids": ["REQ-ADMIN-004"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "Admin has set per_student_token_limit to 200",
+      "Student account with id 'stu-cap-3' has course A with 200 tokens used and course B with 0 tokens used"
+    ],
+    "steps": [
+      "Trigger an AI processing action for course B owned by 'stu-cap-3'",
+      "Verify the action succeeds",
+      "Trigger an AI processing action for course A owned by 'stu-cap-3'"
+    ],
+    "expected_result": "The action on course B succeeds because course B is within its token limit. The action on course A is halted because course A has reached its token limit."
+  }
+]

@@ -1,0 +1,116 @@
+[
+  {
+    "id": "TC-NOTIFY-001",
+    "title": "Student receives failure notification when AI API retries are exhausted",
+    "requirement_ids": ["REQ-NOTIFY-001"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with a registered notification address.",
+      "The notify module and PostgreSQL database are running via Docker Compose.",
+      "The AI API is configured to always return a failure response for this test.",
+      "The agent retry limit is set to a small known value, for example 3."
+    ],
+    "steps": [
+      "Trigger a content generation operation for the student.",
+      "Allow the agent module to exhaust all configured retries against the failing AI API.",
+      "Observe the notification delivery record in the database or notification service log."
+    ],
+    "expected_result": "The notify module delivers exactly one failure notification to the student after retries are exhausted, and the notification record is persisted with the correct student ID and failure reason."
+  },
+  {
+    "id": "TC-NOTIFY-002",
+    "title": "No duplicate failure notification is sent when retries are exhausted",
+    "requirement_ids": ["REQ-NOTIFY-001"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists with a registered notification address.",
+      "The notify module and PostgreSQL database are running via Docker Compose.",
+      "The AI API is configured to always return a failure response for this test.",
+      "The agent retry limit is set to a small known value."
+    ],
+    "steps": [
+      "Trigger a content generation operation for the student.",
+      "Allow the agent module to exhaust all configured retries.",
+      "Query the notification delivery table for records matching the student ID and failure event.",
+      "Count the number of notification records produced."
+    ],
+    "expected_result": "Exactly one failure notification record exists for the student for this generation event; no duplicate notifications are created."
+  },
+  {
+    "id": "TC-NOTIFY-003",
+    "title": "No failure notification is sent when AI API call succeeds",
+    "requirement_ids": ["REQ-NOTIFY-001"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with a registered notification address.",
+      "The notify module and PostgreSQL database are running via Docker Compose.",
+      "The AI API returns a successful response."
+    ],
+    "steps": [
+      "Trigger a content generation operation for the student.",
+      "Allow the agent module to complete successfully.",
+      "Query the notification delivery table for any failure notification records matching the student ID."
+    ],
+    "expected_result": "No failure notification record is created for the student because the AI API call succeeded."
+  },
+  {
+    "id": "TC-NOTIFY-004",
+    "title": "Student receives timeout notification when content generation exceeds the time limit",
+    "requirement_ids": ["REQ-NOTIFY-002"],
+    "type": "integration",
+    "category": "positive",
+    "preconditions": [
+      "A student account exists with a registered notification address.",
+      "The notify module and PostgreSQL database are running via Docker Compose.",
+      "The content generation timeout is set to a short value for testing.",
+      "The AI API is configured to respond slowly, exceeding the timeout."
+    ],
+    "steps": [
+      "Trigger a content generation operation for the student.",
+      "Wait for the configured timeout period to elapse.",
+      "Observe the notification delivery record in the database or notification service log."
+    ],
+    "expected_result": "The notify module delivers exactly one timeout notification to the student after the generation deadline is exceeded, and the notification record is persisted with the correct student ID and timeout reason."
+  },
+  {
+    "id": "TC-NOTIFY-005",
+    "title": "No timeout notification is sent when content generation completes before the time limit",
+    "requirement_ids": ["REQ-NOTIFY-002"],
+    "type": "integration",
+    "category": "negative",
+    "preconditions": [
+      "A student account exists with a registered notification address.",
+      "The notify module and PostgreSQL database are running via Docker Compose.",
+      "The content generation timeout is set to a generous value.",
+      "The AI API returns a response well within the timeout."
+    ],
+    "steps": [
+      "Trigger a content generation operation for the student.",
+      "Allow the operation to complete successfully before the timeout elapses.",
+      "Query the notification delivery table for any timeout notification records matching the student ID."
+    ],
+    "expected_result": "No timeout notification record is created for the student because generation completed within the configured time limit."
+  },
+  {
+    "id": "TC-NOTIFY-006",
+    "title": "Timeout notification is distinct from API failure notification",
+    "requirement_ids": ["REQ-NOTIFY-001", "REQ-NOTIFY-002"],
+    "type": "integration",
+    "category": "edge",
+    "preconditions": [
+      "A student account exists with a registered notification address.",
+      "The notify module and PostgreSQL database are running via Docker Compose.",
+      "Test fixtures produce both a timeout event and an API failure event for different operations."
+    ],
+    "steps": [
+      "Trigger a content generation that times out for the student.",
+      "Trigger a separate content generation that exhausts API retries for the same student.",
+      "Query the notification delivery table for all records matching the student ID.",
+      "Inspect the notification type field of each record."
+    ],
+    "expected_result": "Two notification records exist: one with notification type timeout and one with notification type api-failure. The type fields are distinct and correctly identify the failure mode."
+  }
+]

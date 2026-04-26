@@ -1,0 +1,44 @@
+{
+  "name": "Valory Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [8443, 5432, 5173],
+  "portsAttributes": {
+    "8443": { "label": "API (TLS)", "onAutoForward": "notify" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" },
+    "5173": { "label": "Vite Dev Server", "onAutoForward": "openBrowser" }
+  },
+  "postCreateCommand": "[ -f /workspace/backend/go.mod ] && cd /workspace/backend && go mod download; [ -f /workspace/frontend/package.json ] && cd /workspace/frontend && npm ci; true",
+  "remoteEnv": {
+    "GOPATH": "/go",
+    "PATH": "${containerEnv:PATH}:/go/bin"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "Vue.volar",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
+      ],
+      "settings": {
+        "go.toolsManagement.checkForUpdates": "local",
+        "go.useLanguageServer": true,
+        "[go]": {
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "golang.go"
+        },
+        "[vue]": {
+          "editor.defaultFormatter": "Vue.volar"
+        },
+        "[typescript]": {
+          "editor.defaultFormatter": "Vue.volar"
+        }
+      }
+    }
+  }
+}

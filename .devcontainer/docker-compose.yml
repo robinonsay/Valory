@@ -1,0 +1,42 @@
+services:
+  devcontainer:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - go-mod-cache:/go/pkg/mod
+    command: sleep infinity
+    environment:
+      DATABASE_URL: postgres://valory_app:devpassword@db:5432/valory?sslmode=disable
+      DB_PASSWORD: devpassword
+      ACME_DOMAIN: ""
+      ACME_CACHE_DIR: /tmp/acme-cache
+      UPLOADS_DIR: /tmp/uploads
+      SESSION_TIMEOUT_SECONDS: "1800"
+      AGENT_RETRY_LIMIT: "3"
+      CORRECTION_LOOP_MAX: "5"
+      CONTENT_GENERATION_TIMEOUT_SECONDS: "300"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: valory
+      POSTGRES_USER: valory_app
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valory_app -d valory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  go-mod-cache:
+  db-data:

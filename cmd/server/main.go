@@ -16,6 +16,7 @@ import (
 	"github.com/valory/valory/internal/admin"
 	"github.com/valory/valory/internal/audit"
 	"github.com/valory/valory/internal/auth"
+	"github.com/valory/valory/internal/course"
 	"github.com/valory/valory/internal/db"
 	"github.com/valory/valory/internal/infra"
 	"github.com/valory/valory/internal/security"
@@ -85,6 +86,19 @@ func main() {
 	// --- Audit module wiring ---
 	auditHandler := audit.NewHandler(auditRepo)
 
+	// --- Course module wiring ---
+	courseRepo := course.NewRepository(pool)
+	courseSvc := course.NewService(courseRepo)
+	courseHandler := course.NewHandler(courseSvc)
+
+	// --- Admin config handler ---
+	adminConfigHandler := admin.NewConfigHandler(configSvc, auditRepo, pool)
+
+	// Warn if BRAVE_API_KEY is absent — required in Sprint 4 for web search.
+	if os.Getenv("BRAVE_API_KEY") == "" {
+		log.Printf("server: BRAVE_API_KEY is not set; web search will be unavailable in Sprint 4")
+	}
+
 	// --- Router ---
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
@@ -138,6 +152,21 @@ func main() {
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireRole("admin"))
 					auditHandler.Routes(r)
+				})
+			})
+
+			// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
+			// --- Course routes (authenticated students and admins) ---
+			r.Route("/courses", func(r chi.Router) {
+				courseHandler.Routes(r)
+			})
+
+			// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003"]}
+			// --- Admin config routes ---
+			r.Route("/admin/config", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireRole("admin"))
+					adminConfigHandler.Routes(r)
 				})
 			})
 		})

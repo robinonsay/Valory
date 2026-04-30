@@ -100,3 +100,17 @@ func (c *ConfigService) GetFloat64(key string) float64 {
 
 	return num
 }
+
+// Snapshot returns a copy of the current config map. The caller receives a
+// stable snapshot that will not be mutated after return.
+//
+// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003"]}
+func (c *ConfigService) Snapshot() map[string]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	out := make(map[string]string, len(c.values))
+	for k, v := range c.values {
+		out[k] = v
+	}
+	return out
+}

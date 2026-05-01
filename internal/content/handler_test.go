@@ -1,6 +1,6 @@
 //go:build testing
 
-// @{"verifies": ["REQ-CONTENT-004"]}
+// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
 package content
 
 import (
@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -146,5 +147,261 @@ func TestSubmitFeedback_ExactlyAtLimit_MultiByteRunes_PassesLengthGuard(t *testi
 	}
 	if w.Code != http.StatusCreated {
 		t.Errorf("2000-rune feedback_text: want 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+func TestExportSection_BadFormat_Returns400(t *testing.T) {
+	h := NewContentHandler(nil)
+
+	router := chi.NewRouter()
+	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(uuid.New()), "student"))
+		h.exportSection(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/" + uuid.New().String() + "/0/export?format=docx", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for format=docx, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != "BAD_REQUEST" {
+		t.Errorf("want error code BAD_REQUEST, got %s", resp["error"])
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+func TestExportSection_MissingFormat_Returns400(t *testing.T) {
+	h := NewContentHandler(nil)
+
+	router := chi.NewRouter()
+	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(uuid.New()), "student"))
+		h.exportSection(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/" + uuid.New().String() + "/0/export", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for missing format, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != "BAD_REQUEST" {
+		t.Errorf("want error code BAD_REQUEST, got %s", resp["error"])
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+func TestExportSection_NotFound_Returns404(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewContentRepository(pool)
+
+	studentID := createUser(ctx, t, "export_notfound_"+uuid.New().String())
+	courseID := createCourse(ctx, t, studentID, "test topic")
+
+	h := NewContentHandler(repo)
+	router := chi.NewRouter()
+	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		h.exportSection(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/" + courseID.String() + "/99/export?format=html", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("want 404 for nonexistent section, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != "NOT_FOUND" {
+		t.Errorf("want error code NOT_FOUND, got %s", resp["error"])
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+func TestExportSection_BinaryNotFound_Returns500(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	if _, err := exec.LookPath("asciidoctor"); err == nil {
+		t.Skip("asciidoctor is installed; skipping error path test")
+	}
+
+	ctx := context.Background()
+	repo := NewContentRepository(pool)
+
+	studentID := createUser(ctx, t, "export_notinstalled_"+uuid.New().String())
+	courseID := createCourse(ctx, t, studentID, "test topic")
+
+	// Insert verified content
+	content, err := repo.InsertLessonContent(ctx, courseID, 0, "Test Section", "= Test\nSome content")
+	if err != nil {
+		t.Fatalf("InsertLessonContent: %v", err)
+	}
+	if err := repo.SetCitationVerified(ctx, content.ID); err != nil {
+		t.Fatalf("SetCitationVerified: %v", err)
+	}
+
+	h := NewContentHandler(repo)
+	router := chi.NewRouter()
+	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		h.exportSection(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/" + courseID.String() + "/0/export?format=html", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("want 500 when asciidoctor binary not found, got %d", w.Code)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != "EXPORT_FAILED" {
+		t.Errorf("want error code EXPORT_FAILED, got %s", resp["error"])
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+func TestExportSection_HappyPath_HTML(t *testing.T) {
+	if _, err := exec.LookPath("asciidoctor"); err != nil {
+		t.Skip("asciidoctor not installed")
+	}
+
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewContentRepository(pool)
+
+	studentID := createUser(ctx, t, "export_html_"+uuid.New().String())
+	courseID := createCourse(ctx, t, studentID, "test topic")
+
+	// Insert verified content
+	content, err := repo.InsertLessonContent(ctx, courseID, 0, "Introduction", "= Introduction\nHello world.")
+	if err != nil {
+		t.Fatalf("InsertLessonContent: %v", err)
+	}
+	if err := repo.SetCitationVerified(ctx, content.ID); err != nil {
+		t.Fatalf("SetCitationVerified: %v", err)
+	}
+
+	h := NewContentHandler(repo)
+	router := chi.NewRouter()
+	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		h.exportSection(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/" + courseID.String() + "/0/export?format=html", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("want 200 for successful export, got %d", w.Code)
+	}
+
+	if w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Errorf("want Content-Type 'text/html; charset=utf-8', got %s", w.Header().Get("Content-Type"))
+	}
+
+	expectedDisposition := `attachment; filename="section-0.html"`
+	if w.Header().Get("Content-Disposition") != expectedDisposition {
+		t.Errorf("want Content-Disposition %q, got %q", expectedDisposition, w.Header().Get("Content-Disposition"))
+	}
+
+	if w.Body.Len() == 0 {
+		t.Error("want non-empty response body for HTML export")
+	}
+
+	if !strings.Contains(w.Body.String(), "<!DOCTYPE html") && !strings.Contains(w.Body.String(), "<html") {
+		t.Error("want HTML output, but response does not look like HTML")
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+func TestExportSection_HappyPath_PDF(t *testing.T) {
+	if _, err := exec.LookPath("asciidoctor-pdf"); err != nil {
+		t.Skip("asciidoctor-pdf not installed")
+	}
+
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewContentRepository(pool)
+
+	studentID := createUser(ctx, t, "export_pdf_"+uuid.New().String())
+	courseID := createCourse(ctx, t, studentID, "test topic")
+
+	// Insert verified content
+	content, err := repo.InsertLessonContent(ctx, courseID, 1, "Chapter One", "= Chapter One\nLet's begin.")
+	if err != nil {
+		t.Fatalf("InsertLessonContent: %v", err)
+	}
+	if err := repo.SetCitationVerified(ctx, content.ID); err != nil {
+		t.Fatalf("SetCitationVerified: %v", err)
+	}
+
+	h := NewContentHandler(repo)
+	router := chi.NewRouter()
+	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		h.exportSection(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/" + courseID.String() + "/1/export?format=pdf", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("want 200 for successful export, got %d", w.Code)
+	}
+
+	if w.Header().Get("Content-Type") != "application/pdf" {
+		t.Errorf("want Content-Type 'application/pdf', got %s", w.Header().Get("Content-Type"))
+	}
+
+	expectedDisposition := `attachment; filename="section-1.pdf"`
+	if w.Header().Get("Content-Disposition") != expectedDisposition {
+		t.Errorf("want Content-Disposition %q, got %q", expectedDisposition, w.Header().Get("Content-Disposition"))
+	}
+
+	if w.Body.Len() == 0 {
+		t.Error("want non-empty response body for PDF export")
+	}
+
+	// PDF files start with magic number %PDF
+	if !strings.HasPrefix(w.Body.String(), "%PDF") {
+		t.Error("want PDF output, but response does not start with PDF magic number")
 	}
 }

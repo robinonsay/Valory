@@ -5,7 +5,11 @@ package content
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"unicode/utf8"
 
@@ -32,6 +36,7 @@ func NewContentHandler(repo *ContentRepository) *ContentHandler {
 func (h *ContentHandler) Routes(r chi.Router) {
 	r.Get("/{sectionIndex}", h.getSection)
 	r.Post("/{sectionIndex}/feedback", h.submitFeedback)
+	r.Get("/{sectionIndex}/export", h.exportSection)
 }
 
 // getSection returns the latest citation-verified lesson content for a section.
@@ -140,6 +145,96 @@ func (h *ContentHandler) submitFeedback(w http.ResponseWriter, r *http.Request) 
 		"submitted_at":            fb.SubmittedAt,
 		"regeneration_triggered":  fb.RegenerationTriggered,
 	})
+}
+
+// exportSection converts a section's AsciiDoc content to HTML or PDF using
+// asciidoctor/asciidoctor-pdf subprocesses and streams the result to the client.
+//
+// @{"req": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+func (h *ContentHandler) exportSection(w http.ResponseWriter, r *http.Request) {
+	courseID, ok := parseCourseID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid course id")
+		return
+	}
+
+	sectionIndex, err := strconv.Atoi(chi.URLParam(r, "sectionIndex"))
+	if err != nil || sectionIndex < 0 {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid section index")
+		return
+	}
+
+	format := r.URL.Query().Get("format")
+	if format != "html" && format != "pdf" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "format must be html or pdf")
+		return
+	}
+
+	row, err := h.repo.GetSectionContent(r.Context(), courseID, sectionIndex)
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "section not found")
+		return
+	}
+	if errors.Is(err, ErrNotVerified) {
+		writeJSON(w, http.StatusAccepted, map[string]string{
+			"status":  "pending_review",
+			"message": "content is being reviewed and will be available shortly",
+		})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	tmpFile, err := os.CreateTemp("", "valory-export-*.adoc")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(row.ContentAdoc); err != nil {
+		tmpFile.Close()
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+	tmpFile.Close()
+
+	var cmd *exec.Cmd
+	var contentType string
+	var filename string
+
+	if format == "html" {
+		cmd = exec.CommandContext(r.Context(), "asciidoctor", "-o", "-", tmpFile.Name())
+		contentType = "text/html; charset=utf-8"
+		filename = fmt.Sprintf("section-%d.html", sectionIndex)
+	} else {
+		cmd = exec.CommandContext(r.Context(), "asciidoctor-pdf", "-o", "-", tmpFile.Name())
+		contentType = "application/pdf"
+		filename = fmt.Sprintf("section-%d.pdf", sectionIndex)
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			log.Printf("asciidoctor binary not found — is it installed in the container?")
+		} else {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				log.Printf("export conversion failed (exit %d): %s", exitErr.ExitCode(), exitErr.Stderr)
+			} else {
+				log.Printf("export conversion failed: %v", err)
+			}
+		}
+		writeError(w, http.StatusInternalServerError, "EXPORT_FAILED", "export conversion failed")
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.WriteHeader(http.StatusOK)
+	w.Write(output)
 }
 
 // parseCourseID extracts and parses the {id} URL parameter. Matches the

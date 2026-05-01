@@ -18,12 +18,14 @@ import (
 	"github.com/valory/valory/internal/agent"
 	"github.com/valory/valory/internal/audit"
 	"github.com/valory/valory/internal/auth"
+	"github.com/valory/valory/internal/badge"
 	"github.com/valory/valory/internal/content"
 	"github.com/valory/valory/internal/course"
 	"github.com/valory/valory/internal/db"
 	"github.com/valory/valory/internal/infra"
 	"github.com/valory/valory/internal/notify"
 	"github.com/valory/valory/internal/security"
+	"github.com/valory/valory/internal/submission"
 	"github.com/valory/valory/internal/user"
 	"github.com/valory/valory/migrations"
 )
@@ -136,6 +138,17 @@ func main() {
 	contentRepo := content.NewContentRepository(pool)
 	contentHandler := content.NewContentHandler(contentRepo)
 
+	// --- Badge module wiring ---
+	// @{"req": ["REQ-BADGE-001", "REQ-BADGE-002", "REQ-BADGE-003"]}
+	badgeRepo := badge.NewRepository(pool)
+	badgeSvc := badge.NewService(badgeRepo)
+	badgeHandler := badge.NewHandler(badgeSvc)
+
+	// --- Submission module wiring ---
+	// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003"]}
+	submissionRepo := submission.NewRepository(pool)
+	submissionHandler := submission.NewHandler(submissionRepo, courseRepo, uploadsDir, configSvc)
+
 	// --- Notify module wiring ---
 	notifyRepo := notify.NewRepository(pool)
 	notifyHandler := notify.NewNotifyHandler(notifyRepo)
@@ -214,8 +227,16 @@ func main() {
 					r.Route("/content", func(r chi.Router) {
 						contentHandler.Routes(r)
 					})
+					// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003"]}
+					r.Route("/homework/{homeworkId}", func(r chi.Router) {
+						submissionHandler.Routes(r)
+					})
 				})
 			})
+
+			// @{"req": ["REQ-BADGE-001", "REQ-BADGE-002", "REQ-BADGE-003"]}
+			// Badge routes span two top-level paths: /badges and /users/me/badges.
+			badgeHandler.Routes(r)
 
 			// @{"req": ["REQ-NOTIFY-001", "REQ-NOTIFY-002"]}
 			// --- Notification routes ---

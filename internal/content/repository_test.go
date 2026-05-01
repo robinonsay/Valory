@@ -16,7 +16,7 @@ var pool *pgxpool.Pool
 func TestMain(m *testing.M) {
 	dbURL := os.Getenv("TEST_DATABASE_URL")
 	if dbURL == "" {
-		os.Exit(0)
+		os.Exit(m.Run())
 	}
 
 	var err error

@@ -15,7 +15,7 @@ func TestMain(m *testing.M) {
 	dbURL := os.Getenv("TEST_DATABASE_URL")
 	if dbURL == "" {
 		// No database URL provided; skip all integration tests gracefully.
-		os.Exit(0)
+		os.Exit(m.Run())
 	}
 
 	var err error

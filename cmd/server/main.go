@@ -5,31 +5,38 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/valory/valory/internal/admin"
+	"github.com/valory/valory/internal/agent"
 	"github.com/valory/valory/internal/audit"
 	"github.com/valory/valory/internal/auth"
+	"github.com/valory/valory/internal/content"
 	"github.com/valory/valory/internal/course"
 	"github.com/valory/valory/internal/db"
 	"github.com/valory/valory/internal/infra"
+	"github.com/valory/valory/internal/notify"
 	"github.com/valory/valory/internal/security"
 	"github.com/valory/valory/internal/user"
 	"github.com/valory/valory/migrations"
 )
 
 func main() {
-	ctx := context.Background()
+	// Signal-aware context: cancels on SIGTERM or SIGINT so agentRunner and
+	// other goroutines stop cleanly before the process exits.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
 
 	// --- Required environment variables ---
 	databaseURL := mustEnv("DATABASE_URL")
-	_ = mustEnv("ANTHROPIC_API_KEY") // validated at startup; consumed by Anthropic SDK calls
+	anthropicAPIKey := mustEnv("ANTHROPIC_API_KEY") // validated at startup; consumed by ThrottledClient
 	uploadsDir := envOrDefault("UPLOADS_DIR", "/app/uploads")
 	acmeDomain := os.Getenv("ACME_DOMAIN")
 	acmeCacheDir := envOrDefault("ACME_CACHE_DIR", "/app/acme-cache")
@@ -58,6 +65,15 @@ func main() {
 		log.Fatalf("server: run migrations: %v", err)
 	}
 
+	// Startup recovery: any agent_run left in 'running' state survived a crash.
+	// Mark them failed so the polling loop can schedule fresh runs.
+	// (No requirement currently covers crash recovery of stale runs; PM follow-up needed.)
+	if _, err := pool.Exec(ctx,
+		`UPDATE agent_runs SET status = 'failed', error = 'server restart' WHERE status = 'running'`,
+	); err != nil {
+		log.Printf("server: startup recovery: mark stale runs failed: %v", err)
+	}
+
 	// @{"req": ["REQ-SECURITY-005"]}
 	// --- Config service (provides consent version) ---
 	configSvc := admin.NewConfigService(pool)
@@ -76,11 +92,33 @@ func main() {
 	// by the gate they are trying to satisfy.
 	authOnlyMW := auth.NewAuthMiddleware(authRepo, pool, inactivityPeriod, nil)
 
+	// --- Agent module wiring ---
+	// Agent is wired before User so AgentRunner can be passed to UserService as
+	// the terminator that cancels in-flight runs on account deletion (REQ-AGENT-013).
+	braveAPIKey := envOrDefault("BRAVE_API_KEY", "")
+	if braveAPIKey == "" {
+		log.Printf("server: BRAVE_API_KEY is not set; web search grounding will be unavailable")
+	}
+
+	throttledClient := agent.NewThrottledClient(anthropicAPIKey, pool, configSvc)
+
+	agentRepo := agent.NewAgentRepository(pool)
+	chatRepo := agent.NewChatRepository(pool)
+	chair := agent.NewChair(throttledClient, pool, agentRepo, chatRepo)
+	professor := agent.NewProfessor(throttledClient, pool, agentRepo, braveAPIKey)
+	reviewer := agent.NewReviewer(throttledClient, pool, agentRepo)
+	agentRunner := agent.NewAgentRunner(pool, agentRepo, chair, professor, reviewer, configSvc)
+	agentHandler := agent.NewAgentHandler(agentRunner, chair, chatRepo)
+
+	// Start background polling goroutines (30s gen poll, 60s feedback poll).
+	go agentRunner.Start(ctx)
+
 	// --- User module wiring ---
 	userRepo := user.NewRepository(pool)
 	auditRepo := audit.NewRepository(pool)
 	emailTransport := user.NewEmailTransport(smtpHost, smtpPort, smtpFrom, smtpPassword, log.Writer())
-	userSvc := user.NewService(pool, userRepo, auditRepo, emailTransport, passwordResetTTL, noopTerminator{})
+	// AgentRunner implements user.AgentTerminator — cancels in-flight runs on account deletion.
+	userSvc := user.NewService(pool, userRepo, auditRepo, emailTransport, passwordResetTTL, agentRunner)
 	userHandler := user.NewHandler(userSvc)
 
 	// --- Audit module wiring ---
@@ -94,10 +132,17 @@ func main() {
 	// --- Admin config handler ---
 	adminConfigHandler := admin.NewConfigHandler(configSvc, auditRepo, pool)
 
-	// Warn if BRAVE_API_KEY is absent — required in Sprint 4 for web search.
-	if os.Getenv("BRAVE_API_KEY") == "" {
-		log.Printf("server: BRAVE_API_KEY is not set; web search will be unavailable in Sprint 4")
-	}
+	// --- Content module wiring ---
+	contentRepo := content.NewContentRepository(pool)
+	contentHandler := content.NewContentHandler(contentRepo)
+
+	// --- Notify module wiring ---
+	notifyRepo := notify.NewRepository(pool)
+	notifyHandler := notify.NewNotifyHandler(notifyRepo)
+	// @{"req": ["REQ-SYS-035", "REQ-SYS-043"]}
+	// Start the background retention worker that purges aged notifications.
+	// configSvc satisfies the GetInt64 interface the worker requires.
+	notifyRepo.StartRetentionWorker(ctx, configSvc)
 
 	// --- Router ---
 	r := chi.NewRouter()
@@ -155,10 +200,27 @@ func main() {
 				})
 			})
 
-			// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
-			// --- Course routes (authenticated students and admins) ---
+			// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015", "REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
+			// --- Course, agent, and content routes share the /courses prefix so that
+			// chi builds a single tree branch and {id} parameters do not conflict.
 			r.Route("/courses", func(r chi.Router) {
+				// Top-level course CRUD (list, create, etc.)
 				courseHandler.Routes(r)
+				// Per-course sub-routes: agent SSE/chat and content delivery.
+				r.Route("/{id}", func(r chi.Router) {
+					// @{"req": ["REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015"]}
+					agentHandler.Routes(r)
+					// @{"req": ["REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
+					r.Route("/content", func(r chi.Router) {
+						contentHandler.Routes(r)
+					})
+				})
+			})
+
+			// @{"req": ["REQ-NOTIFY-001", "REQ-NOTIFY-002"]}
+			// --- Notification routes ---
+			r.Route("/notifications", func(r chi.Router) {
+				notifyHandler.Routes(r)
 			})
 
 			// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003"]}
@@ -196,17 +258,35 @@ func main() {
 		}
 	}()
 
-	log.Printf("server: listening on :8443 (HTTPS)")
-	log.Fatal(httpsServer.ListenAndServeTLS("", ""))
+	go func() {
+		log.Printf("server: listening on :8443 (HTTPS)")
+		if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server: HTTPS listener error: %v", err)
+		}
+	}()
+
+	// Block until SIGTERM or SIGINT arrives, then drain both servers.
+	// (No requirement currently covers graceful shutdown; PM follow-up needed.)
+	<-ctx.Done()
+	stop()
+	log.Printf("server: shutdown signal received, draining connections")
+
+	// Each server gets its own 30-second deadline so a slow HTTPS drain (e.g.
+	// long-lived SSE streams) cannot starve the HTTP redirect listener.
+	httpsCtx, httpsCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer httpsCancel()
+	httpCtx, httpCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer httpCancel()
+
+	if err := httpsServer.Shutdown(httpsCtx); err != nil {
+		log.Printf("server: HTTPS shutdown error: %v", err)
+	}
+	if err := httpServer.Shutdown(httpCtx); err != nil {
+		log.Printf("server: HTTP shutdown error: %v", err)
+	}
+	log.Printf("server: shutdown complete")
 }
 
-// @{"req": ["REQ-USER-007"]}
-// noopTerminator is a no-op implementation of user.AgentTerminator for Sprint 2.
-type noopTerminator struct{}
-
-func (noopTerminator) TerminateStudentOperations(_ context.Context, _ uuid.UUID) error {
-	return nil
-}
 
 func mustEnv(key string) string {
 	v := os.Getenv(key)

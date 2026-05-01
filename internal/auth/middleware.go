@@ -43,6 +43,16 @@ func ConnFromContext(ctx context.Context) (*pgxpool.Conn, bool) {
 	return v, ok
 }
 
+// ContextWithConn returns a new context carrying conn under the same key used
+// by the auth middleware. Background goroutines (e.g. the grading runner) call
+// this with a server-role connection so that repositories' conn(ctx) helper
+// picks up the correct connection rather than falling back to the bare pool.
+//
+// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002"]}
+func ContextWithConn(ctx context.Context, conn *pgxpool.Conn) context.Context {
+	return context.WithValue(ctx, contextKeyConn, conn)
+}
+
 // semverLess reports whether version string a is strictly less than b.
 // Versions are parsed as dot-separated integer components (e.g. "1.10" > "1.9").
 // An unparseable component falls back to 0, so malformed strings are treated

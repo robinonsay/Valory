@@ -187,7 +187,10 @@ func (r *Repository) ListPendingGrading(ctx context.Context) ([]SubmissionRow, e
 //
 // @{"req": ["REQ-SUBMISSION-001"]}
 func (r *Repository) SetRawScore(ctx context.Context, submissionID uuid.UUID, rawScore float64) error {
-	tag, err := r.pool.Exec(ctx,
+	// Use conn(ctx) so that when the grading runner injects a server-role
+	// connection via auth.ContextWithConn, this UPDATE passes FORCE RLS on
+	// submissions. The bare pool carries app.current_role='' which is blocked.
+	tag, err := r.conn(ctx).Exec(ctx,
 		`UPDATE submissions
 		 SET raw_score = $1, grading_status = 'graded'
 		 WHERE id = $2`,
@@ -207,7 +210,8 @@ func (r *Repository) SetRawScore(ctx context.Context, submissionID uuid.UUID, ra
 //
 // @{"req": ["REQ-SUBMISSION-001"]}
 func (r *Repository) MarkGradingFailed(ctx context.Context, submissionID uuid.UUID) error {
-	tag, err := r.pool.Exec(ctx,
+	// Use conn(ctx) for the same RLS reason as SetRawScore above.
+	tag, err := r.conn(ctx).Exec(ctx,
 		`UPDATE submissions
 		 SET grading_status = 'failed'
 		 WHERE id = $1`,

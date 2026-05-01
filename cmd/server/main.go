@@ -22,6 +22,7 @@ import (
 	"github.com/valory/valory/internal/content"
 	"github.com/valory/valory/internal/course"
 	"github.com/valory/valory/internal/db"
+	"github.com/valory/valory/internal/grade"
 	"github.com/valory/valory/internal/infra"
 	"github.com/valory/valory/internal/notify"
 	"github.com/valory/valory/internal/security"
@@ -109,10 +110,23 @@ func main() {
 	chair := agent.NewChair(throttledClient, pool, agentRepo, chatRepo)
 	professor := agent.NewProfessor(throttledClient, pool, agentRepo, braveAPIKey)
 	reviewer := agent.NewReviewer(throttledClient, pool, agentRepo)
-	agentRunner := agent.NewAgentRunner(pool, agentRepo, chair, professor, reviewer, configSvc)
+
+	// --- Badge module wiring (required by grade module) ---
+	badgeRepo := badge.NewRepository(pool)
+	badgeSvc := badge.NewService(badgeRepo)
+
+	// --- Submission module wiring ---
+	submissionRepo := submission.NewRepository(pool)
+
+	// --- Grade module wiring ---
+	gradeRepo := grade.NewRepository(pool)
+	gradeSvc := grade.NewService(gradeRepo, pool, badgeSvc, configSvc)
+	gradeHandler := grade.NewHandler(gradeSvc, gradeRepo)
+
+	agentRunner := agent.NewAgentRunner(pool, agentRepo, chair, professor, reviewer, submissionRepo, gradeSvc, throttledClient, configSvc)
 	agentHandler := agent.NewAgentHandler(agentRunner, chair, chatRepo)
 
-	// Start background polling goroutines (30s gen poll, 60s feedback poll).
+	// Start background polling goroutines (30s gen poll, 60s feedback poll, 30s grade poll).
 	go agentRunner.Start(ctx)
 
 	// --- User module wiring ---
@@ -131,23 +145,15 @@ func main() {
 	courseSvc := course.NewService(courseRepo)
 	courseHandler := course.NewHandler(courseSvc)
 
+	// --- Submission handler wiring (depends on courseRepo for ownership checks) ---
+	submissionHandler := submission.NewHandler(submissionRepo, courseRepo, uploadsDir, configSvc)
+
 	// --- Admin config handler ---
 	adminConfigHandler := admin.NewConfigHandler(configSvc, auditRepo, pool)
 
 	// --- Content module wiring ---
 	contentRepo := content.NewContentRepository(pool)
 	contentHandler := content.NewContentHandler(contentRepo)
-
-	// --- Badge module wiring ---
-	// @{"req": ["REQ-BADGE-001", "REQ-BADGE-002", "REQ-BADGE-003"]}
-	badgeRepo := badge.NewRepository(pool)
-	badgeSvc := badge.NewService(badgeRepo)
-	badgeHandler := badge.NewHandler(badgeSvc)
-
-	// --- Submission module wiring ---
-	// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003"]}
-	submissionRepo := submission.NewRepository(pool)
-	submissionHandler := submission.NewHandler(submissionRepo, courseRepo, uploadsDir, configSvc)
 
 	// --- Notify module wiring ---
 	notifyRepo := notify.NewRepository(pool)
@@ -213,13 +219,12 @@ func main() {
 				})
 			})
 
-			// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015", "REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
-			// --- Course, agent, and content routes share the /courses prefix so that
-			// chi builds a single tree branch and {id} parameters do not conflict.
+			// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015", "REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004", "REQ-GRADE-001", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-GRADE-004", "REQ-GRADE-005"]}
+			// --- Course, agent, content, submission, and grade routes share the /courses prefix.
 			r.Route("/courses", func(r chi.Router) {
 				// Top-level course CRUD (list, create, etc.)
 				courseHandler.Routes(r)
-				// Per-course sub-routes: agent SSE/chat and content delivery.
+				// Per-course sub-routes.
 				r.Route("/{id}", func(r chi.Router) {
 					// @{"req": ["REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015"]}
 					agentHandler.Routes(r)
@@ -227,16 +232,22 @@ func main() {
 					r.Route("/content", func(r chi.Router) {
 						contentHandler.Routes(r)
 					})
-					// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003"]}
+					// @{"req": ["REQ-GRADE-003", "REQ-GRADE-004"]}
+					// Course-level grade summary for the requesting student.
+					r.Route("/grade", func(r chi.Router) {
+						gradeHandler.CourseRoutes(r)
+					})
+					// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003", "REQ-GRADE-001", "REQ-GRADE-002", "REQ-GRADE-005"]}
 					r.Route("/homework/{homeworkId}", func(r chi.Router) {
+						// Submission upload and retrieval.
 						submissionHandler.Routes(r)
+						// Per-homework grade read.
+						r.Route("/grade", func(r chi.Router) {
+							gradeHandler.HomeworkRoutes(r)
+						})
 					})
 				})
 			})
-
-			// @{"req": ["REQ-BADGE-001", "REQ-BADGE-002", "REQ-BADGE-003"]}
-			// Badge routes span two top-level paths: /badges and /users/me/badges.
-			badgeHandler.Routes(r)
 
 			// @{"req": ["REQ-NOTIFY-001", "REQ-NOTIFY-002"]}
 			// --- Notification routes ---

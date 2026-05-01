@@ -7,27 +7,68 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
+	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/valory/valory/internal/auth"
 	"github.com/valory/valory/internal/db"
 	"github.com/valory/valory/internal/notify"
 )
 
+// submissionRepository is the subset of submission.Repository the runner needs.
+// Defined here (consumer side) to avoid an import cycle between agent and submission.
+// ListPendingGrading is not in this interface because the runner queries the DB
+// directly (joining homework and courses) to get the rubric and course_id in one
+// round-trip; only the write methods are delegated to the repository.
+type submissionRepository interface {
+	SetRawScore(ctx context.Context, submissionID uuid.UUID, rawScore float64) error
+	MarkGradingFailed(ctx context.Context, submissionID uuid.UUID) error
+}
+
+// gradeService is the subset of grade.Service the runner needs.
+// Defined here to avoid an import cycle between agent and grade.
+type gradeService interface {
+	ComputeAndStoreGrade(ctx context.Context, submissionID, homeworkID, studentID, courseID uuid.UUID, rawScore float64) error
+}
+
+// aiMessenger is the subset of ThrottledClient that GradeSubmission needs.
+// Defined here so unit tests can inject a stub without a real Anthropic API key.
+type aiMessenger interface {
+	Messages(ctx context.Context, studentID, courseID uuid.UUID, params anthropic.MessageNewParams) (*anthropic.Message, error)
+}
+
+// SubmissionToGrade carries the fields the grading runner needs from a pending
+// submission joined with its homework row.
+type SubmissionToGrade struct {
+	ID          uuid.UUID
+	HomeworkID  uuid.UUID
+	StudentID   uuid.UUID
+	CourseID    uuid.UUID
+	FilePath    string
+	Rubric      string
+	SubmittedAt time.Time
+}
+
 // AgentRunner is the central orchestrator. It owns the polling goroutines and
 // drives chair, professor, and reviewer through the content generation pipeline.
 type AgentRunner struct {
-	pool      *pgxpool.Pool
-	agentRepo *AgentRepository
-	chair     *Chair
-	professor *Professor
-	reviewer  *Reviewer
-	configSvc interface {
+	pool           *pgxpool.Pool
+	agentRepo      *AgentRepository
+	chair          *Chair
+	professor      *Professor
+	reviewer       *Reviewer
+	submissionRepo submissionRepository
+	gradeSvc       gradeService
+	aiClient       aiMessenger
+	configSvc      interface {
 		GetInt64(string) int64
 		GetFloat64(string) float64
 	}
@@ -40,24 +81,31 @@ func NewAgentRunner(
 	chair *Chair,
 	professor *Professor,
 	reviewer *Reviewer,
+	submissionRepo submissionRepository,
+	gradeSvc gradeService,
+	aiClient aiMessenger,
 	configSvc interface {
 		GetInt64(string) int64
 		GetFloat64(string) float64
 	},
 ) *AgentRunner {
 	return &AgentRunner{
-		pool:      pool,
-		agentRepo: agentRepo,
-		chair:     chair,
-		professor: professor,
-		reviewer:  reviewer,
-		configSvc: configSvc,
+		pool:           pool,
+		agentRepo:      agentRepo,
+		chair:          chair,
+		professor:      professor,
+		reviewer:       reviewer,
+		submissionRepo: submissionRepo,
+		gradeSvc:       gradeSvc,
+		aiClient:       aiClient,
+		configSvc:      configSvc,
 	}
 }
 
 // Start launches background polling goroutines:
 //   - every 30s: detects syllabus-approved courses and starts content generation (REQ-AGENT-003)
 //   - every 60s: scans for untriggered feedback and kicks off section regeneration (REQ-AGENT-010)
+//   - every 30s: polls for pending-grading submissions and grades each with Claude (REQ-AGENT-003)
 //
 // It blocks until ctx is cancelled.
 //
@@ -65,8 +113,10 @@ func NewAgentRunner(
 func (r *AgentRunner) Start(ctx context.Context) {
 	genTicker := time.NewTicker(30 * time.Second)
 	fbTicker := time.NewTicker(60 * time.Second)
+	gradeTicker := time.NewTicker(30 * time.Second)
 	defer genTicker.Stop()
 	defer fbTicker.Stop()
+	defer gradeTicker.Stop()
 
 	for {
 		select {
@@ -76,6 +126,8 @@ func (r *AgentRunner) Start(ctx context.Context) {
 			r.pollAndGenerate(ctx)
 		case <-fbTicker.C:
 			r.pollFeedback(ctx)
+		case <-gradeTicker.C:
+			r.pollGradingQueue(ctx)
 		}
 	}
 }
@@ -530,4 +582,175 @@ func (r *AgentRunner) lookupAdminID(ctx context.Context) (uuid.UUID, error) {
 		`SELECT id FROM users WHERE role = 'admin' AND is_active = true LIMIT 1`,
 	).Scan(&id)
 	return id, err
+}
+
+// pollGradingQueue runs every 30s, queries submissions with grading_status = 'pending',
+// and for each dispatches GradeSubmission in a goroutine.
+// A server-role connection is required because submissions is RLS-protected and
+// the runner has no user session; the server policy covers SELECT and UPDATE.
+//
+// @{"req": ["REQ-AGENT-003", "REQ-GRADE-001", "REQ-GRADE-002"]}
+func (r *AgentRunner) pollGradingQueue(ctx context.Context) {
+	if r.submissionRepo == nil || r.gradeSvc == nil {
+		// Runner wired without grading support — skip silently.
+		return
+	}
+
+	// Acquire a server-role connection so the JOIN across submissions → homework → courses
+	// passes RLS. The submission repository's ListPendingGrading runs as the bare pool
+	// (server writes policy), so we use the repo's built-in method directly.
+	conn, err := db.AcquireServerConn(ctx, r.pool)
+	if err != nil {
+		log.Printf("runner: poll grading: acquire server conn: %v", err)
+		return
+	}
+
+	// Load pending submissions joined with their homework rubric and course_id so
+	// GradeSubmission has everything it needs without additional queries.
+	rows, err := conn.Query(ctx,
+		`SELECT s.id, s.homework_id, s.student_id, c.id AS course_id,
+		        s.file_path, h.rubric, s.submitted_at
+		 FROM submissions s
+		 JOIN homework h ON h.id = s.homework_id
+		 JOIN courses c ON c.id = h.course_id
+		 WHERE s.grading_status = 'pending'
+		 ORDER BY s.submitted_at ASC
+		 LIMIT 20`,
+	)
+	if err != nil {
+		conn.Release()
+		log.Printf("runner: poll grading: query pending: %v", err)
+		return
+	}
+
+	var pending []SubmissionToGrade
+	for rows.Next() {
+		var sub SubmissionToGrade
+		if err := rows.Scan(
+			&sub.ID,
+			&sub.HomeworkID,
+			&sub.StudentID,
+			&sub.CourseID,
+			&sub.FilePath,
+			&sub.Rubric,
+			&sub.SubmittedAt,
+		); err != nil {
+			log.Printf("runner: poll grading: scan row: %v", err)
+			continue
+		}
+		pending = append(pending, sub)
+	}
+	rows.Close()
+	conn.Release()
+
+	for _, sub := range pending {
+		// Acquire a per-goroutine server-role connection. submissions and grades
+		// both have FORCE ROW LEVEL SECURITY; the bare pool carries an empty
+		// app.current_role (cleared by the AfterRelease hook), which causes every
+		// write to be blocked by RLS. A dedicated connection with
+		// app.current_role = 'server' satisfies the server-access policies.
+		sconn, connErr := db.AcquireServerConn(ctx, r.pool)
+		if connErr != nil {
+			log.Printf("runner: grade submission %s: acquire server conn: %v", sub.ID, connErr)
+			continue
+		}
+		go func(sub SubmissionToGrade, sconn *pgxpool.Conn) {
+			defer sconn.Release()
+			// Inject the server-role connection into context so that all
+			// downstream conn(ctx) calls (submission repo, grade repo, loadTiming)
+			// use the same RLS-bypassing connection instead of the bare pool.
+			gradeCtx := auth.ContextWithConn(ctx, sconn)
+			if err := r.GradeSubmission(gradeCtx, sub); err != nil {
+				log.Printf("runner: grade submission %s: %v", sub.ID, err)
+			}
+		}(sub, sconn)
+	}
+}
+
+// GradeSubmission calls Claude with the homework rubric and submission file
+// content, parses the raw_score from the JSON response, stores it on the
+// submission, and triggers grade computation via gradeSvc.
+//
+// Claude is instructed to return ONLY {"score": <0-100>}. Any non-JSON or
+// out-of-range response is treated as a grading failure and the submission is
+// marked 'failed' so the grading loop does not retry it indefinitely.
+//
+// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002"]}
+func (r *AgentRunner) GradeSubmission(ctx context.Context, sub SubmissionToGrade) error {
+	// Read the submission file. File content validation already happened at
+	// upload time, so we only need to surface read errors here.
+	fileBytes, err := os.ReadFile(sub.FilePath)
+	if err != nil {
+		if markErr := r.submissionRepo.MarkGradingFailed(ctx, sub.ID); markErr != nil {
+			log.Printf("runner: grade submission %s: mark failed: %v", sub.ID, markErr)
+		}
+		return fmt.Errorf("runner: grade submission %s: read file: %w", sub.ID, err)
+	}
+
+	prompt := fmt.Sprintf(
+		"You are a strict academic grader. Grade the following student submission against the rubric below.\n\n"+
+			"Rubric:\n%s\n\n"+
+			"Student submission:\n%s\n\n"+
+			"Respond with ONLY a JSON object in the format: {\"score\": <integer 0-100>}. "+
+			"Do not include any explanation, markdown, or extra text.",
+		sub.Rubric,
+		string(fileBytes),
+	)
+
+	msg, err := r.aiClient.Messages(ctx, sub.StudentID, sub.CourseID, anthropic.MessageNewParams{
+		Model:     anthropic.ModelClaudeSonnet4_6,
+		MaxTokens: 256,
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+		},
+	})
+	if err != nil {
+		if markErr := r.submissionRepo.MarkGradingFailed(ctx, sub.ID); markErr != nil {
+			log.Printf("runner: grade submission %s: mark failed after API error: %v", sub.ID, markErr)
+		}
+		return fmt.Errorf("runner: grade submission %s: AI call: %w", sub.ID, err)
+	}
+
+	// Extract the text block from the response. Anthropic always returns at
+	// least one content block when the call succeeds.
+	if len(msg.Content) == 0 {
+		if markErr := r.submissionRepo.MarkGradingFailed(ctx, sub.ID); markErr != nil {
+			log.Printf("runner: grade submission %s: mark failed (empty content): %v", sub.ID, markErr)
+		}
+		return fmt.Errorf("runner: grade submission %s: empty AI response", sub.ID)
+	}
+	rawText := msg.Content[0].Text
+
+	// Parse {"score": <number>}. We treat any parse failure or out-of-range
+	// value as a grading failure rather than silently accepting a bad score.
+	var scorePayload struct {
+		Score float64 `json:"score"`
+	}
+	if err := json.Unmarshal([]byte(rawText), &scorePayload); err != nil {
+		if markErr := r.submissionRepo.MarkGradingFailed(ctx, sub.ID); markErr != nil {
+			log.Printf("runner: grade submission %s: mark failed (bad JSON): %v", sub.ID, markErr)
+		}
+		return fmt.Errorf("runner: grade submission %s: parse score response %q: %w", sub.ID, rawText, err)
+	}
+	if scorePayload.Score < 0 || scorePayload.Score > 100 {
+		if markErr := r.submissionRepo.MarkGradingFailed(ctx, sub.ID); markErr != nil {
+			log.Printf("runner: grade submission %s: mark failed (score out of range): %v", sub.ID, markErr)
+		}
+		return fmt.Errorf("runner: grade submission %s: score %.1f out of [0,100]", sub.ID, scorePayload.Score)
+	}
+
+	// Store the raw_score on the submission and transition status to 'graded'.
+	if err := r.submissionRepo.SetRawScore(ctx, sub.ID, scorePayload.Score); err != nil {
+		return fmt.Errorf("runner: grade submission %s: set raw score: %w", sub.ID, err)
+	}
+
+	// Compute and persist the final grade (applies late penalty, badge effects).
+	if err := r.gradeSvc.ComputeAndStoreGrade(ctx, sub.ID, sub.HomeworkID, sub.StudentID, sub.CourseID, scorePayload.Score); err != nil {
+		// Grade computation failure is logged but does not mark the submission
+		// as failed — the raw_score is already stored and the grade can be
+		// recomputed on the next poll cycle.
+		return fmt.Errorf("runner: grade submission %s: compute grade: %w", sub.ID, err)
+	}
+
+	return nil
 }

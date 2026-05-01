@@ -336,6 +336,15 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, rawToken, newPasswor
 	return tx.Commit(ctx)
 }
 
+// ListUsers returns up to limit users, optionally filtered by role.
+// It is a thin delegation to the repository layer with no additional business
+// rules beyond input normalisation (handled in the repository).
+//
+// @{"req": ["REQ-USER-001", "REQ-USER-002"]}
+func (s *Service) ListUsers(ctx context.Context, role string, limit int) ([]UserRow, error) {
+	return s.repo.ListUsers(ctx, role, limit)
+}
+
 // RecordConsent upserts the student's consent record. No audit entry is required
 // for consent per the SDD.
 //

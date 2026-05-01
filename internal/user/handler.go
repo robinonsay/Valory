@@ -1,9 +1,11 @@
 package user
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -12,19 +14,30 @@ import (
 	"github.com/valory/valory/internal/security"
 )
 
+// userLister is the subset of Service used by the list endpoint. Keeping it as
+// a narrow interface lets tests supply a lightweight stub without a real DB.
+//
+// @{"req": ["REQ-USER-001", "REQ-USER-002"]}
+type userLister interface {
+	ListUsers(ctx context.Context, role string, limit int) ([]UserRow, error)
+}
+
 // @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005"]}
 type Handler struct {
-	svc *Service
+	svc    *Service
+	lister userLister
 }
 
 // @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005"]}
 func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+	return &Handler{svc: svc, lister: svc}
 }
 
 // AdminRoutes registers admin-only routes (caller applies RequireRole("admin")).
 // @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-007"]}
 func (h *Handler) AdminRoutes(r chi.Router) {
+	// @{"req": ["REQ-USER-001", "REQ-USER-002"]}
+	r.Get("/", h.listUsers)
 	r.Post("/", h.createUser)
 	r.Patch("/{id}", h.modifyUser)
 	r.Post("/{id}/deactivate", h.deactivateUser)
@@ -43,6 +56,57 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 // @{"req": ["REQ-SECURITY-005"]}
 func (h *Handler) StudentRoutes(r chi.Router) {
 	r.Post("/", h.recordConsent)
+}
+
+// @{"req": ["REQ-USER-001", "REQ-USER-002"]}
+func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
+	role := r.URL.Query().Get("role")
+	if role != "" && role != "student" && role != "admin" {
+		writeError(w, http.StatusBadRequest, "role must be 'student', 'admin', or omitted")
+		return
+	}
+
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil || parsed < 1 {
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		limit = parsed
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	users, err := h.lister.ListUsers(r.Context(), role, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	type userItem struct {
+		ID        string  `json:"id"`
+		Username  string  `json:"username"`
+		Role      string  `json:"role"`
+		IsActive  bool    `json:"is_active"`
+		Email     *string `json:"email,omitempty"`
+		CreatedAt string  `json:"created_at"`
+	}
+
+	items := make([]userItem, 0, len(users))
+	for _, u := range users {
+		items = append(items, userItem{
+			ID:        u.ID.String(),
+			Username:  u.Username,
+			Role:      u.Role,
+			IsActive:  u.IsActive,
+			Email:     u.Email,
+			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"users": items})
 }
 
 // @{"req": ["REQ-USER-001"]}

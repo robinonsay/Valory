@@ -70,7 +70,7 @@ func main() {
 
 	// Startup recovery: any agent_run left in 'running' state survived a crash.
 	// Mark them failed so the polling loop can schedule fresh runs.
-	// (No requirement currently covers crash recovery of stale runs; PM follow-up needed.)
+	// @{"req": ["REQ-AGENT-016"]}
 	if _, err := pool.Exec(ctx,
 		`UPDATE agent_runs SET status = 'failed', error = 'server restart' WHERE status = 'running'`,
 	); err != nil {
@@ -114,6 +114,7 @@ func main() {
 	// --- Badge module wiring (required by grade module) ---
 	badgeRepo := badge.NewRepository(pool)
 	badgeSvc := badge.NewService(badgeRepo)
+	badgeHandler := badge.NewHandler(badgeSvc)
 
 	// --- Submission module wiring ---
 	submissionRepo := submission.NewRepository(pool)
@@ -255,6 +256,9 @@ func main() {
 				notifyHandler.Routes(r)
 			})
 
+			// @{"req": ["REQ-BADGE-001", "REQ-BADGE-002", "REQ-BADGE-003"]}
+			badgeHandler.Routes(r)
+
 			// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003"]}
 			// --- Admin config routes ---
 			r.Route("/admin/config", func(r chi.Router) {
@@ -298,7 +302,7 @@ func main() {
 	}()
 
 	// Block until SIGTERM or SIGINT arrives, then drain both servers.
-	// (No requirement currently covers graceful shutdown; PM follow-up needed.)
+	// @{"req": ["REQ-INFRA-002"]}
 	<-ctx.Done()
 	stop()
 	log.Printf("server: shutdown signal received, draining connections")

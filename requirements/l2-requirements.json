@@ -534,5 +534,19 @@
     "rationale": "A machine-readable health endpoint enables load balancers, orchestrators, and monitoring systems to detect subsystem failures without manual intervention.",
     "verification_method": "Test",
     "uses": ["REQ-SYS-047"]
+  },
+  {
+    "id": "REQ-INFRA-002",
+    "title": "Graceful HTTP Server Shutdown",
+    "description": "The infra module shall drain in-flight requests within 30 seconds per listener upon receiving SIGTERM or SIGINT.",
+    "rationale": "Abrupt process termination mid-request corrupts in-progress file uploads and agent SSE streams; a bounded drain window ensures clean handoff without indefinite blocking.",
+    "verification_method": "Inspection"
+  },
+  {
+    "id": "REQ-AGENT-016",
+    "title": "Crash Recovery for Stale Agent Runs",
+    "description": "The agent module shall mark all in-progress agent runs as failed upon service startup.",
+    "rationale": "A server crash leaves runs in an active state permanently; without recovery the student's course generation stalls indefinitely.",
+    "verification_method": "Test"
   }
 ]

@@ -1,0 +1,1284 @@
+[
+  {
+    "id": "REQ-FECOURSE-001",
+    "title": "Course Dashboard View",
+    "description": "The course frontend module shall display a dashboard listing all courses for the authenticated student.",
+    "rationale": "Students need a single entry point to see and manage all their courses without navigating to each one individually.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-010",
+      "REQ-FECOURSE-011",
+      "REQ-FECOURSE-012",
+      "REQ-FECOURSE-013",
+      "REQ-FECOURSE-014"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-002",
+    "title": "Intake Chat View",
+    "description": "The course frontend module shall display a real-time chat view for courses in intake status.",
+    "rationale": "Students must be able to converse with the AI Chair agent to complete the intake process before a syllabus can be drafted.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-020",
+      "REQ-FECOURSE-021",
+      "REQ-FECOURSE-022",
+      "REQ-FECOURSE-023",
+      "REQ-FECOURSE-024",
+      "REQ-FECOURSE-025"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-003",
+    "title": "Syllabus Draft View",
+    "description": "The course frontend module shall display the generated syllabus and allow student approval or modification requests.",
+    "rationale": "Students must review and either accept or request changes to the AI-generated syllabus before course content is created.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-030",
+      "REQ-FECOURSE-031",
+      "REQ-FECOURSE-032",
+      "REQ-FECOURSE-033"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-004",
+    "title": "Due-Date Schedule View",
+    "description": "The course frontend module shall display the due-date schedule and require explicit student agreement before proceeding.",
+    "rationale": "Students must acknowledge homework deadlines before content generation begins, establishing a binding commitment.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-040",
+      "REQ-FECOURSE-041",
+      "REQ-FECOURSE-042"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-005",
+    "title": "Generating View",
+    "description": "The course frontend module shall display a progress view while course content is being generated.",
+    "rationale": "Content generation takes several minutes; students need feedback that the system is working and to be automatically advanced when ready.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-050",
+      "REQ-FECOURSE-051",
+      "REQ-FECOURSE-052"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-006",
+    "title": "Course Hub View",
+    "description": "The course frontend module shall display a hub view for active and completed courses with sections and homework.",
+    "rationale": "Students need a central place to navigate course sections, track homework due dates, and manage enrollment status.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-060",
+      "REQ-FECOURSE-061",
+      "REQ-FECOURSE-062",
+      "REQ-FECOURSE-063"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-007",
+    "title": "SSE Event Stream Connection",
+    "description": "The course frontend module shall maintain an authenticated real-time event stream connection for courses.",
+    "rationale": "The browser EventSource API does not support custom headers, so fetch must be used to authenticate SSE connections.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-020",
+      "REQ-FECOURSE-025",
+      "REQ-FECOURSE-051",
+      "REQ-FECOURSE-070",
+      "REQ-FECOURSE-071",
+      "REQ-FECOURSE-072",
+      "REQ-FECOURSE-073"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-008",
+    "title": "Status-Based View Routing",
+    "description": "The course frontend module shall route each course to the view matching its current status.",
+    "rationale": "Each course status corresponds to a distinct workflow step; routing ensures the student always sees the correct interaction surface.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-014",
+      "REQ-FECOURSE-080",
+      "REQ-FECOURSE-081",
+      "REQ-FECOURSE-082",
+      "REQ-FECOURSE-083",
+      "REQ-FECOURSE-084",
+      "REQ-FECOURSE-085",
+      "REQ-FECOURSE-086"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-009",
+    "title": "Create Course Modal",
+    "description": "The course frontend module shall provide a modal form for creating a new course with a single topic field.",
+    "rationale": "A focused modal keeps course creation discoverable from the dashboard without navigating away from the course list.",
+    "verification_method": "Demonstration",
+    "implements": [
+      "REQ-FECOURSE-090",
+      "REQ-FECOURSE-091",
+      "REQ-FECOURSE-092",
+      "REQ-FECOURSE-093",
+      "REQ-FECOURSE-094",
+      "REQ-FECOURSE-095",
+      "REQ-FECOURSE-096"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-010",
+    "title": "Dashboard: Fetch Course List",
+    "description": "The course frontend module shall load the student's course list when the dashboard is mounted.",
+    "rationale": "The dashboard must be populated with live data on every visit to reflect any status changes since the last session.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-001"],
+    "implements": [
+      "REQ-FECOURSE-100",
+      "REQ-FECOURSE-101",
+      "REQ-FECOURSE-102",
+      "REQ-FECOURSE-103"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-011",
+    "title": "Dashboard: Course Card Display",
+    "description": "The course frontend module shall display each course card with its topic, status, and creation date.",
+    "rationale": "Students need enough information on each card to identify a course and understand its current lifecycle stage.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-001"],
+    "implements": [
+      "REQ-FECOURSE-110",
+      "REQ-FECOURSE-111"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-012",
+    "title": "Dashboard: Empty State",
+    "description": "The course frontend module shall display an empty-state message and create button when the course list is empty.",
+    "rationale": "A first-time student must be clearly guided to create their first course rather than seeing a blank page.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-001"],
+    "implements": [
+      "REQ-FECOURSE-112"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-013",
+    "title": "Dashboard: Create Course Button",
+    "description": "The course frontend module shall display a create-course button that opens the create-course modal.",
+    "rationale": "Students need a persistent, discoverable way to initiate a new course from the dashboard.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-001"],
+    "implements": [
+      "REQ-FECOURSE-113"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-014",
+    "title": "Dashboard: Card Navigation",
+    "description": "The course frontend module shall navigate to the status-appropriate view when a course card is clicked.",
+    "rationale": "Each course status maps to a distinct view; clicking a card must drop the student directly into the correct workflow step.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-001", "REQ-FECOURSE-008"],
+    "implements": [
+      "REQ-FECOURSE-114"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-020",
+    "title": "Intake View: SSE Connection",
+    "description": "The course frontend module shall open a real-time event stream connection when the intake view mounts.",
+    "rationale": "Pipeline events must be streamed in real time during intake so the student receives immediate agent feedback.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-002", "REQ-FECOURSE-007"],
+    "implements": [
+      "REQ-FECOURSE-200",
+      "REQ-FECOURSE-201",
+      "REQ-FECOURSE-202"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-021",
+    "title": "Intake View: Event Display",
+    "description": "The course frontend module shall render each incoming pipeline event as a status message in the intake view.",
+    "rationale": "Students must see agent progress updates as they arrive to know the intake process is active and progressing.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-002"],
+    "implements": [
+      "REQ-FECOURSE-210",
+      "REQ-FECOURSE-211"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-022",
+    "title": "Intake View: Chat Input",
+    "description": "The course frontend module shall provide a text field and send button for submitting chat messages during intake.",
+    "rationale": "The intake process is conversational; students must be able to send messages to the Chair agent at any point.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-002"],
+    "implements": [
+      "REQ-FECOURSE-220",
+      "REQ-FECOURSE-221",
+      "REQ-FECOURSE-222",
+      "REQ-FECOURSE-223",
+      "REQ-FECOURSE-224",
+      "REQ-FECOURSE-225"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-023",
+    "title": "Intake View: Conversation History",
+    "description": "The course frontend module shall display alternating student and assistant messages in chronological order.",
+    "rationale": "Students need to see the full conversation thread to understand context and craft appropriate follow-up messages.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-002"],
+    "implements": [
+      "REQ-FECOURSE-230",
+      "REQ-FECOURSE-231"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-024",
+    "title": "Intake View: Status Transition Navigation",
+    "description": "The course frontend module shall navigate to the syllabus draft view when a pipeline event signals status is syllabus_draft.",
+    "rationale": "Automatic navigation removes friction; students should not need to manually refresh or navigate after intake completes.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-002"],
+    "implements": [
+      "REQ-FECOURSE-240"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-025",
+    "title": "Intake View: SSE Reconnect",
+    "description": "The course frontend module shall retry the event stream connection with exponential backoff on drop, up to five attempts.",
+    "rationale": "Transient network failures must not permanently break the real-time event stream; bounded retries prevent infinite loops.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-002", "REQ-FECOURSE-007"],
+    "implements": [
+      "REQ-FECOURSE-250",
+      "REQ-FECOURSE-251",
+      "REQ-FECOURSE-252"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-030",
+    "title": "Syllabus Draft View: Content Display",
+    "description": "The course frontend module shall display the latest syllabus content in the syllabus draft view.",
+    "rationale": "Students must read the full AI-generated syllabus before deciding to approve or request changes.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-003"],
+    "implements": [
+      "REQ-FECOURSE-300",
+      "REQ-FECOURSE-301"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-031",
+    "title": "Syllabus Draft View: Approve Button",
+    "description": "The course frontend module shall display an approve button that submits the syllabus approval.",
+    "rationale": "Students need a single clear action to accept the syllabus and advance the course to schedule agreement.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-003"],
+    "implements": [
+      "REQ-FECOURSE-310",
+      "REQ-FECOURSE-311",
+      "REQ-FECOURSE-312",
+      "REQ-FECOURSE-313",
+      "REQ-FECOURSE-314"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-032",
+    "title": "Syllabus Draft View: Modification Request",
+    "description": "The course frontend module shall open a text-area modal and submit the student's modification notes.",
+    "rationale": "Students may need changes to the syllabus; a modal with a free-text field lets them describe what should be revised.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-003"],
+    "implements": [
+      "REQ-FECOURSE-320",
+      "REQ-FECOURSE-321",
+      "REQ-FECOURSE-322",
+      "REQ-FECOURSE-323",
+      "REQ-FECOURSE-324",
+      "REQ-FECOURSE-325"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-033",
+    "title": "Syllabus Draft View: Fetch Syllabus",
+    "description": "The course frontend module shall load the latest syllabus for the course on syllabus draft view mount.",
+    "rationale": "The syllabus content must be loaded fresh on each visit so the student always sees the most recent version.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-003"],
+    "implements": [
+      "REQ-FECOURSE-330",
+      "REQ-FECOURSE-331"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-040",
+    "title": "Schedule View: Due-Date List Display",
+    "description": "The course frontend module shall display homework titles and due dates in the due-date schedule view.",
+    "rationale": "Students must be able to review every deadline before committing, as due dates cannot be changed after agreement.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-004"],
+    "implements": [
+      "REQ-FECOURSE-400",
+      "REQ-FECOURSE-401"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-041",
+    "title": "Schedule View: Irreversibility Warning",
+    "description": "The course frontend module shall display a warning that due dates cannot be changed after agreement.",
+    "rationale": "Students must be informed of the binding nature of schedule agreement before they commit.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-004"],
+    "implements": [
+      "REQ-FECOURSE-410"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-042",
+    "title": "Schedule View: Agree Button",
+    "description": "The course frontend module shall submit the student's schedule agreement when the agree button is clicked.",
+    "rationale": "The API must record the student's explicit agreement to the schedule before content generation can begin.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-004"],
+    "implements": [
+      "REQ-FECOURSE-420",
+      "REQ-FECOURSE-421",
+      "REQ-FECOURSE-422",
+      "REQ-FECOURSE-423",
+      "REQ-FECOURSE-424"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-050",
+    "title": "Generating View: Progress Message",
+    "description": "The course frontend module shall display a generation-in-progress message in the generating view.",
+    "rationale": "Students need clear feedback that the system is working so they do not abandon the session or reload prematurely.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-005"],
+    "implements": [
+      "REQ-FECOURSE-500"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-051",
+    "title": "Generating View: SSE Event Display",
+    "description": "The course frontend module shall stream and display pipeline events while course content is being generated.",
+    "rationale": "Pipeline events during content generation give students visibility into what the system is doing, reducing perceived wait time.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-005", "REQ-FECOURSE-007"],
+    "implements": [
+      "REQ-FECOURSE-510",
+      "REQ-FECOURSE-511"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-052",
+    "title": "Generating View: Transition to Active",
+    "description": "The course frontend module shall navigate to the course hub view when a pipeline event signals status is active.",
+    "rationale": "Students must be automatically advanced to the course hub once generation completes, removing the need for a manual refresh.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-005"],
+    "implements": [
+      "REQ-FECOURSE-520"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-060",
+    "title": "Course Hub View: Course Header",
+    "description": "The course frontend module shall display the course topic and status in the course hub view header.",
+    "rationale": "Students need immediate confirmation of which course they are viewing and its current lifecycle status.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-006"],
+    "implements": [
+      "REQ-FECOURSE-600"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-061",
+    "title": "Course Hub View: Section List",
+    "description": "The course frontend module shall list all syllabus sections with navigation links in the course hub view.",
+    "rationale": "Students navigate course content section by section; the hub must expose all sections with direct links to each reader.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-006"],
+    "implements": [
+      "REQ-FECOURSE-610",
+      "REQ-FECOURSE-611"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-062",
+    "title": "Course Hub View: Homework List",
+    "description": "The course frontend module shall display homework assignments with due dates and submission status.",
+    "rationale": "Students must be able to track upcoming and past homework assignments and their submission state from the hub.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-006"],
+    "implements": [
+      "REQ-FECOURSE-620",
+      "REQ-FECOURSE-621"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-063",
+    "title": "Course Hub View: Withdraw and Resume Actions",
+    "description": "The course frontend module shall display a withdraw button for active courses and a resume button for archived courses.",
+    "rationale": "Students must be able to pause (withdraw) or re-enter (resume) a course directly from the hub without navigating elsewhere.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-006"],
+    "implements": [
+      "REQ-FECOURSE-630",
+      "REQ-FECOURSE-631",
+      "REQ-FECOURSE-632",
+      "REQ-FECOURSE-633",
+      "REQ-FECOURSE-634",
+      "REQ-FECOURSE-635",
+      "REQ-FECOURSE-636",
+      "REQ-FECOURSE-637"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-070",
+    "title": "SSE Client: Fetch-Based Connection",
+    "description": "The course frontend module shall open SSE connections using an authenticated streaming request.",
+    "rationale": "The browser EventSource API cannot send custom headers; fetch must be used so the JWT is transmitted with the request.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-007"],
+    "implements": [
+      "REQ-FECOURSE-700",
+      "REQ-FECOURSE-701"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-071",
+    "title": "SSE Client: Resume After Last Event",
+    "description": "The course frontend module shall pass ?after={lastEventId} on SSE reconnect to resume from the last received event.",
+    "rationale": "Resuming from the last event ID prevents duplicate display of events and ensures no pipeline events are missed on reconnect.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-007"],
+    "implements": [
+      "REQ-FECOURSE-710"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-072",
+    "title": "SSE Client: Keepalive Handling",
+    "description": "The course frontend module shall silently discard SSE comment lines beginning with a colon.",
+    "rationale": "The server sends keepalive comments to prevent connection timeouts; these must not be rendered as events.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-007"],
+    "implements": [
+      "REQ-FECOURSE-720"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-073",
+    "title": "SSE Client: Connection Cleanup",
+    "description": "The course frontend module shall close the SSE connection when the consuming view is unmounted.",
+    "rationale": "Leaving open connections after navigation wastes resources and may deliver stale events to an already-destroyed component.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-007"],
+    "implements": [
+      "REQ-FECOURSE-730"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-080",
+    "title": "Routing: Intake Status",
+    "description": "The course frontend module shall route a course with status intake to the intake chat view.",
+    "rationale": "The intake chat view is the only appropriate surface for a course that has not yet completed its intake conversation.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-008"]
+  },
+  {
+    "id": "REQ-FECOURSE-081",
+    "title": "Routing: Syllabus Draft Status",
+    "description": "The course frontend module shall route a course with status syllabus_draft to the syllabus draft view.",
+    "rationale": "Once intake is complete the student must review the draft syllabus; routing ensures they land there automatically.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-008"]
+  },
+  {
+    "id": "REQ-FECOURSE-082",
+    "title": "Routing: Syllabus Approved Status",
+    "description": "The course frontend module shall route a course with status syllabus_approved to the due-date schedule view.",
+    "rationale": "After syllabus approval the only required student action is agreeing to the schedule; direct routing removes unnecessary steps.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-008"]
+  },
+  {
+    "id": "REQ-FECOURSE-083",
+    "title": "Routing: Generating Status",
+    "description": "The course frontend module shall route a course with status generating to the generating view.",
+    "rationale": "Content generation is a distinct waiting phase; students should see progress events rather than the hub before content exists.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-008"]
+  },
+  {
+    "id": "REQ-FECOURSE-084",
+    "title": "Routing: Active Status",
+    "description": "The course frontend module shall route a course with status active to the course hub view.",
+    "rationale": "An active course has all its content available; the hub is the correct landing point for day-to-day student interaction.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-008"]
+  },
+  {
+    "id": "REQ-FECOURSE-085",
+    "title": "Routing: Archived Status",
+    "description": "The course frontend module shall route a course with status archived to the course hub view.",
+    "rationale": "Archived courses remain readable; students should still see course content and have access to the resume action.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-008"]
+  },
+  {
+    "id": "REQ-FECOURSE-086",
+    "title": "Routing: Completed Status",
+    "description": "The course frontend module shall route a course with status completed to the course hub view.",
+    "rationale": "Completed courses are read-only; the hub view correctly presents content without modification actions.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-008"]
+  },
+  {
+    "id": "REQ-FECOURSE-090",
+    "title": "Create Course Modal: Topic Field",
+    "description": "The course frontend module shall render a single topic text field inside the create-course modal.",
+    "rationale": "Course creation requires only a topic; a minimal form reduces friction and cognitive load for new students.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-009"],
+    "implements": [
+      "REQ-FECOURSE-900",
+      "REQ-FECOURSE-901"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-091",
+    "title": "Create Course Modal: Submit",
+    "description": "The course frontend module shall submit the course creation request when the modal form is submitted.",
+    "rationale": "The backend requires a JSON body with a topic field to create a course; the modal must conform to this contract.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-009"],
+    "implements": [
+      "REQ-FECOURSE-910",
+      "REQ-FECOURSE-911",
+      "REQ-FECOURSE-912",
+      "REQ-FECOURSE-913"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-092",
+    "title": "Create Course Modal: Close on Success",
+    "description": "The course frontend module shall close the create-course modal after successful course creation.",
+    "rationale": "After successful creation the student should be immediately placed in the intake workflow without additional clicks.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-009"],
+    "implements": [
+      "REQ-FECOURSE-920"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-093",
+    "title": "Create Course Modal: Conflict Error",
+    "description": "The course frontend module shall display an already-active-course error message on a 409 response.",
+    "rationale": "Students can only have one active course; a 409 must surface a clear, human-readable message rather than a generic error.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-009"],
+    "implements": [
+      "REQ-FECOURSE-930"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-094",
+    "title": "Create Course Modal: Close Without Submitting",
+    "description": "The course frontend module shall close the create-course modal and discard input when the student dismisses it.",
+    "rationale": "Students must be able to cancel course creation without unintended side effects or stale state in the form.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-009"],
+    "implements": [
+      "REQ-FECOURSE-940"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-095",
+    "title": "Create Course Modal: Add Course to List on Success",
+    "description": "The course frontend module shall add the newly created course to the dashboard list on success.",
+    "rationale": "Immediately adding the course to the list avoids a full refetch and lets the student see their new course without delay.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-009"],
+    "implements": [
+      "REQ-FECOURSE-921"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-096",
+    "title": "Create Course Modal: Navigate to Intake on Success",
+    "description": "The course frontend module shall navigate to the intake view for the newly created course.",
+    "rationale": "Students must begin the intake conversation immediately after creating a course; automatic navigation removes a manual step.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-009"],
+    "implements": [
+      "REQ-FECOURSE-922"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-100",
+    "title": "Dashboard: GET /api/v1/courses Request",
+    "description": "The course frontend module shall send GET /api/v1/courses with the Authorization header on dashboard mount.",
+    "rationale": "The list endpoint requires a valid JWT; the request must be authenticated to return courses scoped to the student.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-010"]
+  },
+  {
+    "id": "REQ-FECOURSE-101",
+    "title": "Dashboard: Loading State During Fetch",
+    "description": "The course frontend module shall show a loading indicator while the course list request is in flight.",
+    "rationale": "Slow networks may delay the response; a loading indicator prevents the student from thinking the page is broken.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-010"]
+  },
+  {
+    "id": "REQ-FECOURSE-102",
+    "title": "Dashboard: Render Courses on 200",
+    "description": "The course frontend module shall render a course card for each object in the courses array from the 200 response.",
+    "rationale": "The API returns a JSON object with a courses array; the UI must iterate that array to produce one card per course.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-010"]
+  },
+  {
+    "id": "REQ-FECOURSE-103",
+    "title": "Dashboard: Fetch Error Display",
+    "description": "The course frontend module shall display a fetch-error message when GET /api/v1/courses returns a non-200 status.",
+    "rationale": "Students must know when the course list could not be loaded so they can retry or report the issue.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-010"]
+  },
+  {
+    "id": "REQ-FECOURSE-110",
+    "title": "Dashboard: Course Card Topic",
+    "description": "The course frontend module shall display the topic field from the course object on each dashboard card.",
+    "rationale": "The topic is the primary human-readable identifier for a course and must appear on every card.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-011"]
+  },
+  {
+    "id": "REQ-FECOURSE-111",
+    "title": "Dashboard: Course Card Status and Date",
+    "description": "The course frontend module shall display the status and created_at fields on each dashboard course card.",
+    "rationale": "Status and creation date give students context about each course's stage and age at a glance.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-011"]
+  },
+  {
+    "id": "REQ-FECOURSE-112",
+    "title": "Dashboard: Empty State Message",
+    "description": "The course frontend module shall display \"You have no courses yet.\" and a create button when no courses exist.",
+    "rationale": "An actionable empty state guides new students instead of showing a confusing blank list.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-012"]
+  },
+  {
+    "id": "REQ-FECOURSE-113",
+    "title": "Dashboard: Create Button Opens Modal",
+    "description": "The course frontend module shall open the create-course modal when the create-course button is clicked.",
+    "rationale": "The create button is the primary call-to-action on the dashboard; clicking it must immediately reveal the creation form.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-013"]
+  },
+  {
+    "id": "REQ-FECOURSE-114",
+    "title": "Dashboard: Card Click Navigates by Status",
+    "description": "The course frontend module shall navigate to the route for the course's current status when a course card is clicked.",
+    "rationale": "Clicking a card must take the student directly to the appropriate workflow view without an intermediate step.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-014"]
+  },
+  {
+    "id": "REQ-FECOURSE-200",
+    "title": "Intake View: Fetch SSE with Auth Header",
+    "description": "The course frontend module shall open GET /api/v1/courses/{id}/events using fetch with the Authorization header.",
+    "rationale": "EventSource cannot send Authorization headers; fetch with a streaming reader is required for authenticated SSE.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-020"]
+  },
+  {
+    "id": "REQ-FECOURSE-201",
+    "title": "Intake View: Parse SSE Lines",
+    "description": "The course frontend module shall parse incoming text/event-stream data line by line into event-type and data fields.",
+    "rationale": "The SSE protocol encodes events as lines with event: and data: prefixes; correct parsing is required to extract payloads.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-020"]
+  },
+  {
+    "id": "REQ-FECOURSE-202",
+    "title": "Intake View: SSE Connection on Mount",
+    "description": "The course frontend module shall initiate the SSE connection immediately when the intake view is mounted.",
+    "rationale": "Pipeline events may have been emitted before mount; connecting immediately allows the client to receive any queued events.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-020"]
+  },
+  {
+    "id": "REQ-FECOURSE-210",
+    "title": "Intake View: Render Pipeline Event Payload",
+    "description": "The course frontend module shall render each SSE event's payload as a status message in the event list.",
+    "rationale": "Each pipeline event carries a payload with agent status information that the student must be able to read.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-021"]
+  },
+  {
+    "id": "REQ-FECOURSE-211",
+    "title": "Intake View: Append Events in Order",
+    "description": "The course frontend module shall append each new pipeline event below the previous ones in arrival order.",
+    "rationale": "Events are emitted chronologically; displaying them in arrival order preserves the logical narrative of the intake process.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-021"]
+  },
+  {
+    "id": "REQ-FECOURSE-220",
+    "title": "Intake View: Chat POST Request",
+    "description": "The course frontend module shall send POST /api/v1/courses/{id}/chat with body {\"message\": string} on chat submit.",
+    "rationale": "The chat endpoint requires a JSON body with a message field; the client must conform to this contract exactly.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-022"]
+  },
+  {
+    "id": "REQ-FECOURSE-221",
+    "title": "Intake View: Disable Input While Awaiting Reply",
+    "description": "The course frontend module shall disable the chat input and send button while a chat POST request is in flight.",
+    "rationale": "Preventing concurrent submissions while awaiting the agent's reply avoids out-of-order message sequences.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-022"]
+  },
+  {
+    "id": "REQ-FECOURSE-222",
+    "title": "Intake View: Typing Indicator",
+    "description": "The course frontend module shall display a typing indicator while waiting for the chat POST response.",
+    "rationale": "A typing indicator signals that the agent is processing the message, so students do not assume the system is unresponsive.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-022"]
+  },
+  {
+    "id": "REQ-FECOURSE-223",
+    "title": "Intake View: Append Student Message Optimistically",
+    "description": "The course frontend module shall append the student's message to the conversation history immediately on submit.",
+    "rationale": "Optimistic display makes the conversation feel responsive; the student sees their message without waiting for the round trip.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-022"]
+  },
+  {
+    "id": "REQ-FECOURSE-224",
+    "title": "Intake View: Append Assistant Reply on 200",
+    "description": "The course frontend module shall append the reply field from the 200 chat response as an assistant message.",
+    "rationale": "The chat endpoint returns {\"reply\": string}; the UI must extract and display that field as the assistant's turn.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-022"]
+  },
+  {
+    "id": "REQ-FECOURSE-225",
+    "title": "Intake View: Chat Error Display",
+    "description": "The course frontend module shall display an error message and re-enable input when the chat POST returns a non-200 status.",
+    "rationale": "Chat failures must be surfaced so the student can retry; re-enabling the input prevents a stuck form.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-022"]
+  },
+  {
+    "id": "REQ-FECOURSE-230",
+    "title": "Intake View: Student Message Alignment",
+    "description": "The course frontend module shall display student messages right-aligned and assistant messages left-aligned.",
+    "rationale": "Conventional chat alignment immediately distinguishes who sent each message without additional labels.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-023"]
+  },
+  {
+    "id": "REQ-FECOURSE-231",
+    "title": "Intake View: Conversation Scroll",
+    "description": "The course frontend module shall scroll the conversation panel to the latest message after each new message is added.",
+    "rationale": "Without auto-scroll, new messages appear off-screen and the student must scroll manually after every turn.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-023"]
+  },
+  {
+    "id": "REQ-FECOURSE-240",
+    "title": "Intake View: Navigate on syllabus_draft Event",
+    "description": "The course frontend module shall navigate to the syllabus draft view when an SSE event carries a status of syllabus_draft.",
+    "rationale": "Automatic navigation removes the need for the student to manually refresh or identify when intake has completed.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-024"]
+  },
+  {
+    "id": "REQ-FECOURSE-250",
+    "title": "SSE Reconnect: Exponential Backoff Delays",
+    "description": "The course frontend module shall wait 1, 2, 4, 8, and 16 seconds between successive SSE reconnect attempts.",
+    "rationale": "Exponential backoff reduces server load during outages and prevents a thundering-herd reconnect storm.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-025"]
+  },
+  {
+    "id": "REQ-FECOURSE-251",
+    "title": "SSE Reconnect: Maximum Five Attempts",
+    "description": "The course frontend module shall stop retrying the SSE connection after five consecutive failed attempts.",
+    "rationale": "Unlimited retries waste resources; five attempts are sufficient to survive transient failures without looping indefinitely.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-025"]
+  },
+  {
+    "id": "REQ-FECOURSE-252",
+    "title": "SSE Reconnect: Exhaustion Error Message",
+    "description": "The course frontend module shall display a connection-failure message after all five SSE reconnect attempts are exhausted.",
+    "rationale": "Students must know the live event stream is unavailable so they can reload the page or seek support.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-025"]
+  },
+  {
+    "id": "REQ-FECOURSE-300",
+    "title": "Syllabus Draft View: Fetch Syllabus Content",
+    "description": "The course frontend module shall fetch the latest syllabus for the course and display its content_adoc field.",
+    "rationale": "The AsciiDoc content stored in content_adoc is the canonical syllabus text; it must be fetched and rendered for the student.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-030"]
+  },
+  {
+    "id": "REQ-FECOURSE-301",
+    "title": "Syllabus Draft View: Loading State",
+    "description": "The course frontend module shall display a loading indicator while the syllabus content is being fetched.",
+    "rationale": "Syllabus documents may be large; a loading indicator prevents the student from seeing an empty view during fetch.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-030"]
+  },
+  {
+    "id": "REQ-FECOURSE-310",
+    "title": "Syllabus Approve: POST Request",
+    "description": "The course frontend module shall send POST /api/v1/courses/{id}/syllabus/approve with the Authorization header.",
+    "rationale": "The approve endpoint requires authentication to verify the student owns the course before changing its status.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-031"]
+  },
+  {
+    "id": "REQ-FECOURSE-311",
+    "title": "Syllabus Approve: Disable Button During Request",
+    "description": "The course frontend module shall disable the approve button while the approve POST request is in flight.",
+    "rationale": "Disabling the button prevents double-submission, which would attempt an invalid state transition on the already-approved course.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-031"]
+  },
+  {
+    "id": "REQ-FECOURSE-312",
+    "title": "Syllabus Approve: Navigate on 200",
+    "description": "The course frontend module shall navigate to the due-date schedule view when the approve POST returns 200.",
+    "rationale": "A 200 confirms the course has moved to syllabus_approved; the student must be routed to agree to the schedule next.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-031"]
+  },
+  {
+    "id": "REQ-FECOURSE-313",
+    "title": "Syllabus Approve: 409 Error Display",
+    "description": "The course frontend module shall display an invalid-transition error message when the approve POST returns 409.",
+    "rationale": "A 409 means the course is not in syllabus_draft status; the student must be informed that the action is no longer valid.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-031"]
+  },
+  {
+    "id": "REQ-FECOURSE-314",
+    "title": "Syllabus Approve: Generic Error Display",
+    "description": "The course frontend module shall display a generic error message when the approve POST returns any other non-200 status.",
+    "rationale": "Unexpected server errors must surface a user-facing message rather than silently failing or leaving the button disabled.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-031"]
+  },
+  {
+    "id": "REQ-FECOURSE-320",
+    "title": "Modification Modal: Open on Button Click",
+    "description": "The course frontend module shall open a modal with a text area when the request-modification button is clicked.",
+    "rationale": "A dedicated modal keeps the modification notes separate from the syllabus view and gives the student adequate writing space.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-032"]
+  },
+  {
+    "id": "REQ-FECOURSE-321",
+    "title": "Modification Modal: POST Request",
+    "description": "The course frontend module shall send POST /api/v1/courses/{id}/syllabus/modification with body {\"request\": string}.",
+    "rationale": "The modification endpoint expects a request field containing the student's notes; the body key must be request, not notes.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-032"]
+  },
+  {
+    "id": "REQ-FECOURSE-322",
+    "title": "Modification Modal: Disable Submit During Request",
+    "description": "The course frontend module shall disable the modal submit button while the modification POST is in flight.",
+    "rationale": "Disabling the submit button prevents duplicate modification requests being sent while the first is still processing.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-032"]
+  },
+  {
+    "id": "REQ-FECOURSE-323",
+    "title": "Modification Modal: 200 Success Message",
+    "description": "The course frontend module shall close the modal and display a modification-submitted confirmation message on 200.",
+    "rationale": "Students must know their request was accepted; the confirmation message removes ambiguity about whether the action succeeded.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-032"]
+  },
+  {
+    "id": "REQ-FECOURSE-324",
+    "title": "Modification Modal: Reload Syllabus After 200",
+    "description": "The course frontend module shall reload the syllabus content after a successful modification request.",
+    "rationale": "The backend records a new syllabus version on modification; the view must refresh to show the updated version number.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-032"]
+  },
+  {
+    "id": "REQ-FECOURSE-325",
+    "title": "Modification Modal: Error Display",
+    "description": "The course frontend module shall display an error message inside the modal when the modification POST returns non-200.",
+    "rationale": "Errors must be shown in context so the student can correct their input or retry without losing the modal state.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-032"]
+  },
+  {
+    "id": "REQ-FECOURSE-330",
+    "title": "Syllabus Draft View: Fetch on Mount",
+    "description": "The course frontend module shall initiate the syllabus fetch immediately when the syllabus draft view is mounted.",
+    "rationale": "Early fetching minimises the time the student spends looking at a loading indicator before the syllabus appears.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-033"]
+  },
+  {
+    "id": "REQ-FECOURSE-331",
+    "title": "Syllabus Draft View: Fetch Error Display",
+    "description": "The course frontend module shall display a fetch-error message when the syllabus fetch returns a non-200 status.",
+    "rationale": "If the syllabus cannot be loaded the student must be told rather than seeing an empty or frozen view.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-033"]
+  },
+  {
+    "id": "REQ-FECOURSE-400",
+    "title": "Schedule View: Display Homework Titles",
+    "description": "The course frontend module shall display the title of each homework item in the due-date schedule list.",
+    "rationale": "Students must be able to identify each assignment by name to understand what they are committing to complete.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-040"]
+  },
+  {
+    "id": "REQ-FECOURSE-401",
+    "title": "Schedule View: Display Due Dates",
+    "description": "The course frontend module shall display the due_date for each homework item formatted as a human-readable date.",
+    "rationale": "Raw ISO timestamps are not student-friendly; formatted dates make deadlines immediately understandable.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-040"]
+  },
+  {
+    "id": "REQ-FECOURSE-410",
+    "title": "Schedule View: Irreversibility Warning Text",
+    "description": "The course frontend module shall display the text \"Once you agree, due dates cannot be changed.\" above the agree button.",
+    "rationale": "Students must see a clear warning before committing to a schedule that will be binding for the duration of the course.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-041"]
+  },
+  {
+    "id": "REQ-FECOURSE-420",
+    "title": "Schedule Agree: POST Request",
+    "description": "The course frontend module shall send POST /api/v1/courses/{id}/schedule/agree with the Authorization header.",
+    "rationale": "The schedule/agree endpoint requires authentication to confirm the student owns the course before recording agreement.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-042"]
+  },
+  {
+    "id": "REQ-FECOURSE-421",
+    "title": "Schedule Agree: Disable Button During Request",
+    "description": "The course frontend module shall disable the agree button while the schedule/agree POST is in flight.",
+    "rationale": "Disabling the button prevents double-submission which would attempt to agree to a schedule with no remaining pending entries.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-042"]
+  },
+  {
+    "id": "REQ-FECOURSE-422",
+    "title": "Schedule Agree: Navigate to Generating on 200",
+    "description": "The course frontend module shall navigate to the generating view when the schedule/agree POST returns 200.",
+    "rationale": "A 200 confirms all due dates are agreed; the backend will begin content generation and the student should see that view.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-042"]
+  },
+  {
+    "id": "REQ-FECOURSE-423",
+    "title": "Schedule Agree: 409 Error Display",
+    "description": "The course frontend module shall display a no-pending-schedule error message when schedule/agree returns 409.",
+    "rationale": "A 409 means there are no unagreed due dates; the student must be informed so they can navigate away or refresh.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-042"]
+  },
+  {
+    "id": "REQ-FECOURSE-424",
+    "title": "Schedule Agree: Generic Error Display",
+    "description": "The course frontend module shall display a generic error message when schedule/agree returns any other non-200 status.",
+    "rationale": "Unexpected server failures must not silently leave the agree button disabled; students need a message to act on.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-042"]
+  },
+  {
+    "id": "REQ-FECOURSE-500",
+    "title": "Generating View: Static Progress Message",
+    "description": "The course frontend module shall display a static message that course content generation may take several minutes.",
+    "rationale": "Setting time expectations prevents students from assuming an error when generation takes longer than they expected.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-050"]
+  },
+  {
+    "id": "REQ-FECOURSE-510",
+    "title": "Generating View: SSE Connection",
+    "description": "The course frontend module shall open GET /api/v1/courses/{id}/events using fetch with the Authorization header on generating view mount.",
+    "rationale": "Content generation pipeline events must stream to the student in real time, requiring an authenticated SSE connection.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-051"]
+  },
+  {
+    "id": "REQ-FECOURSE-511",
+    "title": "Generating View: Render Pipeline Events",
+    "description": "The course frontend module shall render each incoming SSE pipeline event as a status message in the generating view.",
+    "rationale": "Showing generation progress events lets students track what the agent is doing rather than watching a static spinner.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-051"]
+  },
+  {
+    "id": "REQ-FECOURSE-520",
+    "title": "Generating View: Navigate on Active Event",
+    "description": "The course frontend module shall navigate to the course hub view when an SSE event carries a status of active.",
+    "rationale": "Automatic navigation once generation completes removes the need for a manual refresh and delivers the student to their content immediately.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-052"]
+  },
+  {
+    "id": "REQ-FECOURSE-600",
+    "title": "Course Hub: Display Topic and Status",
+    "description": "The course frontend module shall display the course topic and current status in the hub view header.",
+    "rationale": "The header orients the student to which course they are viewing and whether it is active, archived, or completed.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-060"]
+  },
+  {
+    "id": "REQ-FECOURSE-610",
+    "title": "Course Hub: Render Section List",
+    "description": "The course frontend module shall render one list item per syllabus section in the course hub view.",
+    "rationale": "Students navigate course content section by section; every section must be listed so none are inaccessible.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-061"]
+  },
+  {
+    "id": "REQ-FECOURSE-611",
+    "title": "Course Hub: Section Navigation Links",
+    "description": "The course frontend module shall render each section list item as a navigation link to the section reader view.",
+    "rationale": "Sections must be clickable; plain text items would require students to know the direct URL for each section.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-061"]
+  },
+  {
+    "id": "REQ-FECOURSE-620",
+    "title": "Course Hub: Homework Assignment List",
+    "description": "The course frontend module shall display each homework assignment's title and due date in the hub view.",
+    "rationale": "Students track deadlines from the hub; every homework item must be listed with its due date visible without additional navigation.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-062"]
+  },
+  {
+    "id": "REQ-FECOURSE-621",
+    "title": "Course Hub: Homework Submission Status",
+    "description": "The course frontend module shall display the submission status for each homework assignment in the hub view.",
+    "rationale": "Students need to see at a glance which assignments are submitted and which are still outstanding.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-062"]
+  },
+  {
+    "id": "REQ-FECOURSE-630",
+    "title": "Course Hub: Withdraw Button Visibility",
+    "description": "The course frontend module shall display the withdraw button only when the course status is active.",
+    "rationale": "Withdrawal is only a valid action for active courses; showing it for other statuses would allow invalid transitions.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-631",
+    "title": "Course Hub: Withdraw POST Request",
+    "description": "The course frontend module shall send POST /api/v1/courses/{id}/withdraw with the Authorization header.",
+    "rationale": "The withdraw endpoint requires authentication to confirm the requesting user owns the course before archiving it.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-632",
+    "title": "Course Hub: Navigate to Dashboard After Withdraw 200",
+    "description": "The course frontend module shall navigate to the dashboard when the withdraw POST returns 200.",
+    "rationale": "After withdrawal the course is archived; the student should return to the dashboard to see the updated course state.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-633",
+    "title": "Course Hub: Withdraw Error Display",
+    "description": "The course frontend module shall display an error message when the withdraw POST returns a non-200 status.",
+    "rationale": "Withdrawal failures must be surfaced so the student knows the course was not archived and can retry.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-634",
+    "title": "Course Hub: Resume Button Visibility",
+    "description": "The course frontend module shall display the resume button only when the course status is archived.",
+    "rationale": "Resume is only valid for archived courses; displaying it for other statuses exposes an action that would return a 409.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-635",
+    "title": "Course Hub: Resume POST Request",
+    "description": "The course frontend module shall send POST /api/v1/courses/{id}/resume with the Authorization header.",
+    "rationale": "The resume endpoint requires authentication to confirm ownership and performs the archived-to-prior-status transition.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-636",
+    "title": "Course Hub: Navigate After Resume 200",
+    "description": "The course frontend module shall navigate to the status-appropriate view after the resume POST returns 200.",
+    "rationale": "Resume restores the pre-withdrawal status; the student must be routed to the correct view for that restored status.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-637",
+    "title": "Course Hub: Resume 409 Error Display",
+    "description": "The course frontend module shall display an already-active-course error message when resume POST returns 409.",
+    "rationale": "A 409 means the student already has an active course; they must be told before they can proceed with the conflict resolved.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-063"]
+  },
+  {
+    "id": "REQ-FECOURSE-700",
+    "title": "SSE Client: Authorization Header",
+    "description": "The course frontend module shall include the Authorization: Bearer {token} header in every SSE fetch request.",
+    "rationale": "The SSE endpoint validates the JWT to enforce course ownership; omitting the header returns 401 and no events.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-070"]
+  },
+  {
+    "id": "REQ-FECOURSE-701",
+    "title": "SSE Client: ReadableStream Line Reader",
+    "description": "The course frontend module shall read the SSE response body as a ReadableStream and process it line by line.",
+    "rationale": "SSE over fetch requires consuming the response body as a stream; buffered reads would miss events that arrive in chunks.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-070"]
+  },
+  {
+    "id": "REQ-FECOURSE-710",
+    "title": "SSE Client: After Query Parameter on Reconnect",
+    "description": "The course frontend module shall append ?after={lastEventId} to the SSE URL when reconnecting after receiving at least one event.",
+    "rationale": "The server uses the after parameter to return only events newer than the last received, preventing duplicate display.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-071"]
+  },
+  {
+    "id": "REQ-FECOURSE-720",
+    "title": "SSE Client: Discard Comment Lines",
+    "description": "The course frontend module shall skip any SSE line that begins with a colon without dispatching it as an event.",
+    "rationale": "The server emits \": keepalive\" comments every two seconds; treating them as events would pollute the event list.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-072"]
+  },
+  {
+    "id": "REQ-FECOURSE-730",
+    "title": "SSE Client: Abort on Unmount",
+    "description": "The course frontend module shall call abort() on the SSE fetch AbortController when the consuming view is unmounted.",
+    "rationale": "Aborting the fetch on unmount terminates the underlying TCP connection and prevents memory leaks from orphaned stream readers.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-073"]
+  },
+  {
+    "id": "REQ-FECOURSE-900",
+    "title": "Create Course Modal: Single Topic Input",
+    "description": "The course frontend module shall render exactly one text input labelled Topic in the create-course modal.",
+    "rationale": "Course creation requires only a topic string; additional fields would add unnecessary friction to the onboarding flow.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FECOURSE-090"]
+  },
+  {
+    "id": "REQ-FECOURSE-901",
+    "title": "Create Course Modal: Non-Empty Validation",
+    "description": "The course frontend module shall prevent submission and display a validation message when the topic field is empty.",
+    "rationale": "The backend rejects empty topics with a 400; client-side validation avoids an unnecessary round trip.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-090"]
+  },
+  {
+    "id": "REQ-FECOURSE-910",
+    "title": "Create Course Modal: POST Body Shape",
+    "description": "The course frontend module shall post {\"topic\": string} as the JSON body when submitting the create-course form.",
+    "rationale": "The backend createCourse handler decodes a topic field from the JSON body; any other field name will result in a 400.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-091"]
+  },
+  {
+    "id": "REQ-FECOURSE-911",
+    "title": "Create Course Modal: Disable Submit During POST",
+    "description": "The course frontend module shall disable the submit button while the create-course POST is in flight.",
+    "rationale": "Disabling the submit button prevents duplicate course creation requests that would return 409 on the second attempt.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FECOURSE-091"]
+  },
+  {
+    "id": "REQ-FECOURSE-912",
+    "title": "Create Course Modal: Authorization Header",
+    "description": "The course frontend module shall include the Authorization: Bearer {token} header in the create-course POST request.",
+    "rationale": "The create endpoint reads the user ID from the JWT to associate the course with the authenticated student.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-091"]
+  },
+  {
+    "id": "REQ-FECOURSE-913",
+    "title": "Create Course Modal: Content-Type Header",
+    "description": "The course frontend module shall send Content-Type: application/json in the create-course POST request.",
+    "rationale": "The handler uses json.NewDecoder to parse the body; without the correct content type the body may not be decoded.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-091"]
+  },
+  {
+    "id": "REQ-FECOURSE-920",
+    "title": "Create Course Modal: Close on 201",
+    "description": "The course frontend module shall close the create-course modal when the POST returns 201.",
+    "rationale": "Once the course is created the modal has served its purpose; closing it reveals the dashboard with the new course.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-092"]
+  },
+  {
+    "id": "REQ-FECOURSE-921",
+    "title": "Create Course Modal: Prepend New Course to List",
+    "description": "The course frontend module shall add the 201 response course object to the top of the dashboard course list.",
+    "rationale": "Prepending avoids a full list refetch and immediately shows the student their new course at the top, matching creation order.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-095"]
+  },
+  {
+    "id": "REQ-FECOURSE-922",
+    "title": "Create Course Modal: Navigate to Intake on 201",
+    "description": "The course frontend module shall navigate to the intake view for the new course ID from the 201 response.",
+    "rationale": "The student must begin the intake conversation immediately after creating a course; automatic navigation removes a manual step.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-096"]
+  },
+  {
+    "id": "REQ-FECOURSE-930",
+    "title": "Create Course Modal: 409 Error Message",
+    "description": "The course frontend module shall display \"You already have an active course. Complete or archive it first.\" on 409.",
+    "rationale": "Students may not know they already have an active course; an exact, actionable message tells them what to do next.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-093"]
+  },
+  {
+    "id": "REQ-FECOURSE-940",
+    "title": "Create Course Modal: Dismiss Clears Input",
+    "description": "The course frontend module shall reset the topic field to empty when the create-course modal is dismissed without submitting.",
+    "rationale": "Stale topic text must not persist when the modal is reopened, which would create a confusing pre-filled state.",
+    "verification_method": "Test",
+    "uses": ["REQ-FECOURSE-094"]
+  }
+]

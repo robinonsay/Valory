@@ -355,6 +355,71 @@ func (r *Repository) UpsertConsent(ctx context.Context, studentID uuid.UUID, ver
 	return err
 }
 
+// ListUsers returns up to limit users ordered by created_at DESC.
+// When role is non-empty only users with that role are returned.
+// limit is capped to 100; values less than 1 default to 50.
+//
+// @{"req": ["REQ-USER-001", "REQ-USER-002"]}
+func (r *Repository) ListUsers(ctx context.Context, role string, limit int) ([]UserRow, error) {
+	if limit < 1 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	var rows []UserRow
+
+	if role != "" {
+		pgRows, err := r.pool.Query(ctx,
+			`SELECT id, username, email, password_hash, role, is_active, created_at, updated_at
+			 FROM users
+			 WHERE role = $1
+			 ORDER BY created_at DESC
+			 LIMIT $2`,
+			role, limit)
+		if err != nil {
+			return nil, err
+		}
+		defer pgRows.Close()
+
+		for pgRows.Next() {
+			var u UserRow
+			if err := pgRows.Scan(
+				&u.ID, &u.Username, &u.Email, &u.PasswordHash,
+				&u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+			); err != nil {
+				return nil, err
+			}
+			rows = append(rows, u)
+		}
+		return rows, pgRows.Err()
+	}
+
+	pgRows, err := r.pool.Query(ctx,
+		`SELECT id, username, email, password_hash, role, is_active, created_at, updated_at
+		 FROM users
+		 ORDER BY created_at DESC
+		 LIMIT $1`,
+		limit)
+	if err != nil {
+		return nil, err
+	}
+	defer pgRows.Close()
+
+	for pgRows.Next() {
+		var u UserRow
+		if err := pgRows.Scan(
+			&u.ID, &u.Username, &u.Email, &u.PasswordHash,
+			&u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		rows = append(rows, u)
+	}
+	return rows, pgRows.Err()
+}
+
 // @{"req": ["REQ-SECURITY-005"]}
 func (r *Repository) GetConsentVersion(ctx context.Context, studentID uuid.UUID) (string, error) {
 	var version string

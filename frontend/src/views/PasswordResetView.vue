@@ -12,7 +12,7 @@ const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 
-const email = ref('')
+const username = ref('')
 const password = ref('')
 
 const hasToken = computed(() => route.query.token !== undefined && route.query.token !== '')
@@ -21,7 +21,7 @@ const token = computed(() => route.query.token as string)
 const isRequestMode = computed(() => !hasToken.value)
 const isConfirmMode = computed(() => hasToken.value)
 
-const canSubmitRequest = computed(() => email.value.trim() !== '' && !isLoading.value)
+const canSubmitRequest = computed(() => username.value.trim() !== '' && !isLoading.value)
 const canSubmitConfirm = computed(() => token.value && password.value.trim() !== '' && !isLoading.value)
 
 async function submitRequest(): Promise<void> {
@@ -32,14 +32,14 @@ async function submitRequest(): Promise<void> {
   successMessage.value = null
 
   try {
-    await post<void>('/api/v1/auth/reset-password', { email: email.value })
-    successMessage.value = 'If an account with that email exists, you will receive a reset link shortly.'
+    await post<void>('/api/v1/password-reset/request', { username: username.value })
+    successMessage.value = 'If an account with that username exists, you will receive a reset link shortly.'
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.status === 429) {
         errorMessage.value = 'Too many requests. Please wait before trying again.'
       } else {
-        successMessage.value = 'If an account with that email exists, you will receive a reset link shortly.'
+        successMessage.value = 'If an account with that username exists, you will receive a reset link shortly.'
       }
     } else {
       errorMessage.value = 'Failed to reset password. Please try again.'
@@ -57,9 +57,9 @@ async function submitConfirm(): Promise<void> {
   successMessage.value = null
 
   try {
-    await post<void>('/api/v1/auth/reset-password/confirm', {
+    await post<void>('/api/v1/password-reset/confirm', {
       token: token.value,
-      password: password.value
+      new_password: password.value
     })
     await router.push('/login?reset=success')
   } catch (err) {
@@ -84,12 +84,12 @@ async function submitConfirm(): Promise<void> {
 
     <!-- Request Mode: Email field -->
     <div v-if="isRequestMode" class="form-group">
-      <label for="email">Email Address</label>
+      <label for="username">Username</label>
       <input
-        id="email"
-        v-model="email"
-        type="email"
-        placeholder="Enter your email"
+        id="username"
+        v-model="username"
+        type="text"
+        placeholder="Enter your username"
         @keyup.enter="canSubmitRequest ? submitRequest() : null"
       />
       <button

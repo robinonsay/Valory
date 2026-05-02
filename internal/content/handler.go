@@ -16,18 +16,20 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/valory/valory/internal/auth"
+	"github.com/valory/valory/internal/course"
 )
 
 // ContentHandler serves lesson content and accepts student feedback.
 // Feedback is stored and the runner polls asynchronously to decide whether
 // to trigger regeneration based on keywords (REQ-CONTENT-004).
 type ContentHandler struct {
-	repo *ContentRepository
+	repo       *ContentRepository
+	courseSvc  *course.CourseService
 }
 
 // @{"req": ["REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
-func NewContentHandler(repo *ContentRepository) *ContentHandler {
-	return &ContentHandler{repo: repo}
+func NewContentHandler(repo *ContentRepository, courseSvc *course.CourseService) *ContentHandler {
+	return &ContentHandler{repo: repo, courseSvc: courseSvc}
 }
 
 // Routes mounts the content endpoints under an already-authenticated router.
@@ -37,6 +39,13 @@ func (h *ContentHandler) Routes(r chi.Router) {
 	r.Get("/{sectionIndex}", h.getSection)
 	r.Post("/{sectionIndex}/feedback", h.submitFeedback)
 	r.Get("/{sectionIndex}/export", h.exportSection)
+}
+
+// SectionListRoutes mounts the section list endpoint under an already-authenticated router.
+//
+// @{"req": ["REQ-CONTENT-001"]}
+func (h *ContentHandler) SectionListRoutes(r chi.Router) {
+	r.Get("/", h.listSections)
 }
 
 // getSection returns the latest citation-verified lesson content for a section.
@@ -85,6 +94,52 @@ func (h *ContentHandler) getSection(w http.ResponseWriter, r *http.Request) {
 		"citation_verified": row.CitationVerified,
 		"created_at":        row.CreatedAt,
 	})
+}
+
+// listSections returns the list of sections with verified content for a course.
+// Returns a JSON array of [{section_index, title}] for each verified section,
+// ordered by section_index. Returns empty array if no sections exist.
+//
+// @{"req": ["REQ-CONTENT-001"]}
+func (h *ContentHandler) listSections(w http.ResponseWriter, r *http.Request) {
+	courseID, ok := parseCourseID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid course id")
+		return
+	}
+
+	// Ownership check: students may only list sections for their own courses.
+	rawUserID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	userID := uuid.UUID(rawUserID)
+	role, ok := auth.RoleFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	if _, err := h.courseSvc.GetCourse(r.Context(), courseID, userID, role); err != nil {
+		if errors.Is(err, course.ErrForbidden) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "forbidden")
+			return
+		}
+		if errors.Is(err, course.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "course not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	sections, err := h.repo.ListSectionsByCourseID(r.Context(), courseID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, sections)
 }
 
 // submitFeedback records student feedback on a section (REQ-CONTENT-004).
@@ -137,13 +192,13 @@ func (h *ContentHandler) submitFeedback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":                      fb.ID,
-		"student_id":              fb.StudentID,
-		"course_id":               fb.CourseID,
-		"section_index":           fb.SectionIndex,
-		"feedback_text":           fb.FeedbackText,
-		"submitted_at":            fb.SubmittedAt,
-		"regeneration_triggered":  fb.RegenerationTriggered,
+		"id":                     fb.ID,
+		"student_id":             fb.StudentID,
+		"course_id":              fb.CourseID,
+		"section_index":          fb.SectionIndex,
+		"feedback_text":          fb.FeedbackText,
+		"submitted_at":           fb.SubmittedAt,
+		"regeneration_triggered": fb.RegenerationTriggered,
 	})
 }
 

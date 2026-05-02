@@ -73,7 +73,7 @@ describe('IntakeChatView', () => {
     await mountView('course-42')
 
     expect(capturedSSEUrl).toContain('course-42')
-    expect(capturedSSEUrl).toBe('/api/pipeline?course_id=course-42')
+    expect(capturedSSEUrl).toBe('/api/v1/courses/course-42/events')
     expect(capturedSSEOptions?.token).toBe('test-token')
   })
 
@@ -109,7 +109,7 @@ describe('IntakeChatView', () => {
   })
 
   // 4. Send button POSTs to correct endpoint
-  it('POSTs to /api/v1/courses/:id/intake/message when Send is clicked', async () => {
+  it('POSTs to /api/v1/courses/:id/chat when Send is clicked', async () => {
     const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({})
     const { wrapper } = await mountView('course-42')
 
@@ -118,8 +118,8 @@ describe('IntakeChatView', () => {
     await wrapper.vm.$nextTick()
 
     expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/courses/course-42/intake/message',
-      { content: 'What is this course about?' },
+      '/api/v1/courses/course-42/chat',
+      { message: 'What is this course about?' },
       'test-token'
     )
   })

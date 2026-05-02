@@ -47,26 +47,14 @@ describe('SyllabusView', () => {
     }
   }
 
-  it('fetches and renders syllabus sections on mount', async () => {
+  it('fetches and renders syllabus content on mount', async () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({
-      syllabus: {
-        sections: [
-          {
-            title: 'Introduction to Vue',
-            description: 'Learn Vue basics',
-            due_date: '2025-01-15'
-          },
-          {
-            title: 'Advanced Vue',
-            description: 'Learn advanced patterns',
-            due_date: '2025-02-15'
-          }
-        ],
-        learning_objectives: [
-          'Understand Vue fundamentals',
-          'Build reactive components'
-        ]
-      }
+      id: 'syll-123',
+      course_id: 'course-123',
+      content_adoc: '= Syllabus\n\n== Introduction to Vue\nLearn Vue basics\n\n== Advanced Vue\nLearn advanced patterns',
+      version: 1,
+      approved_at: null,
+      created_at: '2025-01-01T00:00:00Z'
     })
 
     const router = createRouter({
@@ -97,27 +85,25 @@ describe('SyllabusView', () => {
 
     expect(mockGet).toHaveBeenCalledWith('/api/v1/courses/test-course-id/syllabus', 'test-token')
 
-    const sectionTitles = wrapper.findAll('h3')
-    expect(sectionTitles.length).toBe(2)
-    expect(sectionTitles[0].text()).toBe('Introduction to Vue')
-    expect(sectionTitles[1].text()).toBe('Advanced Vue')
-
+    expect(wrapper.text()).toContain('= Syllabus')
+    expect(wrapper.text()).toContain('== Introduction to Vue')
     expect(wrapper.text()).toContain('Learn Vue basics')
+    expect(wrapper.text()).toContain('== Advanced Vue')
     expect(wrapper.text()).toContain('Learn advanced patterns')
-    expect(wrapper.text()).toContain('Understand Vue fundamentals')
-    expect(wrapper.text()).toContain('Build reactive components')
 
     mockGet.mockRestore()
   })
 
-  it('modification PATCH sends body with key "request" not "notes"', async () => {
+  it('modification POST sends body with key "request" not "notes"', async () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({
-      syllabus: {
-        sections: [],
-        learning_objectives: []
-      }
+      id: 'syll-123',
+      course_id: 'course-123',
+      content_adoc: '= Syllabus',
+      version: 1,
+      approved_at: null,
+      created_at: '2025-01-01T00:00:00Z'
     })
-    const mockPatch = vi.spyOn(clientModule, 'patch').mockResolvedValue({})
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({})
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -161,47 +147,39 @@ describe('SyllabusView', () => {
     await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
-    expect(mockPatch).toHaveBeenCalledWith(
-      '/api/v1/courses/test-id/syllabus',
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/courses/test-id/syllabus/modification',
       { request: 'Please make it easier' },
       'test-token'
     )
 
-    const callArgs = mockPatch.mock.calls[0]
+    const callArgs = mockPost.mock.calls[0]
     const bodyArg = callArgs[1] as Record<string, unknown>
     expect('request' in bodyArg).toBe(true)
     expect('notes' in bodyArg).toBe(false)
     expect('modification' in bodyArg).toBe(false)
 
     mockGet.mockRestore()
-    mockPatch.mockRestore()
+    mockPost.mockRestore()
   })
 
   it('modification success re-fetches syllabus', async () => {
     const mockGetResponses = [
       {
-        syllabus: {
-          sections: [
-            {
-              title: 'Original Section',
-              description: 'Original description',
-              due_date: '2025-01-15'
-            }
-          ],
-          learning_objectives: []
-        }
+        id: 'syll-123',
+        course_id: 'course-123',
+        content_adoc: '= Syllabus\n\n== Original Section\nOriginal description',
+        version: 1,
+        approved_at: null,
+        created_at: '2025-01-01T00:00:00Z'
       },
       {
-        syllabus: {
-          sections: [
-            {
-              title: 'Updated Section',
-              description: 'Updated description',
-              due_date: '2025-01-20'
-            }
-          ],
-          learning_objectives: []
-        }
+        id: 'syll-123',
+        course_id: 'course-123',
+        content_adoc: '= Syllabus\n\n== Updated Section\nUpdated description',
+        version: 2,
+        approved_at: null,
+        created_at: '2025-01-01T00:00:00Z'
       }
     ]
 
@@ -209,7 +187,7 @@ describe('SyllabusView', () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockImplementation(() => {
       return Promise.resolve(mockGetResponses[callCount++])
     })
-    const mockPatch = vi.spyOn(clientModule, 'patch').mockResolvedValue({})
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({})
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -237,7 +215,7 @@ describe('SyllabusView', () => {
     await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('Original Section')
+    expect(wrapper.text()).toContain('== Original Section')
 
     const requestModBtn = wrapper.findAll('button').find(btn => btn.text().includes('Request Modification'))
     await requestModBtn?.trigger('click')
@@ -252,22 +230,24 @@ describe('SyllabusView', () => {
     await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
-    expect(mockPatch).toHaveBeenCalledTimes(1)
+    expect(mockPost).toHaveBeenCalledTimes(1)
     expect(mockGet).toHaveBeenCalledTimes(2)
 
     await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('Updated Section')
+    expect(wrapper.text()).toContain('== Updated Section')
 
     mockGet.mockRestore()
-    mockPatch.mockRestore()
+    mockPost.mockRestore()
   })
 
   it('approve POST navigates to generating route', async () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({
-      syllabus: {
-        sections: [],
-        learning_objectives: []
-      }
+      id: 'syll-123',
+      course_id: 'course-123',
+      content_adoc: '= Syllabus',
+      version: 1,
+      approved_at: null,
+      created_at: '2025-01-01T00:00:00Z'
     })
     const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({})
 
@@ -315,14 +295,16 @@ describe('SyllabusView', () => {
     mockPost.mockRestore()
   })
 
-  it('error handling for PATCH operations', async () => {
+  it('error handling for POST operations (modification)', async () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({
-      syllabus: {
-        sections: [],
-        learning_objectives: []
-      }
+      id: 'syll-123',
+      course_id: 'course-123',
+      content_adoc: '= Syllabus',
+      version: 1,
+      approved_at: null,
+      created_at: '2025-01-01T00:00:00Z'
     })
-    const mockPatch = vi.spyOn(clientModule, 'patch').mockRejectedValue(
+    const mockPost = vi.spyOn(clientModule, 'post').mockRejectedValue(
       new clientModule.ApiError(400, { error: 'bad request' })
     )
 
@@ -369,15 +351,17 @@ describe('SyllabusView', () => {
     expect(errorMsg.some(el => el.text().includes('Failed to submit modification'))).toBe(true)
 
     mockGet.mockRestore()
-    mockPatch.mockRestore()
+    mockPost.mockRestore()
   })
 
-  it('error handling for POST operations', async () => {
+  it('error handling for POST operations (approve)', async () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({
-      syllabus: {
-        sections: [],
-        learning_objectives: []
-      }
+      id: 'syll-123',
+      course_id: 'course-123',
+      content_adoc: '= Syllabus',
+      version: 1,
+      approved_at: null,
+      created_at: '2025-01-01T00:00:00Z'
     })
     const mockPost = vi.spyOn(clientModule, 'post').mockRejectedValue(
       new clientModule.ApiError(500, { error: 'server error' })

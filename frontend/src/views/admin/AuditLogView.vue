@@ -36,7 +36,7 @@ async function fetchAuditLog(before?: number): Promise<void> {
     loading.value = true
     error.value = null
 
-    let url = '/api/v1/admin/audit?limit=50'
+    let url = '/api/v1/audit?limit=50'
     // Append the cursor only when paginating; initial load uses no before param
     if (before !== undefined && before !== 0) {
       url += `&before=${before}`

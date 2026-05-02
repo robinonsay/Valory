@@ -34,7 +34,7 @@ function createTestRouter(query: Record<string, string> = {}) {
 
 describe('PasswordResetView', () => {
   describe('Request mode (no token param)', () => {
-    it('renders email field when no token param', async () => {
+    it('renders username field when no token param', async () => {
       const router = createTestRouter()
       await router.push('/reset-password')
       await router.isReady()
@@ -45,8 +45,8 @@ describe('PasswordResetView', () => {
         }
       })
 
-      expect(wrapper.find('#email').exists()).toBe(true)
-      expect(wrapper.find('#email').attributes('type')).toBe('email')
+      expect(wrapper.find('#username').exists()).toBe(true)
+      expect(wrapper.find('#username').attributes('type')).toBe('text')
     })
 
     it('shows neutral message on 200 response', async () => {
@@ -62,15 +62,15 @@ describe('PasswordResetView', () => {
         }
       })
 
-      const emailInput = wrapper.find('#email')
-      await emailInput.setValue('test@example.com')
+      const usernameInput = wrapper.find('#username')
+      await usernameInput.setValue('testuser')
 
       const button = wrapper.find('button')
       await button.trigger('click')
       await wrapper.vm.$nextTick()
 
-      expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/reset-password', { email: 'test@example.com' })
-      expect(wrapper.find('.success-message').text()).toBe('If an account with that email exists, you will receive a reset link shortly.')
+      expect(mockPost).toHaveBeenCalledWith('/api/v1/password-reset/request', { username: 'testuser' })
+      expect(wrapper.find('.success-message').text()).toBe('If an account with that username exists, you will receive a reset link shortly.')
     })
 
     it('shows neutral message on 404 response', async () => {
@@ -88,14 +88,14 @@ describe('PasswordResetView', () => {
         }
       })
 
-      const emailInput = wrapper.find('#email')
-      await emailInput.setValue('notfound@example.com')
+      const usernameInput = wrapper.find('#username')
+      await usernameInput.setValue('notfounduser')
 
       const button = wrapper.find('button')
       await button.trigger('click')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.success-message').text()).toBe('If an account with that email exists, you will receive a reset link shortly.')
+      expect(wrapper.find('.success-message').text()).toBe('If an account with that username exists, you will receive a reset link shortly.')
     })
 
     it('shows rate limit message on 429 response', async () => {
@@ -113,8 +113,8 @@ describe('PasswordResetView', () => {
         }
       })
 
-      const emailInput = wrapper.find('#email')
-      await emailInput.setValue('test@example.com')
+      const usernameInput = wrapper.find('#username')
+      await usernameInput.setValue('testuser')
 
       const button = wrapper.find('button')
       await button.trigger('click')
@@ -138,8 +138,8 @@ describe('PasswordResetView', () => {
         }
       })
 
-      const emailInput = wrapper.find('#email')
-      await emailInput.setValue('test@example.com')
+      const usernameInput = wrapper.find('#username')
+      await usernameInput.setValue('testuser')
 
       const button = wrapper.find('button')
       expect(button.attributes('disabled')).toBeUndefined()
@@ -218,9 +218,9 @@ describe('PasswordResetView', () => {
       await wrapper.vm.$nextTick()
       await new Promise(resolve => setTimeout(resolve, 50))
 
-      expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/reset-password/confirm', {
+      expect(mockPost).toHaveBeenCalledWith('/api/v1/password-reset/confirm', {
         token: 'abc123',
-        password: 'newpassword123'
+        new_password: 'newpassword123'
       })
       expect(router.currentRoute.value.path).toBe('/login')
       expect(router.currentRoute.value.query.reset).toBe('success')

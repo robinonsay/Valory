@@ -58,6 +58,12 @@ func (h *Handler) StudentRoutes(r chi.Router) {
 	r.Post("/", h.recordConsent)
 }
 
+// MeRoutes registers the current user endpoint (caller has authMW).
+// @{"req": ["REQ-USER-001"]}
+func (h *Handler) MeRoutes(r chi.Router) {
+	r.Get("/me", h.getCurrentUser)
+}
+
 // @{"req": ["REQ-USER-001", "REQ-USER-002"]}
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	role := r.URL.Query().Get("role")
@@ -379,6 +385,35 @@ func (h *Handler) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// @{"req": ["REQ-USER-001"]}
+func (h *Handler) getCurrentUser(w http.ResponseWriter, r *http.Request) {
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	userID := uuid.UUID(rawID)
+	user, err := h.svc.GetUserByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	resp := map[string]interface{}{
+		"id":        user.ID.String(),
+		"username":  user.Username,
+		"role":      user.Role,
+		"is_active": user.IsActive,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // @{"req": ["REQ-SECURITY-005"]}

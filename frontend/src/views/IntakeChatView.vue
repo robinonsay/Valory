@@ -68,7 +68,7 @@ async function sendMessage(): Promise<void> {
   scrollToBottom()
 
   try {
-    await post(`/api/v1/courses/${route.params.id}/intake/message`, { content }, auth.token)
+    await post(`/api/v1/courses/${route.params.id}/chat`, { message: content }, auth.token)
   } finally {
     isSending.value = false
   }
@@ -82,7 +82,7 @@ function scrollToBottom(): void {
   })
 }
 
-const sse = useSSE(`/api/pipeline?course_id=${route.params.id}`, {
+const sse = useSSE(`/api/v1/courses/${route.params.id}/events`, {
   token: auth.token!,
   onEvent,
   onError

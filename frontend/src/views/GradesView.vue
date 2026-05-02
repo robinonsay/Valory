@@ -6,28 +6,18 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { get, ApiError } from '@/api/client'
 
-interface GradeItem {
-  homework_id: string
-  homework_title: string
-  score: number | null
-  max_score: number
-  late_penalty: number
-  final_score: number | null
-  submitted_at: string | null
-  graded_at: string | null
-}
-
-interface GradesResponse {
-  grades: GradeItem[]
-  overall_average: number | null
+interface GradeSummaryResponse {
+  course_id: string
+  student_id: string
+  weighted_score: number
+  total_weight: number
 }
 
 const route = useRoute()
 const auth = useAuthStore()
 
 const courseId = computed(() => route.params.id as string)
-const grades = ref<GradeItem[]>([])
-const overallAverage = ref<number | null>(null)
+const summary = ref<GradeSummaryResponse | null>(null)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
@@ -41,12 +31,10 @@ const fetchGrades = async (): Promise<void> => {
   error.value = null
 
   try {
-    const response = await get<GradesResponse>(
-      `/api/v1/courses/${courseId.value}/grades`,
+    summary.value = await get<GradeSummaryResponse>(
+      `/api/v1/courses/${courseId.value}/grade`,
       auth.token
     )
-    grades.value = response.grades
-    overallAverage.value = response.overall_average
   } catch (err) {
     if (err instanceof ApiError) {
       error.value = 'Failed to load grades. Please try again.'
@@ -65,16 +53,6 @@ onMounted(() => {
 const formatScore = (score: number): string => {
   return score.toFixed(2)
 }
-
-const formatDate = (dateStr: string | null): string => {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString()
-}
-
-const formatOverallAverage = (avg: number | null): string => {
-  if (avg === null) return 'N/A'
-  return avg.toFixed(2)
-}
 </script>
 
 <template>
@@ -91,59 +69,21 @@ const formatOverallAverage = (avg: number | null): string => {
       {{ error }}
     </div>
 
-    <div v-else>
-      <div class="grades-content">
-        <div v-if="grades.length === 0" class="empty-state">
-          <p>No grades yet.</p>
+    <div v-else-if="summary">
+      <div class="summary-card">
+        <div class="summary-row">
+          <span class="label">Weighted Score</span>
+          <span class="value">{{ formatScore(summary.weighted_score) }}</span>
         </div>
-
-        <div v-else class="grades-table-wrapper">
-          <table class="grades-table">
-            <thead>
-              <tr>
-                <th>Assignment</th>
-                <th>Score</th>
-                <th>Late Penalty</th>
-                <th>Final Score</th>
-                <th>Graded</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in grades" :key="item.homework_id">
-                <td class="title">{{ item.homework_title }}</td>
-                <td class="score">
-                  <span v-if="item.score !== null">
-                    {{ formatScore(item.score) }} / {{ formatScore(item.max_score) }}
-                  </span>
-                  <span v-else class="pending">Pending</span>
-                </td>
-                <td class="penalty">
-                  <span v-if="item.late_penalty > 0">
-                    Late penalty: -{{ item.late_penalty }}%
-                  </span>
-                  <span v-else>-</span>
-                </td>
-                <td class="final-score">
-                  <span v-if="item.final_score !== null">
-                    {{ formatScore(item.final_score) }}
-                  </span>
-                  <span v-else class="pending">Pending</span>
-                </td>
-                <td class="graded-at">
-                  {{ item.graded_at ? formatDate(item.graded_at) : 'Pending' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="overall-summary">
-          <h2>Overall Average</h2>
-          <div class="average-value">
-            {{ formatOverallAverage(overallAverage) }}
-          </div>
+        <div class="summary-row">
+          <span class="label">Total Weight Completed</span>
+          <span class="value">{{ formatScore(summary.total_weight) }}</span>
         </div>
       </div>
+    </div>
+
+    <div v-else class="empty-state">
+      <p>No grades yet.</p>
     </div>
   </div>
 </template>
@@ -187,79 +127,32 @@ const formatOverallAverage = (avg: number | null): string => {
   font-size: 1.1rem;
 }
 
-.grades-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-}
-
-.grades-table-wrapper {
-  overflow-x: auto;
-}
-
-.grades-table {
-  width: 100%;
-  border-collapse: collapse;
+.summary-card {
   background-color: white;
   border: 1px solid #ddd;
   border-radius: 4px;
-}
-
-.grades-table thead {
-  background-color: #f5f5f5;
-  border-bottom: 2px solid #ddd;
-}
-
-.grades-table th {
-  padding: 1rem;
-  text-align: left;
-  font-weight: 600;
-  color: #333;
-}
-
-.grades-table td {
-  padding: 1rem;
-  border-bottom: 1px solid #eee;
-  color: #666;
-}
-
-.grades-table tbody tr:hover {
-  background-color: #fafafa;
-}
-
-.title {
-  font-weight: 500;
-  color: #333;
-}
-
-.score,
-.penalty,
-.final-score,
-.graded-at {
-  text-align: center;
-}
-
-.pending {
-  color: #999;
-  font-style: italic;
-}
-
-.overall-summary {
-  background-color: #f9f9f9;
-  border: 1px solid #ddd;
-  border-radius: 4px;
   padding: 1.5rem;
-  text-align: center;
+  max-width: 400px;
 }
 
-.overall-summary h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.1rem;
-  color: #333;
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #eee;
 }
 
-.average-value {
-  font-size: 2rem;
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: #555;
+  font-weight: 500;
+}
+
+.value {
+  font-size: 1.2rem;
   font-weight: 600;
   color: #1976d2;
 }

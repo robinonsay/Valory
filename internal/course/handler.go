@@ -13,20 +13,24 @@ import (
 	"github.com/valory/valory/internal/auth"
 )
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
 type CourseHandler struct {
-	svc *CourseService
+	svc  *CourseService
+	repo *CourseRepository
 }
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
 func NewHandler(svc *CourseService) *CourseHandler {
-	return &CourseHandler{svc: svc}
+	return &CourseHandler{svc: svc, repo: svc.repo}
 }
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
 func (h *CourseHandler) Routes(r chi.Router) {
 	r.Post("/", h.createCourse)
 	r.Get("/", h.listCourses)
+	r.Get("/{id}", h.getCourse)
+	r.Get("/{id}/syllabus", h.getSyllabus)
+	r.Get("/{id}/homework", h.listHomework)
 	r.Post("/{id}/withdraw", h.withdraw)
 	r.Post("/{id}/resume", h.resume)
 	r.Post("/{id}/syllabus/approve", h.approveSyllabus)
@@ -356,6 +360,170 @@ func (h *CourseHandler) agreeToSchedule(w http.ResponseWriter, r *http.Request) 
 		"agreed_count":  agreedCount,
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func (h *CourseHandler) getCourse(w http.ResponseWriter, r *http.Request) {
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	userID := uuid.UUID(rawID)
+
+	role, ok := auth.RoleFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+
+	courseIDStr := chi.URLParam(r, "id")
+	courseID, err := uuid.Parse(courseIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid course id")
+		return
+	}
+
+	course, err := h.svc.GetCourse(r.Context(), courseID, userID, role)
+	if err != nil {
+		if errors.Is(err, ErrForbidden) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "access forbidden")
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "course not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, courseToResponse(course))
+}
+
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func (h *CourseHandler) getSyllabus(w http.ResponseWriter, r *http.Request) {
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	userID := uuid.UUID(rawID)
+
+	role, ok := auth.RoleFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+
+	courseIDStr := chi.URLParam(r, "id")
+	courseID, err := uuid.Parse(courseIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid course id")
+		return
+	}
+
+	// Ownership check: GetCourse enforces student can only access own courses.
+	if _, err := h.svc.GetCourse(r.Context(), courseID, userID, role); err != nil {
+		if errors.Is(err, ErrForbidden) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "access forbidden")
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "course not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	syllabus, err := h.repo.GetLatestSyllabus(r.Context(), courseID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "syllabus not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	resp := map[string]interface{}{
+		"id":           syllabus.ID.String(),
+		"course_id":    syllabus.CourseID.String(),
+		"content_adoc": syllabus.ContentAdoc,
+		"version":      syllabus.Version,
+		"created_at":   syllabus.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+	if syllabus.ApprovedAt != nil {
+		resp["approved_at"] = syllabus.ApprovedAt.Format("2006-01-02T15:04:05Z07:00")
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func (h *CourseHandler) listHomework(w http.ResponseWriter, r *http.Request) {
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	userID := uuid.UUID(rawID)
+
+	role, ok := auth.RoleFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+
+	courseIDStr := chi.URLParam(r, "id")
+	courseID, err := uuid.Parse(courseIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid course id")
+		return
+	}
+
+	// Ownership check: GetCourse enforces student can only access own courses.
+	if _, err := h.svc.GetCourse(r.Context(), courseID, userID, role); err != nil {
+		if errors.Is(err, ErrForbidden) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "access forbidden")
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "course not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	homeworks, err := h.repo.ListHomeworkByCourseID(r.Context(), courseID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	dueDates, err := h.repo.ListDueDatesByCourseID(r.Context(), courseID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	items := make([]map[string]interface{}, 0, len(homeworks))
+	for _, hw := range homeworks {
+		item := map[string]interface{}{
+			"id":            hw.ID.String(),
+			"course_id":     hw.CourseID.String(),
+			"section_index": hw.SectionIndex,
+			"title":         hw.Title,
+			"grade_weight":  hw.GradeWeight,
+		}
+		if dd, exists := dueDates[hw.ID]; exists {
+			item["due_date"] = dd.Format("2006-01-02T15:04:05Z07:00")
+		}
+		items = append(items, item)
+	}
+
+	writeJSON(w, http.StatusOK, items)
 }
 
 // @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008"]}

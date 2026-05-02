@@ -177,6 +177,40 @@ func makeStudentRequest(t *testing.T, method, path string, body interface{}, bea
 	return rr
 }
 
+func makeMeRequest(t *testing.T, method, path string, bearerToken string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	handler := NewHandler(NewService(
+		pool,
+		NewRepository(pool),
+		audit.NewRepository(pool),
+		nil,
+		15*time.Minute,
+		&noOpTerminator{},
+	))
+
+	req := httptest.NewRequest(method, path, bytes.NewReader([]byte{}))
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+
+	rr := httptest.NewRecorder()
+
+	authMiddleware := authpkg.NewAuthMiddleware(
+		authpkg.NewRepository(pool),
+		pool,
+		24*time.Hour,
+		nil,
+	)
+
+	router := chi.NewRouter()
+	router.Use(authMiddleware)
+	handler.MeRoutes(router)
+
+	router.ServeHTTP(rr, req)
+	return rr
+}
+
 // @{"verifies": ["REQ-USER-001"]}
 func TestHandlerCreateUser_Success(t *testing.T) {
 	if pool == nil {
@@ -579,5 +613,66 @@ func TestHandlerRecordConsent_Success(t *testing.T) {
 
 	if version != consentVersion {
 		t.Errorf("expected consent version %q, got %q", consentVersion, version)
+	}
+}
+
+// @{"verifies": ["REQ-USER-001"]}
+func TestHandlerGetCurrentUser_Success(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	username := "user_me_" + uuid.New().String()
+	password := "testpass123"
+	_, _ = createTestUserWithPassword(ctx, t, username, nil, password, "student")
+
+	token := loginAsUser(ctx, t, username, password)
+
+	rr := makeMeRequest(t, "GET", "/me", token)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: body=%s", rr.Code, rr.Body.String())
+		return
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp["username"] != username {
+		t.Errorf("expected username %q, got %v", username, resp["username"])
+	}
+	if resp["role"] != "student" {
+		t.Errorf("expected role 'student', got %v", resp["role"])
+	}
+	if resp["is_active"] != true {
+		t.Errorf("expected is_active true, got %v", resp["is_active"])
+	}
+	if resp["id"] == nil {
+		t.Error("expected id in response")
+	}
+}
+
+// @{"verifies": ["REQ-USER-001"]}
+func TestHandlerGetCurrentUser_Unauthorized(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	rr := makeMeRequest(t, "GET", "/me", "")
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d: body=%s", rr.Code, rr.Body.String())
+	}
+
+	var errResp map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&errResp); err != nil {
+		t.Fatalf("failed to decode error response: %v", err)
+	}
+
+	if errResp["error"] != "unauthorized" {
+		t.Errorf("expected error 'unauthorized', got %q", errResp["error"])
 	}
 }

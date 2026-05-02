@@ -44,7 +44,7 @@ function onError(err: Error): void {
 }
 
 onMounted(() => {
-  sse = useSSE(`/api/pipeline?course_id=${route.params.id}`, {
+  sse = useSSE(`/api/v1/courses/${route.params.id}/events`, {
     token: auth.token!,
     onEvent,
     onError

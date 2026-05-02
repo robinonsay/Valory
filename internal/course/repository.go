@@ -452,6 +452,68 @@ func (r *CourseRepository) InsertDueDateSchedule(ctx context.Context, courseID, 
 	return err
 }
 
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func (r *CourseRepository) ListHomeworkByCourseID(ctx context.Context, courseID uuid.UUID) ([]HomeworkRow, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT h.id, h.course_id, h.section_index, h.title, h.rubric, h.grade_weight, h.created_at
+		 FROM homework h
+		 WHERE h.course_id = $1
+		 ORDER BY h.section_index ASC`,
+		courseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var homework []HomeworkRow
+	for rows.Next() {
+		var hw HomeworkRow
+		if err := rows.Scan(
+			&hw.ID,
+			&hw.CourseID,
+			&hw.SectionIndex,
+			&hw.Title,
+			&hw.Rubric,
+			&hw.GradeWeight,
+			&hw.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		homework = append(homework, hw)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return homework, nil
+}
+
+// @{"req": ["REQ-COURSE-007"]}
+func (r *CourseRepository) ListDueDatesByCourseID(ctx context.Context, courseID uuid.UUID) (map[uuid.UUID]time.Time, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT homework_id, due_date
+		 FROM due_date_schedules
+		 WHERE course_id = $1`,
+		courseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	dueDates := make(map[uuid.UUID]time.Time)
+	for rows.Next() {
+		var homeworkID uuid.UUID
+		var dueDate time.Time
+		if err := rows.Scan(&homeworkID, &dueDate); err != nil {
+			return nil, err
+		}
+		dueDates[homeworkID] = dueDate
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return dueDates, nil
+}
+
 // @{"req": ["REQ-COURSE-008"]}
 func (r *CourseRepository) AgreeToSchedule(ctx context.Context, courseID uuid.UUID) (int, error) {
 	result, err := r.pool.Exec(ctx,

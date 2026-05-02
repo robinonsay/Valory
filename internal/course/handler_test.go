@@ -769,6 +769,338 @@ func TestHandler_AgreeToSchedule_Success(t *testing.T) {
 	}
 }
 
+// @{"verifies": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func TestHandler_GetCourse_Success(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "Intro to Go")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.getCourse(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String(), nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp["id"] != course.ID.String() {
+		t.Errorf("expected id %s, got %v", course.ID.String(), resp["id"])
+	}
+	if resp["topic"] != "Intro to Go" {
+		t.Errorf("expected topic 'Intro to Go', got %v", resp["topic"])
+	}
+	if resp["status"] != "intake" {
+		t.Errorf("expected status 'intake', got %v", resp["status"])
+	}
+}
+
+// @{"verifies": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func TestHandler_GetCourse_NotFound_Returns404(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.getCourse(w, r)
+	})
+
+	nonExistentID := uuid.New()
+	req := httptest.NewRequest("GET", "/"+nonExistentID.String(), nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+// @{"verifies": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func TestHandler_GetCourse_WrongOwner_Returns403(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentA := createTestUserWithRole(ctx, t, "student_a_"+uuid.New().String(), "student")
+	studentB := createTestUserWithRole(ctx, t, "student_b_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentA, "Private Course")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentB), "student"))
+		handler.getCourse(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String(), nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+// @{"verifies": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func TestHandler_GetSyllabus_Success(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "Advanced Go")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+	if _, err := repo.InsertSyllabus(ctx, course.ID, "= Advanced Go\n\nWeek 1: Concurrency", 1); err != nil {
+		t.Fatalf("InsertSyllabus failed: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}/syllabus", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.getSyllabus(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String()+"/syllabus", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp["course_id"] != course.ID.String() {
+		t.Errorf("expected course_id %s, got %v", course.ID.String(), resp["course_id"])
+	}
+	if resp["version"] != float64(1) {
+		t.Errorf("expected version 1, got %v", resp["version"])
+	}
+	if resp["content_adoc"] != "= Advanced Go\n\nWeek 1: Concurrency" {
+		t.Errorf("unexpected content_adoc: %v", resp["content_adoc"])
+	}
+}
+
+// @{"verifies": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func TestHandler_GetSyllabus_NotFound_Returns404(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "No Syllabus Yet")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}/syllabus", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.getSyllabus(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String()+"/syllabus", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+// @{"verifies": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func TestHandler_ListHomework_Success(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "Data Structures")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	hw1, err := repo.InsertHomework(ctx, course.ID, 1, "Arrays", "Rubric 1", 0.3)
+	if err != nil {
+		t.Fatalf("InsertHomework 1 failed: %v", err)
+	}
+	hw2, err := repo.InsertHomework(ctx, course.ID, 2, "Linked Lists", "Rubric 2", 0.4)
+	if err != nil {
+		t.Fatalf("InsertHomework 2 failed: %v", err)
+	}
+	dueDate := time.Now().Add(7 * 24 * time.Hour).UTC().Truncate(time.Second)
+	if err := repo.InsertDueDateSchedule(ctx, course.ID, hw1.ID, dueDate); err != nil {
+		t.Fatalf("InsertDueDateSchedule failed: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}/homework", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.listHomework(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String()+"/homework", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	items, ok := resp["homework"].([]interface{})
+	if !ok {
+		t.Fatalf("expected homework array in response")
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 homework items, got %d", len(items))
+	}
+
+	first := items[0].(map[string]interface{})
+	if first["id"] != hw1.ID.String() {
+		t.Errorf("expected first homework id %s, got %v", hw1.ID.String(), first["id"])
+	}
+	if first["title"] != "Arrays" {
+		t.Errorf("expected title 'Arrays', got %v", first["title"])
+	}
+	if _, hasDueDate := first["due_date"]; !hasDueDate {
+		t.Errorf("expected due_date to be present for hw1")
+	}
+
+	second := items[1].(map[string]interface{})
+	if second["id"] != hw2.ID.String() {
+		t.Errorf("expected second homework id %s, got %v", hw2.ID.String(), second["id"])
+	}
+	if _, hasDueDate := second["due_date"]; hasDueDate {
+		t.Errorf("expected due_date to be absent for hw2 (no schedule inserted)")
+	}
+}
+
+// @{"verifies": ["REQ-COURSE-001", "REQ-COURSE-007"]}
+func TestHandler_ListHomework_EmptyArray(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "Empty Homework Course")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}/homework", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.listHomework(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String()+"/homework", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	items, ok := resp["homework"].([]interface{})
+	if !ok {
+		t.Fatalf("expected homework array in response, got: %v", resp["homework"])
+	}
+	if len(items) != 0 {
+		t.Errorf("expected empty homework array, got %d items", len(items))
+	}
+}
+
 // @{"verifies": ["REQ-COURSE-008"]}
 func TestHandler_AgreeToSchedule_NoPending_Returns409(t *testing.T) {
 	if pool == nil {

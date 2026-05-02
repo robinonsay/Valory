@@ -50,7 +50,7 @@ describe('GeneratingView', () => {
 
     expect(mockUseSSE).toHaveBeenCalled()
     const callArgs = mockUseSSE.mock.calls[0]
-    expect(callArgs[0]).toContain('/api/pipeline?course_id=test-course-id')
+    expect(callArgs[0]).toBe('/api/v1/courses/test-course-id/events')
     expect(callArgs[1].token).toBe('test-token')
   })
 

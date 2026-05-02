@@ -1,6 +1,6 @@
 //go:build testing
 
-// @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
+// @{"verifies": ["REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
 package content
 
 import (
@@ -24,7 +24,7 @@ import (
 func submitFeedbackStatus(t *testing.T, feedbackText string) int {
 	t.Helper()
 
-	h := NewContentHandler(nil)
+	h := NewContentHandler(nil, nil)
 
 	router := chi.NewRouter()
 	router.Post("/{id}/{sectionIndex}/feedback", func(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +125,7 @@ func TestSubmitFeedback_ExactlyAtLimit_MultiByteRunes_PassesLengthGuard(t *testi
 	}
 
 	repo := NewContentRepository(pool)
-	h := NewContentHandler(repo)
+	h := NewContentHandler(repo, nil)
 	router := chi.NewRouter()
 	router.Post("/{id}/{sectionIndex}/feedback", func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(auth.WithTestConn(
@@ -152,7 +152,7 @@ func TestSubmitFeedback_ExactlyAtLimit_MultiByteRunes_PassesLengthGuard(t *testi
 
 // @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
 func TestExportSection_BadFormat_Returns400(t *testing.T) {
-	h := NewContentHandler(nil)
+	h := NewContentHandler(nil, nil)
 
 	router := chi.NewRouter()
 	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +160,7 @@ func TestExportSection_BadFormat_Returns400(t *testing.T) {
 		h.exportSection(w, r)
 	})
 
-	req := httptest.NewRequest("GET", "/" + uuid.New().String() + "/0/export?format=docx", nil)
+	req := httptest.NewRequest("GET", "/"+uuid.New().String()+"/0/export?format=docx", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -179,7 +179,7 @@ func TestExportSection_BadFormat_Returns400(t *testing.T) {
 
 // @{"verifies": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
 func TestExportSection_MissingFormat_Returns400(t *testing.T) {
-	h := NewContentHandler(nil)
+	h := NewContentHandler(nil, nil)
 
 	router := chi.NewRouter()
 	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
@@ -187,7 +187,7 @@ func TestExportSection_MissingFormat_Returns400(t *testing.T) {
 		h.exportSection(w, r)
 	})
 
-	req := httptest.NewRequest("GET", "/" + uuid.New().String() + "/0/export", nil)
+	req := httptest.NewRequest("GET", "/"+uuid.New().String()+"/0/export", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -216,14 +216,14 @@ func TestExportSection_NotFound_Returns404(t *testing.T) {
 	studentID := createUser(ctx, t, "export_notfound_"+uuid.New().String())
 	courseID := createCourse(ctx, t, studentID, "test topic")
 
-	h := NewContentHandler(repo)
+	h := NewContentHandler(repo, nil)
 	router := chi.NewRouter()
 	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
 		h.exportSection(w, r)
 	})
 
-	req := httptest.NewRequest("GET", "/" + courseID.String() + "/99/export?format=html", nil)
+	req := httptest.NewRequest("GET", "/"+courseID.String()+"/99/export?format=html", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -265,14 +265,14 @@ func TestExportSection_BinaryNotFound_Returns500(t *testing.T) {
 		t.Fatalf("SetCitationVerified: %v", err)
 	}
 
-	h := NewContentHandler(repo)
+	h := NewContentHandler(repo, nil)
 	router := chi.NewRouter()
 	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
 		h.exportSection(w, r)
 	})
 
-	req := httptest.NewRequest("GET", "/" + courseID.String() + "/0/export?format=html", nil)
+	req := httptest.NewRequest("GET", "/"+courseID.String()+"/0/export?format=html", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -314,14 +314,14 @@ func TestExportSection_HappyPath_HTML(t *testing.T) {
 		t.Fatalf("SetCitationVerified: %v", err)
 	}
 
-	h := NewContentHandler(repo)
+	h := NewContentHandler(repo, nil)
 	router := chi.NewRouter()
 	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
 		h.exportSection(w, r)
 	})
 
-	req := httptest.NewRequest("GET", "/" + courseID.String() + "/0/export?format=html", nil)
+	req := httptest.NewRequest("GET", "/"+courseID.String()+"/0/export?format=html", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -372,14 +372,14 @@ func TestExportSection_HappyPath_PDF(t *testing.T) {
 		t.Fatalf("SetCitationVerified: %v", err)
 	}
 
-	h := NewContentHandler(repo)
+	h := NewContentHandler(repo, nil)
 	router := chi.NewRouter()
 	router.Get("/{id}/{sectionIndex}/export", func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
 		h.exportSection(w, r)
 	})
 
-	req := httptest.NewRequest("GET", "/" + courseID.String() + "/1/export?format=pdf", nil)
+	req := httptest.NewRequest("GET", "/"+courseID.String()+"/1/export?format=pdf", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -403,5 +403,110 @@ func TestExportSection_HappyPath_PDF(t *testing.T) {
 	// PDF files start with magic number %PDF
 	if !strings.HasPrefix(w.Body.String(), "%PDF") {
 		t.Error("want PDF output, but response does not start with PDF magic number")
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-001"]}
+func TestListSections_WithSections_Returns200(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewContentRepository(pool)
+
+	studentID := createUser(ctx, t, "listsections_with_"+uuid.New().String())
+	courseID := createCourse(ctx, t, studentID, "test topic")
+
+	// Insert and verify two sections
+	section0, err := repo.InsertLessonContent(ctx, courseID, 0, "Introduction", "= Intro")
+	if err != nil {
+		t.Fatalf("InsertLessonContent section 0: %v", err)
+	}
+	if err := repo.SetCitationVerified(ctx, section0.ID); err != nil {
+		t.Fatalf("SetCitationVerified section 0: %v", err)
+	}
+
+	section1, err := repo.InsertLessonContent(ctx, courseID, 1, "Chapter One", "= Chapter 1")
+	if err != nil {
+		t.Fatalf("InsertLessonContent section 1: %v", err)
+	}
+	if err := repo.SetCitationVerified(ctx, section1.ID); err != nil {
+		t.Fatalf("SetCitationVerified section 1: %v", err)
+	}
+
+	h := NewContentHandler(repo, nil)
+	router := chi.NewRouter()
+	router.Get("/{id}/sections", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		h.listSections(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+courseID.String()+"/sections", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var sections []map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&sections); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(sections) != 2 {
+		t.Errorf("want 2 sections, got %d", len(sections))
+	}
+
+	if len(sections) >= 1 {
+		if sections[0]["section_index"] != float64(0) {
+			t.Errorf("section[0].section_index: expected 0, got %v", sections[0]["section_index"])
+		}
+		if sections[0]["title"] != "Introduction" {
+			t.Errorf("section[0].title: expected 'Introduction', got %v", sections[0]["title"])
+		}
+	}
+
+	if len(sections) >= 2 {
+		if sections[1]["section_index"] != float64(1) {
+			t.Errorf("section[1].section_index: expected 1, got %v", sections[1]["section_index"])
+		}
+		if sections[1]["title"] != "Chapter One" {
+			t.Errorf("section[1].title: expected 'Chapter One', got %v", sections[1]["title"])
+		}
+	}
+}
+
+// @{"verifies": ["REQ-CONTENT-001"]}
+func TestListSections_Empty_Returns200WithEmptyArray(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewContentRepository(pool)
+
+	studentID := createUser(ctx, t, "listsections_empty_"+uuid.New().String())
+	courseID := createCourse(ctx, t, studentID, "test topic")
+
+	h := NewContentHandler(repo, nil)
+	router := chi.NewRouter()
+	router.Get("/{id}/sections", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		h.listSections(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+courseID.String()+"/sections", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := strings.TrimSpace(w.Body.String())
+	if body != "[]" {
+		t.Errorf("want empty array '[]' not null, got %q", body)
 	}
 }

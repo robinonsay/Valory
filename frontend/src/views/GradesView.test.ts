@@ -18,30 +18,21 @@ const router = createRouter({
   ]
 })
 
+const mockSummary = {
+  course_id: 'test-course-id',
+  student_id: 'test-student-id',
+  weighted_score: 85.5,
+  total_weight: 0.6
+}
+
 describe('GradesView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
-  it('fetches grades on mount', async () => {
-    const mockGrades = {
-      grades: [
-        {
-          homework_id: 'hw1',
-          homework_title: 'Homework 1',
-          score: 85,
-          max_score: 100,
-          late_penalty: 0,
-          final_score: 85,
-          submitted_at: '2024-01-01T10:00:00Z',
-          graded_at: '2024-01-02T10:00:00Z'
-        }
-      ],
-      overall_average: 85.5
-    }
-
-    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue(mockGrades)
+  it('fetches grades on mount using correct URL and token', async () => {
+    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue(mockSummary)
 
     const auth = useAuthStore()
     auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
@@ -58,174 +49,13 @@ describe('GradesView', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/v1/courses/test-course-id/grades',
+      '/api/v1/courses/test-course-id/grade',
       'test-token'
     )
   })
 
-  it('renders per-homework scores', async () => {
-    const mockGrades = {
-      grades: [
-        {
-          homework_id: 'hw1',
-          homework_title: 'Homework 1',
-          score: 85,
-          max_score: 100,
-          late_penalty: 0,
-          final_score: 85,
-          submitted_at: '2024-01-01T10:00:00Z',
-          graded_at: '2024-01-02T10:00:00Z'
-        }
-      ],
-      overall_average: 85.5
-    }
-
-    vi.spyOn(clientModule, 'get').mockResolvedValue(mockGrades)
-
-    const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
-
-    await router.push('/courses/test-course-id/grades')
-
-    const wrapper = mount(GradesView, {
-      global: {
-        plugins: [router]
-      }
-    })
-
-    await wrapper.vm.$nextTick()
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(wrapper.text()).toContain('Homework 1')
-    expect(wrapper.text()).toContain('85.00 / 100.00')
-  })
-
-  it('shows "Pending" for ungraded items with null score', async () => {
-    const mockGrades = {
-      grades: [
-        {
-          homework_id: 'hw1',
-          homework_title: 'Homework 1',
-          score: null,
-          max_score: 100,
-          late_penalty: 0,
-          final_score: null,
-          submitted_at: '2024-01-01T10:00:00Z',
-          graded_at: null
-        }
-      ],
-      overall_average: null
-    }
-
-    vi.spyOn(clientModule, 'get').mockResolvedValue(mockGrades)
-
-    const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
-
-    await router.push('/courses/test-course-id/grades')
-
-    const wrapper = mount(GradesView, {
-      global: {
-        plugins: [router]
-      }
-    })
-
-    await wrapper.vm.$nextTick()
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(wrapper.text()).toContain('Pending')
-  })
-
-  it('shows late penalty when greater than 0', async () => {
-    const mockGrades = {
-      grades: [
-        {
-          homework_id: 'hw1',
-          homework_title: 'Homework 1',
-          score: 85,
-          max_score: 100,
-          late_penalty: 5,
-          final_score: 80,
-          submitted_at: '2024-01-01T10:00:00Z',
-          graded_at: '2024-01-02T10:00:00Z'
-        }
-      ],
-      overall_average: 80
-    }
-
-    vi.spyOn(clientModule, 'get').mockResolvedValue(mockGrades)
-
-    const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
-
-    await router.push('/courses/test-course-id/grades')
-
-    const wrapper = mount(GradesView, {
-      global: {
-        plugins: [router]
-      }
-    })
-
-    await wrapper.vm.$nextTick()
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(wrapper.text()).toContain('Late penalty: -5%')
-  })
-
-  it('shows "N/A" for null overall average', async () => {
-    const mockGrades = {
-      grades: [
-        {
-          homework_id: 'hw1',
-          homework_title: 'Homework 1',
-          score: null,
-          max_score: 100,
-          late_penalty: 0,
-          final_score: null,
-          submitted_at: '2024-01-01T10:00:00Z',
-          graded_at: null
-        }
-      ],
-      overall_average: null
-    }
-
-    vi.spyOn(clientModule, 'get').mockResolvedValue(mockGrades)
-
-    const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
-
-    await router.push('/courses/test-course-id/grades')
-
-    const wrapper = mount(GradesView, {
-      global: {
-        plugins: [router]
-      }
-    })
-
-    await wrapper.vm.$nextTick()
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(wrapper.text()).toContain('N/A')
-  })
-
-  it('shows overall average when present', async () => {
-    const mockGrades = {
-      grades: [
-        {
-          homework_id: 'hw1',
-          homework_title: 'Homework 1',
-          score: 85,
-          max_score: 100,
-          late_penalty: 0,
-          final_score: 85,
-          submitted_at: '2024-01-01T10:00:00Z',
-          graded_at: '2024-01-02T10:00:00Z'
-        }
-      ],
-      overall_average: 85.5
-    }
-
-    vi.spyOn(clientModule, 'get').mockResolvedValue(mockGrades)
+  it('renders weighted score and total weight from summary', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue(mockSummary)
 
     const auth = useAuthStore()
     auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
@@ -242,5 +72,49 @@ describe('GradesView', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(wrapper.text()).toContain('85.50')
+    expect(wrapper.text()).toContain('0.60')
+    expect(wrapper.text()).toContain('Weighted Score')
+  })
+
+  it('shows "No grades yet" when summary is null', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue(null)
+
+    const auth = useAuthStore()
+    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+
+    await router.push('/courses/test-course-id/grades')
+
+    const wrapper = mount(GradesView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(wrapper.text()).toContain('No grades yet.')
+  })
+
+  it('shows error message when API call fails', async () => {
+    vi.spyOn(clientModule, 'get').mockRejectedValue(
+      new clientModule.ApiError(500, { error: 'internal server error' })
+    )
+
+    const auth = useAuthStore()
+    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+
+    await router.push('/courses/test-course-id/grades')
+
+    const wrapper = mount(GradesView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(wrapper.text()).toContain('Failed to load grades.')
   })
 })

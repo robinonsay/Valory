@@ -36,6 +36,11 @@ type SectionFeedbackRow struct {
 	RegenerationTriggered bool
 }
 
+type SectionSummary struct {
+	SectionIndex int    `json:"section_index"`
+	Title        string `json:"title"`
+}
+
 type ContentRepository struct {
 	pool *pgxpool.Pool
 }
@@ -225,6 +230,42 @@ func (r *ContentRepository) ListFeedback(ctx context.Context, studentID, courseI
 
 	if err = rows.Err(); err != nil {
 		return nil, err
+	}
+
+	return results, nil
+}
+
+// @{"req": ["REQ-CONTENT-001"]}
+func (r *ContentRepository) ListSectionsByCourseID(ctx context.Context, courseID uuid.UUID) ([]SectionSummary, error) {
+	query := `
+		SELECT DISTINCT ON (section_index) section_index, title
+		FROM lesson_content
+		WHERE course_id = $1 AND citation_verified = true
+		ORDER BY section_index ASC, version DESC
+	`
+
+	rows, err := r.conn(ctx).Query(ctx, query, courseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SectionSummary
+	for rows.Next() {
+		var summary SectionSummary
+		err := rows.Scan(&summary.SectionIndex, &summary.Title)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, summary)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if results == nil {
+		results = []SectionSummary{}
 	}
 
 	return results, nil

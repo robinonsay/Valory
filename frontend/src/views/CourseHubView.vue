@@ -5,34 +5,33 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { get, ApiError } from '@/api/client'
-import type { Course } from '@/types/course'
 
 interface Section {
-  id: string
+  section_index: number
   title: string
-  order: number
-  completed: boolean
-}
-
-interface SectionsResponse {
-  sections: Section[]
 }
 
 interface HomeworkItem {
   id: string
+  section_index: number
   title: string
-  due_date: string
+  grade_weight: number
+  due_date: string | null
 }
 
-interface HomeworkListResponse {
-  homework: HomeworkItem[]
+interface CourseDetail {
+  id: string
+  topic: string
+  status: string
+  created_at: string
+  updated_at: string
 }
 
 const route = useRoute()
 const auth = useAuthStore()
 
 const courseId = route.params.id as string
-const course = ref<Course | null>(null)
+const course = ref<CourseDetail | null>(null)
 const sections = ref<Section[]>([])
 const homework = ref<HomeworkItem[]>([])
 const loading = ref(true)
@@ -44,15 +43,15 @@ onMounted(async () => {
     loading.value = true
     error.value = null
 
-    const courseResponse = await get<{ course: Course }>(`/api/v1/courses/${courseId}`, auth.token)
-    course.value = courseResponse.course
+    const courseResponse = await get<CourseDetail>(`/api/v1/courses/${courseId}`, auth.token)
+    course.value = courseResponse
 
-    const sectionsResponse = await get<SectionsResponse>(`/api/v1/courses/${courseId}/sections`, auth.token)
-    sections.value = sectionsResponse.sections
+    const sectionsResponse = await get<Section[]>(`/api/v1/courses/${courseId}/sections`, auth.token)
+    sections.value = sectionsResponse
 
     try {
-      const homeworkResponse = await get<HomeworkListResponse>(`/api/v1/courses/${courseId}/homework`, auth.token)
-      homework.value = homeworkResponse.homework
+      const homeworkResponse = await get<HomeworkItem[]>(`/api/v1/courses/${courseId}/homework`, auth.token)
+      homework.value = homeworkResponse
       hasHomework.value = homework.value.length > 0
     } catch {
       hasHomework.value = false
@@ -86,7 +85,7 @@ function formatDate(dateString: string): string {
 
     <div v-else-if="course" class="content">
       <div class="header">
-        <h1>{{ course.title }}</h1>
+        <h1>{{ course.topic }}</h1>
         <span class="status-badge" :class="course.status">
           {{ course.status }}
         </span>
@@ -95,10 +94,9 @@ function formatDate(dateString: string): string {
       <section class="sections-section">
         <h2>Sections</h2>
         <ul class="sections-list">
-          <li v-for="section in sections" :key="section.id" class="section-item">
-            <router-link :to="`/courses/${courseId}/sections/${section.id}`">
+          <li v-for="section in sections" :key="section.section_index" class="section-item">
+            <router-link :to="`/courses/${courseId}/sections/${section.section_index}`">
               {{ section.title }}
-              <span v-if="section.completed" class="checkmark">✓</span>
             </router-link>
           </li>
         </ul>
@@ -110,7 +108,7 @@ function formatDate(dateString: string): string {
           <li v-for="hw in homework" :key="hw.id" class="homework-item">
             <router-link :to="`/courses/${courseId}/homework/${hw.id}`">
               <div class="homework-title">{{ hw.title }}</div>
-              <div class="homework-due">Due: {{ formatDate(hw.due_date) }}</div>
+              <div class="homework-due">Due: {{ hw.due_date ? formatDate(hw.due_date) : 'Not scheduled' }}</div>
             </router-link>
           </li>
         </ul>

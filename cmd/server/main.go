@@ -154,7 +154,7 @@ func main() {
 
 	// --- Content module wiring ---
 	contentRepo := content.NewContentRepository(pool)
-	contentHandler := content.NewContentHandler(contentRepo)
+	contentHandler := content.NewContentHandler(contentRepo, courseSvc)
 
 	// --- Notify module wiring ---
 	notifyRepo := notify.NewRepository(pool)
@@ -203,8 +203,10 @@ func main() {
 			r.Use(security.CSRFMiddleware)
 
 			// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-007"]}
-			// --- User admin routes (require admin role) ---
+			// --- User routes ---
 			r.Route("/users", func(r chi.Router) {
+				// GET /users/me — any authenticated user reads their own profile.
+				userHandler.MeRoutes(r)
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireRole("admin"))
 					userHandler.AdminRoutes(r)
@@ -232,6 +234,11 @@ func main() {
 					// @{"req": ["REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
 					r.Route("/content", func(r chi.Router) {
 						contentHandler.Routes(r)
+					})
+					// @{"req": ["REQ-CONTENT-001"]}
+					// GET /courses/{id}/sections — section list for nav and hub views.
+					r.Route("/sections", func(r chi.Router) {
+						contentHandler.SectionListRoutes(r)
 					})
 					// @{"req": ["REQ-GRADE-003", "REQ-GRADE-004"]}
 					// Course-level grade summary for the requesting student.

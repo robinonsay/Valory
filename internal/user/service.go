@@ -345,6 +345,13 @@ func (s *Service) ListUsers(ctx context.Context, role string, limit int) ([]User
 	return s.repo.ListUsers(ctx, role, limit)
 }
 
+// GetUserByID retrieves a user by their ID.
+//
+// @{"req": ["REQ-USER-001"]}
+func (s *Service) GetUserByID(ctx context.Context, id uuid.UUID) (UserRow, error) {
+	return s.repo.GetUserByID(ctx, id)
+}
+
 // RecordConsent upserts the student's consent record. No audit entry is required
 // for consent per the SDD.
 //

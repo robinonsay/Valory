@@ -4,19 +4,15 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { get, patch, post, ApiError } from '@/api/client'
-
-interface SyllabusSection {
-  title: string
-  description: string
-  due_date: string
-}
+import { get, post, ApiError } from '@/api/client'
 
 interface SyllabusResponse {
-  syllabus: {
-    sections: SyllabusSection[]
-    learning_objectives: string[]
-  }
+  id: string
+  course_id: string
+  content_adoc: string
+  version: number
+  approved_at: string | null
+  created_at: string
 }
 
 const router = useRouter()
@@ -27,8 +23,7 @@ const courseId = route.params.id as string
 
 const isLoading = ref(true)
 const fetchError = ref('')
-const sections = ref<SyllabusSection[]>([])
-const learningObjectives = ref<string[]>([])
+const syllabusContent = ref('')
 
 const modificationText = ref('')
 const isModificationModalOpen = ref(false)
@@ -48,8 +43,7 @@ async function fetchSyllabus() {
       `/api/v1/courses/${courseId}/syllabus`,
       auth.token
     )
-    sections.value = response.syllabus.sections
-    learningObjectives.value = response.syllabus.learning_objectives
+    syllabusContent.value = response.content_adoc
   } catch (err) {
     if (err instanceof ApiError) {
       fetchError.value = 'Failed to load syllabus. Please try again.'
@@ -73,8 +67,8 @@ async function submitModification() {
   isSubmittingModification.value = true
 
   try {
-    await patch(
-      `/api/v1/courses/${courseId}/syllabus`,
+    await post(
+      `/api/v1/courses/${courseId}/syllabus/modification`,
       { request: modificationText.value },
       auth.token
     )
@@ -157,27 +151,9 @@ onMounted(() => {
 
     <template v-if="!isLoading && !fetchError">
       <div class="syllabus-content">
-        <section class="learning-objectives">
-          <h2>Learning Objectives</h2>
-          <ul v-if="learningObjectives.length > 0">
-            <li v-for="(objective, index) in learningObjectives" :key="index">
-              {{ objective }}
-            </li>
-          </ul>
-          <p v-else>No learning objectives defined.</p>
-        </section>
-
-        <section class="sections">
-          <h2>Course Sections</h2>
-          <div v-if="sections.length > 0" class="sections-list">
-            <div v-for="(section, index) in sections" :key="index" class="section-item">
-              <h3>{{ section.title }}</h3>
-              <p>{{ section.description }}</p>
-              <p class="due-date">Due: {{ section.due_date }}</p>
-            </div>
-          </div>
-          <p v-else>No sections defined.</p>
-        </section>
+        <div class="syllabus-text">
+          <pre>{{ syllabusContent }}</pre>
+        </div>
       </div>
 
       <div v-if="approveError" class="error-message">
@@ -297,6 +273,22 @@ h3 {
   padding: 1.5rem;
   background-color: #f9f9f9;
   border-radius: 8px;
+}
+
+.syllabus-text {
+  background-color: white;
+  padding: 1rem;
+  border-radius: 4px;
+  border-left: 4px solid #1976d2;
+}
+
+.syllabus-text pre {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #333;
+  line-height: 1.6;
 }
 
 .learning-objectives {

@@ -34,25 +34,27 @@ const router = createRouter({
 })
 
 const COURSE_ID = 'course-abc'
-const SECTION_ID = 'section-001'
+// sectionId is now an integer index (as a string) matching the backend's section_index
+const SECTION_INDEX = 1
+const SECTION_ID = SECTION_INDEX.toString()
 const ROUTE = `/courses/${COURSE_ID}/sections/${SECTION_ID}`
 
 const mockSectionContent = {
-  id: SECTION_ID,
+  id: 'some-uuid',
   title: 'Introduction to Algorithms',
-  body: '<p>This is section content.</p>',
-  order: 2,
+  content_adoc: '<p>This is section content.</p>',
+  section_index: SECTION_INDEX,
   course_id: COURSE_ID,
-  total_sections: 5
+  version: 1,
+  citation_verified: false,
+  created_at: '2024-01-01T00:00:00Z'
 }
 
-const mockSectionList = {
-  sections: [
-    { id: 'section-000', order: 1, title: 'Overview' },
-    { id: SECTION_ID, order: 2, title: 'Introduction to Algorithms' },
-    { id: 'section-002', order: 3, title: 'Sorting' }
-  ]
-}
+const mockSectionList = [
+  { section_index: 0, title: 'Overview' },
+  { section_index: SECTION_INDEX, title: 'Introduction to Algorithms' },
+  { section_index: 2, title: 'Sorting' }
+]
 
 async function mountView() {
   await router.push(ROUTE)
@@ -90,27 +92,28 @@ describe('SectionReaderView', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(mockGet).toHaveBeenCalledWith(
-      `/api/v1/courses/${COURSE_ID}/sections/${SECTION_ID}`,
+      `/api/v1/courses/${COURSE_ID}/content/${SECTION_ID}`,
       'test-token'
     )
     expect(wrapper.find('h1').text()).toBe('Introduction to Algorithms')
   })
 
-  // Test 2: previous button disabled when order === 1
-  it('previous button is disabled when section order is 1', async () => {
+  // Test 2: previous button disabled when section is the first in the list
+  it('previous button is disabled when section is the first in the list', async () => {
     mockGet.mockImplementation((url: string) => {
       if ((url as string).endsWith('/sections')) {
-        return Promise.resolve({
-          sections: [
-            { id: SECTION_ID, order: 1, title: 'First Section' },
-            { id: 'section-002', order: 2, title: 'Second Section' }
-          ]
-        })
+        return Promise.resolve([
+          { section_index: 0, title: 'First Section' },
+          { section_index: 1, title: 'Second Section' }
+        ])
       }
-      return Promise.resolve({ ...mockSectionContent, order: 1, total_sections: 2 })
+      // Current section is index 0 (first)
+      return Promise.resolve({ ...mockSectionContent, section_index: 0 })
     })
 
-    const wrapper = await mountView()
+    // Navigate to section index 0
+    await router.push(`/courses/${COURSE_ID}/sections/0`)
+    const wrapper = mount(SectionReaderView, { global: { plugins: [router] } })
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
 
@@ -118,18 +121,17 @@ describe('SectionReaderView', () => {
     expect(prevButton.attributes('disabled')).toBeDefined()
   })
 
-  // Test 3: next button disabled when order === total_sections
-  it('next button is disabled when section order equals total_sections', async () => {
+  // Test 3: next button disabled when section is the last in the list
+  it('next button is disabled when section is the last in the list', async () => {
     mockGet.mockImplementation((url: string) => {
       if ((url as string).endsWith('/sections')) {
-        return Promise.resolve({
-          sections: [
-            { id: 'section-000', order: 1, title: 'First Section' },
-            { id: SECTION_ID, order: 2, title: 'Last Section' }
-          ]
-        })
+        return Promise.resolve([
+          { section_index: 0, title: 'First Section' },
+          { section_index: 1, title: 'Last Section' }
+        ])
       }
-      return Promise.resolve({ ...mockSectionContent, order: 2, total_sections: 2 })
+      // Current section is index 1 (last)
+      return Promise.resolve({ ...mockSectionContent, section_index: 1 })
     })
 
     const wrapper = await mountView()
@@ -141,7 +143,7 @@ describe('SectionReaderView', () => {
   })
 
   // Test 4: Navigation to previous/next section IDs works
-  it('previous button navigates to the previous section ID', async () => {
+  it('previous button navigates to the previous section index', async () => {
     const pushSpy = vi.spyOn(router, 'push')
     const wrapper = await mountView()
     await wrapper.vm.$nextTick()
@@ -151,11 +153,11 @@ describe('SectionReaderView', () => {
     await prevButton.trigger('click')
 
     expect(pushSpy).toHaveBeenCalledWith(
-      `/courses/${COURSE_ID}/sections/section-000`
+      `/courses/${COURSE_ID}/sections/0`
     )
   })
 
-  it('next button navigates to the next section ID', async () => {
+  it('next button navigates to the next section index', async () => {
     const pushSpy = vi.spyOn(router, 'push')
     const wrapper = await mountView()
     await wrapper.vm.$nextTick()
@@ -165,7 +167,7 @@ describe('SectionReaderView', () => {
     await nextButton.trigger('click')
 
     expect(pushSpy).toHaveBeenCalledWith(
-      `/courses/${COURSE_ID}/sections/section-002`
+      `/courses/${COURSE_ID}/sections/2`
     )
   })
 
@@ -184,8 +186,8 @@ describe('SectionReaderView', () => {
     expect(wrapper.find('.modal').exists()).toBe(true)
   })
 
-  // Test 6: feedback POST uses key "feedback_text"
-  it('feedback POST body uses key feedback_text', async () => {
+  // Test 6: feedback POST uses key "feedback_text" and correct content path
+  it('feedback POST body uses key feedback_text and hits /content/ path', async () => {
     const wrapper = await mountView()
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -203,7 +205,7 @@ describe('SectionReaderView', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(mockPost).toHaveBeenCalledWith(
-      `/api/v1/courses/${COURSE_ID}/sections/${SECTION_ID}/feedback`,
+      `/api/v1/courses/${COURSE_ID}/content/${SECTION_ID}/feedback`,
       { feedback_text: 'This section was confusing.' },
       'test-token'
     )
@@ -286,9 +288,9 @@ describe('SectionReaderView', () => {
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    // Verify fetch was called with Authorization header (NOT window.location.href assignment)
+    // Verify fetch was called with correct /content/ path and Authorization header
     expect(mockFetch).toHaveBeenCalledWith(
-      `/api/v1/courses/${COURSE_ID}/sections/${SECTION_ID}/export?format=pdf`,
+      `/api/v1/courses/${COURSE_ID}/content/${SECTION_ID}/export?format=pdf`,
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer test-token'

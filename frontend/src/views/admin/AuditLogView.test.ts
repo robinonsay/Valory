@@ -68,7 +68,7 @@ describe('AuditLogView', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/admin/audit?limit=50', 'test-token')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/audit?limit=50', 'test-token')
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(2)
@@ -174,7 +174,7 @@ describe('AuditLogView', () => {
     expect(rows[1].text()).toContain('user.deactivate')
 
     expect(vi.mocked(get)).toHaveBeenCalledWith(
-      `/api/v1/admin/audit?limit=50&before=${cursorValue}`,
+      `/api/v1/audit?limit=50&before=${cursorValue}`,
       'test-token'
     )
   })

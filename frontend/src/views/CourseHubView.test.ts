@@ -33,25 +33,22 @@ describe('CourseHubView', () => {
   it('fetches course and sections on mount', async () => {
     const mockCourse = {
       id: 'course-1',
-      title: 'JavaScript Basics',
-      status: 'active' as const,
-      student_id: 'student-1',
+      topic: 'JavaScript Basics',
+      status: 'active',
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T12:00:00Z'
     }
 
-    const mockSections = {
-      sections: [
-        { id: 'sec-1', title: 'Introduction', order: 1, completed: true },
-        { id: 'sec-2', title: 'Variables', order: 2, completed: false }
-      ]
-    }
+    const mockSections = [
+      { section_index: 0, title: 'Introduction' },
+      { section_index: 1, title: 'Variables' }
+    ]
 
     vi.mocked(get).mockImplementation((path) => {
       if (path.includes('/sections')) {
         return Promise.resolve(mockSections)
       }
-      return Promise.resolve({ course: mockCourse })
+      return Promise.resolve(mockCourse)
     })
 
     const auth = useAuthStore()
@@ -81,19 +78,16 @@ describe('CourseHubView', () => {
   it('renders section list with completion indicators', async () => {
     const mockCourse = {
       id: 'course-1',
-      title: 'JavaScript Basics',
-      status: 'active' as const,
-      student_id: 'student-1',
+      topic: 'JavaScript Basics',
+      status: 'active',
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T12:00:00Z'
     }
 
-    const mockSections = {
-      sections: [
-        { id: 'sec-1', title: 'Introduction', order: 1, completed: true },
-        { id: 'sec-2', title: 'Variables', order: 2, completed: false }
-      ]
-    }
+    const mockSections = [
+      { section_index: 0, title: 'Introduction' },
+      { section_index: 1, title: 'Variables' }
+    ]
 
     vi.mocked(get).mockImplementation((path) => {
       if (path.includes('/sections')) {
@@ -102,7 +96,7 @@ describe('CourseHubView', () => {
       if (path.includes('/homework')) {
         return Promise.reject(new clientModule.ApiError(404, {}))
       }
-      return Promise.resolve({ course: mockCourse })
+      return Promise.resolve(mockCourse)
     })
 
     const auth = useAuthStore()
@@ -128,26 +122,21 @@ describe('CourseHubView', () => {
     const sectionItems = wrapper.findAll('.section-item a')
     expect(sectionItems).toHaveLength(2)
     expect(sectionItems[0].text()).toContain('Introduction')
-    expect(sectionItems[0].text()).toContain('✓')
     expect(sectionItems[1].text()).toContain('Variables')
-    expect(sectionItems[1].text()).not.toContain('✓')
   })
 
   it('section link navigates to correct section route', async () => {
     const mockCourse = {
       id: 'course-1',
-      title: 'JavaScript Basics',
-      status: 'active' as const,
-      student_id: 'student-1',
+      topic: 'JavaScript Basics',
+      status: 'active',
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T12:00:00Z'
     }
 
-    const mockSections = {
-      sections: [
-        { id: 'sec-1', title: 'Introduction', order: 1, completed: true }
-      ]
-    }
+    const mockSections = [
+      { section_index: 0, title: 'Introduction' }
+    ]
 
     vi.mocked(get).mockImplementation((path) => {
       if (path.includes('/sections')) {
@@ -156,7 +145,7 @@ describe('CourseHubView', () => {
       if (path.includes('/homework')) {
         return Promise.reject(new clientModule.ApiError(404, {}))
       }
-      return Promise.resolve({ course: mockCourse })
+      return Promise.resolve(mockCourse)
     })
 
     const auth = useAuthStore()
@@ -183,22 +172,19 @@ describe('CourseHubView', () => {
     await wrapper.vm.$nextTick()
 
     const sectionLink = wrapper.find('.section-item a')
-    expect(sectionLink.attributes('href')).toBe('/courses/course-1/sections/sec-1')
+    expect(sectionLink.attributes('href')).toBe('/courses/course-1/sections/0')
   })
 
   it('renders Grades and Badges links', async () => {
     const mockCourse = {
       id: 'course-1',
-      title: 'JavaScript Basics',
-      status: 'active' as const,
-      student_id: 'student-1',
+      topic: 'JavaScript Basics',
+      status: 'active',
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T12:00:00Z'
     }
 
-    const mockSections = {
-      sections: []
-    }
+    const mockSections = []
 
     vi.mocked(get).mockImplementation((path) => {
       if (path.includes('/sections')) {
@@ -207,7 +193,7 @@ describe('CourseHubView', () => {
       if (path.includes('/homework')) {
         return Promise.reject(new clientModule.ApiError(404, {}))
       }
-      return Promise.resolve({ course: mockCourse })
+      return Promise.resolve(mockCourse)
     })
 
     const auth = useAuthStore()
@@ -242,16 +228,13 @@ describe('CourseHubView', () => {
   it('shows loading state while fetching', async () => {
     const mockCourse = {
       id: 'course-1',
-      title: 'JavaScript Basics',
-      status: 'active' as const,
-      student_id: 'student-1',
+      topic: 'JavaScript Basics',
+      status: 'active',
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T12:00:00Z'
     }
 
-    const mockSections = {
-      sections: []
-    }
+    const mockSections: any[] = []
 
     vi.mocked(get).mockImplementation((path) => {
       return new Promise((resolve, reject) => {
@@ -261,7 +244,7 @@ describe('CourseHubView', () => {
           } else if (path.includes('/homework')) {
             reject(new clientModule.ApiError(404, {}))
           } else {
-            resolve({ course: mockCourse })
+            resolve(mockCourse)
           }
         }, 50)
       })
@@ -295,23 +278,18 @@ describe('CourseHubView', () => {
   it('renders homework section with links when homework exists', async () => {
     const mockCourse = {
       id: 'course-1',
-      title: 'JavaScript Basics',
-      status: 'active' as const,
-      student_id: 'student-1',
+      topic: 'JavaScript Basics',
+      status: 'active',
       created_at: '2026-05-01T00:00:00Z',
       updated_at: '2026-05-01T12:00:00Z'
     }
 
-    const mockSections = {
-      sections: []
-    }
+    const mockSections: any[] = []
 
-    const mockHomework = {
-      homework: [
-        { id: 'hw-1', title: 'Assignment 1', due_date: '2026-05-15T23:59:59Z' },
-        { id: 'hw-2', title: 'Assignment 2', due_date: '2026-05-22T23:59:59Z' }
-      ]
-    }
+    const mockHomework = [
+      { id: 'hw-1', section_index: 0, title: 'Assignment 1', grade_weight: 0.1, due_date: '2026-05-15T23:59:59Z' },
+      { id: 'hw-2', section_index: 1, title: 'Assignment 2', grade_weight: 0.1, due_date: '2026-05-22T23:59:59Z' }
+    ]
 
     vi.mocked(get).mockImplementation((path) => {
       if (path.includes('/sections')) {
@@ -320,7 +298,7 @@ describe('CourseHubView', () => {
       if (path.includes('/homework')) {
         return Promise.resolve(mockHomework)
       }
-      return Promise.resolve({ course: mockCourse })
+      return Promise.resolve(mockCourse)
     })
 
     const auth = useAuthStore()

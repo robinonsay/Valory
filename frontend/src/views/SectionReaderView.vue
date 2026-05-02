@@ -10,21 +10,19 @@ import DOMPurify from 'dompurify'
 interface SectionContent {
   id: string
   title: string
-  body: string
-  order: number
+  content_adoc: string
+  section_index: number
   course_id: string
-  total_sections: number
+  version: number
+  citation_verified: boolean
+  created_at: string
 }
 
 interface SectionListItem {
-  id: string
-  order: number
+  section_index: number
   title: string
 }
 
-interface SectionsListResponse {
-  sections: SectionListItem[]
-}
 
 const route = useRoute()
 const router = useRouter()
@@ -52,7 +50,7 @@ async function fetchSection(): Promise<void> {
   error.value = null
   try {
     const data = await get<SectionContent>(
-      `/api/v1/courses/${courseId}/sections/${sectionId}`,
+      `/api/v1/courses/${courseId}/content/${sectionId}`,
       authStore.token
     )
     section.value = data
@@ -74,11 +72,11 @@ async function fetchSection(): Promise<void> {
 // @{"req": ["REQ-FECONTENT-010", "REQ-FECONTENT-100", "REQ-FECONTENT-130"]}
 async function fetchSectionList(): Promise<void> {
   try {
-    const data = await get<SectionsListResponse>(
+    const data = await get<SectionListItem[]>(
       `/api/v1/courses/${courseId}/sections`,
       authStore.token
     )
-    sectionList.value = data.sections
+    sectionList.value = data
   } catch {
     // Navigation list is best-effort; primary content error is handled by fetchSection
   }
@@ -91,19 +89,19 @@ onMounted(async () => {
 // @{"req": ["REQ-FECONTENT-130", "REQ-FECONTENT-009"]}
 function prevSectionId(): string | null {
   if (!section.value) return null
-  const sorted = [...sectionList.value].sort((a, b) => a.order - b.order)
-  const idx = sorted.findIndex(s => s.id === sectionId)
+  const sorted = [...sectionList.value].sort((a, b) => a.section_index - b.section_index)
+  const idx = sorted.findIndex(s => s.section_index.toString() === sectionId)
   if (idx <= 0) return null
-  return sorted[idx - 1].id
+  return sorted[idx - 1].section_index.toString()
 }
 
 // @{"req": ["REQ-FECONTENT-130", "REQ-FECONTENT-009"]}
 function nextSectionId(): string | null {
   if (!section.value) return null
-  const sorted = [...sectionList.value].sort((a, b) => a.order - b.order)
-  const idx = sorted.findIndex(s => s.id === sectionId)
+  const sorted = [...sectionList.value].sort((a, b) => a.section_index - b.section_index)
+  const idx = sorted.findIndex(s => s.section_index.toString() === sectionId)
   if (idx < 0 || idx >= sorted.length - 1) return null
-  return sorted[idx + 1].id
+  return sorted[idx + 1].section_index.toString()
 }
 
 // @{"req": ["REQ-FECONTENT-009", "REQ-FECONTENT-090"]}
@@ -152,7 +150,7 @@ async function submitFeedback(): Promise<void> {
   isSubmittingFeedback.value = true
   try {
     await post<unknown>(
-      `/api/v1/courses/${courseId}/sections/${sectionId}/feedback`,
+      `/api/v1/courses/${courseId}/content/${sectionId}/feedback`,
       { feedback_text: feedbackText.value },
       authStore.token
     )
@@ -172,7 +170,7 @@ async function submitFeedback(): Promise<void> {
 // @{"req": ["REQ-FECONTENT-060", "REQ-FECONTENT-061", "REQ-FECONTENT-157", "REQ-FECONTENT-158", "REQ-FECONTENT-159"]}
 async function downloadExport(format: 'pdf' | 'html'): Promise<void> {
   showExportError.value = false
-  const url = `/api/v1/courses/${courseId}/sections/${sectionId}/export?format=${format}`
+  const url = `/api/v1/courses/${courseId}/content/${sectionId}/export?format=${format}`
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${authStore.token}` }
   })
@@ -189,6 +187,20 @@ async function downloadExport(format: 'pdf' | 'html'): Promise<void> {
   anchor.click()
   document.body.removeChild(anchor)
   URL.revokeObjectURL(objectUrl)
+}
+
+// @{"req": ["REQ-FECONTENT-130"]}
+function isPrevDisabled(): boolean {
+  const sorted = [...sectionList.value].sort((a, b) => a.section_index - b.section_index)
+  const idx = sorted.findIndex(s => s.section_index.toString() === sectionId)
+  return idx <= 0
+}
+
+// @{"req": ["REQ-FECONTENT-130"]}
+function isNextDisabled(): boolean {
+  const sorted = [...sectionList.value].sort((a, b) => a.section_index - b.section_index)
+  const idx = sorted.findIndex(s => s.section_index.toString() === sectionId)
+  return idx < 0 || idx >= sorted.length - 1
 }
 </script>
 
@@ -207,7 +219,7 @@ async function downloadExport(format: 'pdf' | 'html'): Promise<void> {
         <h1>{{ section.title }}</h1>
       </div>
 
-      <div class="section-body" v-html="DOMPurify.sanitize(section.body)"></div>
+      <div class="section-body" v-html="DOMPurify.sanitize(section.content_adoc)"></div>
 
       <div v-if="feedbackSuccess" class="success-message">
         Feedback submitted.
@@ -226,14 +238,14 @@ async function downloadExport(format: 'pdf' | 'html'): Promise<void> {
       <div class="section-navigation">
         <button
           class="nav-button prev-button"
-          :disabled="section.order === 1"
+          :disabled="isPrevDisabled()"
           @click="goToPrev"
         >
           Previous
         </button>
         <button
           class="nav-button next-button"
-          :disabled="section.order === section.total_sections"
+          :disabled="isNextDisabled()"
           @click="goToNext"
         >
           Next

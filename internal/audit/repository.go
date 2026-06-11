@@ -13,6 +13,11 @@ type Repository struct {
 	pool *pgxpool.Pool
 }
 
+// auditChainLockID is the advisory-lock key serializing hash-chain appends
+// ("VALAUDI" in hex). Arbitrary but must be unique among any advisory locks
+// this application takes against the same database.
+const auditChainLockID = int64(0x56414C41554449)
+
 // @{"req": ["REQ-AUDIT-001"]}
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
@@ -22,9 +27,19 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 func (r *Repository) Append(ctx context.Context, tx pgx.Tx, e Entry) error {
 	var prevHash string
 
-	// Step 1: Get the most recent entry's hash (use FOR UPDATE to prevent concurrent inserts)
+	// Step 1: Serialize concurrent appends with a transaction-scoped advisory
+	// lock (released automatically at COMMIT/ROLLBACK), then read the chain
+	// head. SELECT ... FOR UPDATE cannot be used here: it requires UPDATE
+	// privilege, and migration 002 deliberately revokes UPDATE/DELETE on
+	// audit_log from valory_app to keep the log append-only (tamper-evident).
+	// The advisory lock needs no table privilege, and unlike a head-row lock
+	// it also serializes the two-concurrent-genesis-inserts race on an empty
+	// table (FOR UPDATE locks nothing when there is no row to lock).
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, auditChainLockID); err != nil {
+		return err
+	}
 	row := tx.QueryRow(ctx,
-		`SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1 FOR UPDATE`)
+		`SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1`)
 
 	err := row.Scan(&prevHash)
 	if err != nil {

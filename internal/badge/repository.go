@@ -185,7 +185,7 @@ func (r *Repository) GetBadgeByMilestone(ctx context.Context, milestone string) 
 	err := r.conn(ctx).QueryRow(ctx,
 		`SELECT id, name, description, milestone, reward, reward_value, created_at
 		 FROM badges
-		 WHERE milestone = $1
+		 WHERE milestone::text = $1
 		 LIMIT 1`,
 		milestone).
 		Scan(

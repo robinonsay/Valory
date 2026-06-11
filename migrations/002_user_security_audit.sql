@@ -93,8 +93,18 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO valory_app;
 -- audit_log is append-only: revoke UPDATE and DELETE so the tamper-evident chain cannot be altered.
 REVOKE UPDATE, DELETE ON audit_log FROM valory_app;
 
--- schema_migrations is read-only at runtime: revoke write access.
-REVOKE INSERT, UPDATE, DELETE ON schema_migrations FROM valory_app;
+-- schema_migrations is append-only, exactly like audit_log. Since the role
+-- hardening (migration 009 / scripts/initdb/01-app-role.sh), valory_app is both
+-- the runtime role AND the migration runner, so it must retain INSERT to record
+-- each applied migration (003+ begin with INSERT INTO schema_migrations).
+-- Revoking INSERT here used to abort the very next migration file on a fresh
+-- production boot with "permission denied for table schema_migrations".
+-- UPDATE/DELETE stay revoked so the applied-version history cannot be altered.
+-- NOTE: a volume that already carries the old INSERT revoke cannot self-repair
+-- by rebooting — migration 001's own schema_migrations INSERT runs before this
+-- file and fails first. Such volumes never completed a boot (the revoke aborted
+-- migration 003/004), so they hold no data: recreate them (docker compose down -v).
+REVOKE UPDATE, DELETE ON schema_migrations FROM valory_app;
 
 -- Ensure future tables and sequences created by any role are accessible to valory_app.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public

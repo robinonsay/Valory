@@ -130,7 +130,7 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 	baseQuery := `SELECT id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at
 	             FROM courses
 	             WHERE ($1::uuid IS NULL OR student_id = $1)
-	               AND ($2 = '' OR status = $2)`
+	               AND ($2 = '' OR status::text = $2)`
 
 	if cursor == "" {
 		query = baseQuery + `

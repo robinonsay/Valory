@@ -8,8 +8,12 @@ services:
       - go-mod-cache:/home/valory/go/pkg/mod
     command: sleep infinity
     environment:
+      # PASSWORD NOTE: the password segment in DATABASE_URL must equal the db
+      # service's APP_DB_PASSWORD value (both "devpassword" here).  If you
+      # change one, change both.
       DATABASE_URL: postgres://valory_app:devpassword@db:5432/valory?sslmode=disable
-      DB_PASSWORD: devpassword
+      # DB_PASSWORD was removed: nothing in the application reads it.  The server
+      # authenticates via DATABASE_URL exclusively.
       ACME_DOMAIN: ""
       ACME_CACHE_DIR: /tmp/acme-cache
       UPLOADS_DIR: /tmp/uploads
@@ -25,14 +29,39 @@ services:
     image: postgres:16
     environment:
       POSTGRES_DB: valory
-      POSTGRES_USER: valory_app
+      # Bootstrap superuser is "postgres", NOT "valory_app".
+      # If the app role were the superuser, PostgreSQL would bypass ALL row-level
+      # security checks unconditionally (superusers skip RLS even when policies
+      # exist), rendering every RLS policy in the schema silently inert. The init
+      # script (01-app-role.sh) creates "valory_app" as LOGIN NOSUPERUSER
+      # NOBYPASSRLS so that RLS is actually enforced even in dev.
+      # See the production docker-compose.yml and docs/runbooks/rls-role-hardening.md.
+      POSTGRES_USER:     postgres
       POSTGRES_PASSWORD: devpassword
+      # APP_DB_PASSWORD is forwarded so that 01-app-role.sh can set the password
+      # on the "valory_app" role it creates.  The password here must equal the
+      # password segment in DATABASE_URL above.
+      APP_DB_PASSWORD: devpassword
     volumes:
       - db-data:/var/lib/postgresql/data
+      # The postgres image executes *.sh / *.sql files in
+      # /docker-entrypoint-initdb.d on FIRST initialization of an EMPTY data
+      # volume ONLY.  Mounted read-only (:ro) so the container cannot modify
+      # its own init scripts.
+      #
+      # IMPORTANT — VOLUME MIGRATION REQUIRED ONCE: if your local db-data
+      # volume was initialized under the old layout (POSTGRES_USER=valory_app,
+      # the pre-Sprint-8 superuser-as-app pattern), the init script will NOT
+      # run automatically because the volume is not empty.  Destroy it first:
+      #
+      #   docker compose -f .devcontainer/docker-compose.yml down -v
+      #
+      # Dev data is disposable, so no manual runbook is needed — just recreate.
+      - ../scripts/initdb:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U valory_app -d valory"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d valory"]
       interval: 10s
       timeout: 5s
       retries: 5

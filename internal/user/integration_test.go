@@ -1,0 +1,555 @@
+//go:build integration
+
+// integration_test.go — repository-layer integration tests for the user module.
+//
+// These tests run against a REAL PostgreSQL instance with all embedded
+// migrations applied by db.IntegrationPool. They verify schema-level behaviours
+// (CHECK constraints, UNIQUE constraints, trigger side-effects, FK cascade rules)
+// that cannot be caught by the inline-schema tests in repository_test.go, which
+// apply a hand-rolled DDL that may drift from the canonical migration files.
+//
+// Build and run:
+//
+//	make test-integration
+//
+// or directly:
+//
+//	go test -tags integration ./internal/user/
+package user
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	dbpkg "github.com/valory/valory/internal/db"
+)
+
+// integTruncate resets all user-module tables to a clean state before each
+// integration test so tests are fully isolated from one another.
+//
+// TRUNCATE users ... CASCADE also empties system_config (whose updated_by
+// column has a FK → users ON DELETE SET NULL, but CASCADE on TRUNCATE removes
+// all rows that reference a truncated table). The 13 seed rows inserted by
+// migration 002 are therefore lost for the remainder of the test process once
+// any test calls integTruncate. To keep the database in a consistent state we
+// re-insert those rows immediately after truncation using the same values from
+// migrations/002_user_security_audit.sql with ON CONFLICT DO NOTHING so this
+// is safe to call multiple times.
+func integTruncate(t *testing.T) {
+	t.Helper()
+	// integrationPool is obtained via dbpkg.IntegrationPool(t); we call it
+	// again here — the shared sync.Once guarantees only one pool is created.
+	p := dbpkg.IntegrationPool(t)
+	dbpkg.TruncateTables(t, p,
+		"audit_log",
+		"student_consent",
+		"password_reset_attempts",
+		"password_reset_tokens",
+		"login_attempts",
+		"sessions",
+		"users",
+	)
+
+	// Re-seed system_config with the 13 canonical rows from migration 002 so
+	// subsequent tests that read system_config see a consistent baseline. The
+	// TRUNCATE above empties system_config via CASCADE (users is truncated and
+	// system_config.updated_by references users). ON CONFLICT DO NOTHING makes
+	// this idempotent.
+	ctx := context.Background()
+	_, err := p.Exec(ctx, `
+		INSERT INTO system_config (key, value) VALUES
+		    ('agent_retry_limit',                  '3'),
+		    ('correction_loop_max_iterations',     '5'),
+		    ('per_student_token_limit',            '500000'),
+		    ('late_penalty_rate',                  '0.05'),
+		    ('homework_weight',                    '0.7'),
+		    ('project_weight',                     '0.3'),
+		    ('session_inactivity_seconds',         '1800'),
+		    ('account_lockout_seconds',            '900'),
+		    ('max_upload_bytes',                   '10485760'),
+		    ('content_generation_timeout_seconds', '300'),
+		    ('audit_retention_days',               '365'),
+		    ('notification_retention_days',        '90'),
+		    ('consent_version',                    '1.0')
+		ON CONFLICT (key) DO NOTHING
+	`)
+	if err != nil {
+		t.Fatalf("integTruncate: re-seed system_config: %v", err)
+	}
+}
+
+// integEmailPtr returns a pointer to s, convenient for optional email args.
+func integEmailPtr(s string) *string { return &s }
+
+// ----------------------------------------------------------------------------
+// TC-USER-004: Duplicate username — real UNIQUE constraint on users.username
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-001", "REQ-USER-002"]}
+// TC-USER-004: CreateUser with a duplicate username surfaces ErrDuplicateUsername
+// through the real migration 001 UNIQUE constraint on users.username.
+func TestCreateUser_DuplicateUsername_RealSchema(t *testing.T) {
+	// The inline schema in repository_test.go also defines this constraint, but
+	// running against the real migration file confirms no drift has occurred.
+	integTruncate(t)
+
+	ctx := context.Background()
+	repo := NewRepository(dbpkg.IntegrationPool(t))
+
+	username := "integ_dup_" + uuid.New().String()
+
+	if _, err := repo.CreateUser(ctx, username, nil, "hash1", "student"); err != nil {
+		t.Fatalf("first CreateUser failed: %v", err)
+	}
+
+	_, err := repo.CreateUser(ctx, username, nil, "hash2", "admin")
+	if err != ErrDuplicateUsername {
+		t.Fatalf("expected ErrDuplicateUsername on duplicate username, got %v", err)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// TC-USER-004 (email variant): Duplicate email — real UNIQUE constraint added
+// by migration 002 ("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT UNIQUE")
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-001", "REQ-USER-002"]}
+// TC-USER-004: CreateUser with a duplicate email address is rejected by the
+// real UNIQUE constraint on users.email introduced in migration 002.
+func TestCreateUser_DuplicateEmail_RealSchema(t *testing.T) {
+	// migration 002 adds "email TEXT UNIQUE".  Two distinct usernames sharing
+	// the same email must fail.  The repository maps all 23505 violations to
+	// ErrDuplicateUsername so callers have a single sentinel to inspect.
+	integTruncate(t)
+
+	ctx := context.Background()
+	repo := NewRepository(dbpkg.IntegrationPool(t))
+
+	sharedEmail := "shared_" + uuid.New().String() + "@example.com"
+
+	if _, err := repo.CreateUser(ctx,
+		"integ_email1_"+uuid.New().String(), integEmailPtr(sharedEmail), "hash1", "student",
+	); err != nil {
+		t.Fatalf("first CreateUser failed: %v", err)
+	}
+
+	_, err := repo.CreateUser(ctx,
+		"integ_email2_"+uuid.New().String(), integEmailPtr(sharedEmail), "hash2", "student",
+	)
+	if err != ErrDuplicateUsername {
+		t.Fatalf("expected ErrDuplicateUsername for duplicate email (23505 maps to ErrDuplicateUsername), got %v", err)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Role CHECK constraint — real migration 001
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-001"]}
+// CreateUser with an invalid role is rejected by the CHECK
+// (role IN ('student','admin')) constraint in the real migration 001 DDL.
+func TestCreateUser_InvalidRole_RealSchema(t *testing.T) {
+	// The repository does not validate roles in Go code — it trusts the DB
+	// CHECK constraint.  This test proves the constraint fires on the real schema
+	// rather than silently accepting an unexpected role value.
+	integTruncate(t)
+
+	ctx := context.Background()
+	repo := NewRepository(dbpkg.IntegrationPool(t))
+
+	_, err := repo.CreateUser(ctx,
+		"integ_role_"+uuid.New().String(), nil, "hash", "superuser",
+	)
+	if err == nil {
+		t.Fatal("expected an error for invalid role 'superuser', got nil")
+	}
+
+	// Confirm the DB rejected the row with a check_violation (23514) so the
+	// test asserts the correct failure mode, not just any error.
+	pgErr, ok := err.(*pgconn.PgError)
+	if !ok || pgErr.Code != "23514" {
+		t.Fatalf("expected check_violation (23514), got %T: %v", err, err)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// set_updated_at trigger — real migration 001
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-002"]}
+// The set_updated_at trigger fires on UPDATE so that updated_at
+// advances strictly beyond its value at INSERT time.
+func TestUpdateUser_SetUpdatedAtTrigger_RealSchema(t *testing.T) {
+	// The inline schema in repository_test.go also defines the trigger, but
+	// it is hand-rolled and could diverge from the canonical migration 001 file.
+	// Running against the real migration confirms the trigger body and timing.
+	integTruncate(t)
+
+	ctx := context.Background()
+	repo := NewRepository(dbpkg.IntegrationPool(t))
+
+	username := "integ_trigger_" + uuid.New().String()
+	created, err := repo.CreateUser(ctx, username, nil, "hash", "student")
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	// Sleep briefly so the database clock can advance past created_at.
+	// 10 ms is sufficient for PostgreSQL's microsecond-resolution NOW().
+	time.Sleep(10 * time.Millisecond)
+
+	newUsername := "integ_trigger_upd_" + uuid.New().String()
+	updated, err := repo.UpdateUser(ctx, created.ID, UpdateFields{Username: &newUsername})
+	if err != nil {
+		t.Fatalf("UpdateUser failed: %v", err)
+	}
+
+	if !updated.UpdatedAt.After(created.UpdatedAt) {
+		t.Errorf("set_updated_at trigger did not fire: updated_at (%v) is not after original updated_at (%v)",
+			updated.UpdatedAt, created.UpdatedAt)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// audit_log FK — no ON DELETE CASCADE on admin_id (real migration 002)
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-007"]}
+// Deleting an admin whose ID appears as audit_log.admin_id must
+// fail with a FK violation because audit_log has no ON DELETE CASCADE —
+// preserving the tamper-evident audit chain.
+func TestDeleteAdmin_AuditLogFKBlocks_RealSchema(t *testing.T) {
+	// audit_log.admin_id REFERENCES users(id) — intentionally no CASCADE so
+	// the append-only chain cannot be silently broken by deleting an admin.
+	integTruncate(t)
+
+	ctx := context.Background()
+	pool := dbpkg.IntegrationPool(t)
+	repo := NewRepository(pool)
+
+	admin, err := repo.CreateUser(ctx,
+		"integ_audit_admin_"+uuid.New().String(), nil, "hash", "admin",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser (admin) failed: %v", err)
+	}
+
+	// Write a dummy audit entry referencing the admin.  We use literal hash
+	// strings — the FK constraint is what matters, not chain validity.
+	student, err := repo.CreateUser(ctx,
+		"integ_audit_stu_"+uuid.New().String(), nil, "hash", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser (student) failed: %v", err)
+	}
+
+	_, seedErr := pool.Exec(ctx,
+		`INSERT INTO audit_log
+		    (admin_id, action, target_type, target_id, payload, prev_hash, entry_hash)
+		 VALUES ($1, 'user.create', 'user', $2, '{}', 'aaa', 'bbb')`,
+		admin.ID, student.ID,
+	)
+	if seedErr != nil {
+		t.Fatalf("seed audit_log failed: %v", seedErr)
+	}
+
+	// A raw DELETE on users must fail because audit_log.admin_id references this row.
+	_, delErr := pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, admin.ID)
+	if delErr == nil {
+		t.Fatal("expected FK violation when deleting admin referenced in audit_log, got nil")
+	}
+
+	pgErr, ok := delErr.(*pgconn.PgError)
+	if !ok || pgErr.Code != "23503" {
+		t.Fatalf("expected foreign_key_violation (23503), got %T: %v", delErr, delErr)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// password_reset_tokens ON DELETE CASCADE (real migration 002)
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-007", "REQ-USER-005"]}
+// TC-USER-021: Deleting a student cascades into password_reset_tokens so no
+// orphan token rows remain.
+func TestDeleteStudent_CascadesPasswordResetTokens_RealSchema(t *testing.T) {
+	// migration 002: password_reset_tokens.user_id REFERENCES users(id) ON DELETE CASCADE
+	//
+	// The repository's DeleteStudent explicitly removes password_reset_tokens
+	// rows before deleting the user, which means the repository path never lets
+	// the ON DELETE CASCADE fire. To exercise the schema-level cascade constraint
+	// directly we bypass the repository and delete the user via a raw pool.Exec.
+	// This verifies that the constraint itself (not the application code) would
+	// clean up orphaned tokens, providing defence-in-depth should the repository
+	// logic ever be changed.
+	integTruncate(t)
+
+	ctx := context.Background()
+	pool := dbpkg.IntegrationPool(t)
+	repo := NewRepository(pool)
+
+	user, err := repo.CreateUser(ctx,
+		"integ_prt_"+uuid.New().String(), nil, "hash", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	tokenHash := "integ_tok_" + uuid.New().String()
+	if err := repo.CreatePasswordResetToken(ctx, user.ID, tokenHash, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("CreatePasswordResetToken failed: %v", err)
+	}
+
+	// Verify the token exists before deletion.
+	var countBefore int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1`, user.ID,
+	).Scan(&countBefore); err != nil {
+		t.Fatalf("count before deletion: %v", err)
+	}
+	if countBefore != 1 {
+		t.Fatalf("expected 1 token before deletion, got %d", countBefore)
+	}
+
+	// Delete via the bare pool — deliberately bypassing repo.DeleteStudent so
+	// that the ON DELETE CASCADE on password_reset_tokens.user_id fires instead
+	// of the repository's explicit DELETE FROM password_reset_tokens statement.
+	if _, err := pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, user.ID); err != nil {
+		t.Fatalf("raw DELETE FROM users failed: %v", err)
+	}
+
+	// The schema-level cascade must have removed the token row.
+	var countAfter int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1`, user.ID,
+	).Scan(&countAfter); err != nil {
+		t.Fatalf("count after deletion: %v", err)
+	}
+	if countAfter != 0 {
+		t.Errorf("expected 0 token rows after student deletion (ON DELETE CASCADE), got %d", countAfter)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// student_consent ON DELETE CASCADE (real migration 002)
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-007", "REQ-SECURITY-005"]}
+// TC-USER-021: Deleting a student cascades into student_consent so no orphan
+// consent row remains after deletion.
+func TestDeleteStudent_CascadesStudentConsent_RealSchema(t *testing.T) {
+	// migration 002: student_consent.student_id REFERENCES users(id) ON DELETE CASCADE
+	integTruncate(t)
+
+	ctx := context.Background()
+	pool := dbpkg.IntegrationPool(t)
+	repo := NewRepository(pool)
+
+	user, err := repo.CreateUser(ctx,
+		"integ_consent_del_"+uuid.New().String(), nil, "hash", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	if err := repo.UpsertConsent(ctx, user.ID, "1.0"); err != nil {
+		t.Fatalf("UpsertConsent failed: %v", err)
+	}
+
+	if err := repo.DeleteStudent(ctx, user.ID); err != nil {
+		t.Fatalf("DeleteStudent failed: %v", err)
+	}
+
+	// Consent row must be gone via cascade.
+	_, consentErr := repo.GetConsentVersion(ctx, user.ID)
+	if consentErr != ErrConsentNotFound {
+		t.Fatalf("expected ErrConsentNotFound after student deletion (ON DELETE CASCADE), got %v", consentErr)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// SetActive idempotence — TC-USER-011
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-003"]}
+// TC-USER-011: Calling SetActive(false) on an already-inactive account must
+// succeed without error and leave the account data intact.
+func TestSetActive_DeactivateAlreadyInactive_IsIdempotent_RealSchema(t *testing.T) {
+	// TC-USER-011: "Admin deactivation of an already-deactivated account is idempotent."
+	// SetActive uses UPDATE … WHERE id = $1; it checks RowsAffected and returns
+	// ErrUserNotFound when 0 rows are matched.  But the user does exist — it is
+	// simply already inactive.  The UPDATE still matches the row (the WHERE clause
+	// has no is_active filter), so RowsAffected == 1 and no error is returned.
+	integTruncate(t)
+
+	ctx := context.Background()
+	repo := NewRepository(dbpkg.IntegrationPool(t))
+
+	user, err := repo.CreateUser(ctx,
+		"integ_idem_"+uuid.New().String(), nil, "hash", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	if err := repo.SetActive(ctx, user.ID, false); err != nil {
+		t.Fatalf("first SetActive(false) failed: %v", err)
+	}
+
+	// Repeated deactivation must not error.
+	if err := repo.SetActive(ctx, user.ID, false); err != nil {
+		t.Fatalf("second SetActive(false) failed (idempotence violated): %v", err)
+	}
+
+	got, err := repo.GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("GetUserByID failed: %v", err)
+	}
+	if got.IsActive {
+		t.Error("expected IsActive false after double-deactivation")
+	}
+	// Verify non-status fields were preserved.
+	if got.Username != user.Username {
+		t.Errorf("username mutated: want %q, got %q", user.Username, got.Username)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// ListUsers ordering and role-filter — real schema and indexes
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-001", "REQ-USER-002"]}
+// ListUsers returns rows ordered by created_at DESC and the role-filter WHERE
+// clause works correctly against the real schema.
+func TestListUsers_OrderAndRoleFilter_RealSchema(t *testing.T) {
+	// The stub-based tests in list_handler_test.go exercise the HTTP layer but
+	// never touch PostgreSQL.  This test seeds known rows and asserts that the
+	// real ORDER BY created_at DESC and WHERE role = $1 clauses behave as
+	// specified on the actual schema.
+	integTruncate(t)
+
+	ctx := context.Background()
+	pool := dbpkg.IntegrationPool(t)
+	repo := NewRepository(pool)
+
+	// Insert admin first, then two students, with small pauses so PostgreSQL's
+	// NOW() clock produces distinct created_at values for each row.
+	adminUser, err := repo.CreateUser(ctx,
+		"integ_list_admin_"+uuid.New().String(), nil, "hash", "admin",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser (admin) failed: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+
+	stu1, err := repo.CreateUser(ctx,
+		"integ_list_stu1_"+uuid.New().String(), nil, "hash", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser (stu1) failed: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+
+	stu2, err := repo.CreateUser(ctx,
+		"integ_list_stu2_"+uuid.New().String(), nil, "hash", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser (stu2) failed: %v", err)
+	}
+
+	// No role filter — expect all 3, newest first.
+	all, err := repo.ListUsers(ctx, "", 50)
+	if err != nil {
+		t.Fatalf("ListUsers (no filter) failed: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 users, got %d", len(all))
+	}
+	// stu2 was inserted last so it must be first in DESC order.
+	if all[0].ID != stu2.ID {
+		t.Errorf("expected stu2 first (newest), got username=%q", all[0].Username)
+	}
+	if all[1].ID != stu1.ID {
+		t.Errorf("expected stu1 second, got username=%q", all[1].Username)
+	}
+	if all[2].ID != adminUser.ID {
+		t.Errorf("expected admin third (oldest), got username=%q", all[2].Username)
+	}
+
+	// Role filter "student" — must return exactly 2, no admin row.
+	students, err := repo.ListUsers(ctx, "student", 50)
+	if err != nil {
+		t.Fatalf("ListUsers (role=student) failed: %v", err)
+	}
+	if len(students) != 2 {
+		t.Fatalf("expected 2 students, got %d", len(students))
+	}
+	for _, s := range students {
+		if s.Role != "student" {
+			t.Errorf("unexpected role %q in student-filtered result", s.Role)
+		}
+	}
+
+	// Role filter "admin" — must return exactly 1.
+	admins, err := repo.ListUsers(ctx, "admin", 50)
+	if err != nil {
+		t.Fatalf("ListUsers (role=admin) failed: %v", err)
+	}
+	if len(admins) != 1 {
+		t.Fatalf("expected 1 admin, got %d", len(admins))
+	}
+	if admins[0].ID != adminUser.ID {
+		t.Errorf("expected adminUser, got username=%q", admins[0].Username)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// GetValidResetToken after user deletion — cascade removes the token row
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-005", "REQ-USER-006"]}
+// TC-USER-021: After the owning user is deleted (ON DELETE CASCADE on
+// password_reset_tokens), GetValidResetToken returns ErrTokenNotFound.
+func TestGetValidResetToken_UserDeleted_CascadeRemovesToken_RealSchema(t *testing.T) {
+	// This confirms that cascade deletion leaves no ghost token rows that could
+	// be looked up and potentially misused after account deletion.
+	//
+	// The repository's DeleteStudent explicitly removes password_reset_tokens
+	// rows before deleting the user, which means using repo.DeleteStudent would
+	// never exercise the ON DELETE CASCADE constraint. We deliberately bypass
+	// the repository and delete the user via a raw pool.Exec so that the schema
+	// constraint itself is what removes the token, proving the FK cascade fires.
+	integTruncate(t)
+
+	ctx := context.Background()
+	pool := dbpkg.IntegrationPool(t)
+	repo := NewRepository(pool)
+
+	user, err := repo.CreateUser(ctx,
+		"integ_cas_tok_"+uuid.New().String(), nil, "hash", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+
+	tokenHash := "integ_ght_" + uuid.New().String()
+	if err := repo.CreatePasswordResetToken(ctx, user.ID, tokenHash, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("CreatePasswordResetToken failed: %v", err)
+	}
+
+	// Delete via the bare pool — deliberately bypassing repo.DeleteStudent so
+	// that the ON DELETE CASCADE on password_reset_tokens.user_id fires instead
+	// of the repository's explicit DELETE FROM password_reset_tokens statement.
+	if _, err := pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, user.ID); err != nil {
+		t.Fatalf("raw DELETE FROM users failed: %v", err)
+	}
+
+	_, err = repo.GetValidResetToken(ctx, tokenHash)
+	if err != ErrTokenNotFound {
+		t.Fatalf("expected ErrTokenNotFound after user deletion (cascade), got %v", err)
+	}
+}

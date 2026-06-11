@@ -31,5 +31,7 @@ go.work.sum
 # .idea/
 # .vscode/
 
-server
+# Compiled server binary at the repo root only — a bare `server` pattern would
+# also ignore the cmd/server/ directory and silently hide new source files there.
+/server
 .gomodcache

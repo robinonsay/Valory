@@ -2,13 +2,35 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB:       valory
-      POSTGRES_USER:     valory_app
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: valory
+      # Bootstrap superuser is "postgres", NOT "valory_app".
+      # If the app role were the superuser, PostgreSQL would bypass ALL row-level
+      # security checks unconditionally (superusers skip RLS even when policies
+      # exist), rendering every RLS policy in the schema silently inert. The init
+      # script (01-app-role.sh) creates "valory_app" as LOGIN NOSUPERUSER
+      # NOBYPASSRLS so that RLS is actually enforced in production.
+      # See also: docs/runbooks/rls-role-hardening.md
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD}
+      # APP_DB_PASSWORD is forwarded into the container so that 01-app-role.sh
+      # can set the password on the "valory_app" role it creates. The api service
+      # reads DATABASE_URL from .env; the password in that URL must equal this
+      # value (documented in .env.example and docs/runbooks/rls-role-hardening.md).
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - db_data:/var/lib/postgresql/data
+      # The postgres image executes *.sh and *.sql files found in
+      # /docker-entrypoint-initdb.d on FIRST initialization of an empty data
+      # volume ONLY. Mounted read-only (:ro) so the running container cannot
+      # modify its own init scripts.
+      #
+      # IMPORTANT — EXISTING DEPLOYMENTS: if db_data was already initialized
+      # (i.e. the volume is not empty), these init scripts will NOT run
+      # automatically. Follow docs/runbooks/rls-role-hardening.md to create
+      # the "valory_app" role and adjust grants manually.
+      - ./scripts/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U valory_app -d valory"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d valory"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -117,6 +117,15 @@ func HealthHandler(db *pgxpool.Pool, uploadsDir string) http.HandlerFunc {
 
 The Anthropic check uses a package-level HTTP client with `Timeout: 5 * time.Second` and does not use the `ANTHROPIC_API_KEY`; the HEAD request checks network reachability only and requires no authentication.
 
+// @{"req": ["REQ-SECURITY-002"]}
+== Database Bootstrap and Role Hardening
+
+The database service separates the bootstrap superuser from the application role to enforce row-level security (REQ-SECURITY-002). The bootstrap superuser is `postgres` (never used by the application); the application connects as `valory_app`, a `LOGIN NOSUPERUSER NOBYPASSRLS` role created by `scripts/initdb/01-app-role.sh` on first initialization.
+
+This separation is critical: PostgreSQL superusers bypass all row-level security checks unconditionally, even when policies exist with `FORCE ROW LEVEL SECURITY`. If the application role were a superuser, every RLS policy protecting per-student data (courses, submissions, grades, badges) would be silently inert. The `NOBYPASSRLS` attribute ensures RLS is actually enforced in production.
+
+The init script runs automatically only on fresh deployments (empty `db_data` volume). Existing deployments must follow the conversion runbook at `docs/runbooks/rls-role-hardening.md` to separate the roles manually.
+
 == Docker Compose Layout
 
 [source,yaml]
@@ -126,12 +135,18 @@ services:
     image: postgres:16
     environment:
       POSTGRES_DB:       valory
-      POSTGRES_USER:     valory_app
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Bootstrap superuser is deliberately NOT the application role — a
+      # superuser app role would bypass all RLS (see Database Bootstrap and
+      # Role Hardening above).
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD}
+      # Consumed by scripts/initdb/01-app-role.sh to set valory_app's password.
+      APP_DB_PASSWORD:   ${APP_DB_PASSWORD}
     volumes:
       - db_data:/var/lib/postgresql/data
+      - ./scripts/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U valory_app -d valory"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d valory"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -210,16 +225,22 @@ server {
 [source]
 ----
 ANTHROPIC_API_KEY=your-key-here
-DB_PASSWORD=changeme
-ACME_DOMAIN=example.com
+BRAVE_API_KEY=your-key-here
+DB_SUPERUSER_PASSWORD=changeme
+APP_DB_PASSWORD=changeme
+DATABASE_URL=postgres://valory_app:changeme@db:5432/valory?sslmode=disable
+ACME_DOMAIN=
 ACME_CACHE_DIR=/app/acme-cache
-SESSION_SECRET=changeme
+AUTH_LOCKOUT_DURATION=15m
+AUTH_SESSION_MAX_DURATION=24h
+AUTH_INACTIVITY_PERIOD=30m
 UPLOADS_DIR=/app/uploads
-SESSION_TIMEOUT_SECONDS=1800
-AGENT_RETRY_LIMIT=3
-CORRECTION_LOOP_MAX=5
-CONTENT_GENERATION_TIMEOUT_SECONDS=300
 ----
+
+The password segment of `DATABASE_URL` must equal `APP_DB_PASSWORD` — the init
+script sets that password on the `valory_app` role the api authenticates as.
+
+Runtime tunables like agent retry limits live in the database-backed `system_config` table (see the admin module SDD), not in environment variables.
 
 All values that are secrets are loaded via `os.Getenv` with a fail-fast check at startup (see Security Design, section on environment variable secrets).
 

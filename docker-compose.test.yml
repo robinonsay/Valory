@@ -1,0 +1,18 @@
+services:
+  postgres-test:
+    image: postgres:16
+    # Non-standard host port (55432) to avoid collisions with local development database
+    ports:
+      - "55432:5432"
+    environment:
+      POSTGRES_DB:       valory_test
+      POSTGRES_USER:     valory_test
+      POSTGRES_PASSWORD: valory_test
+    # Use tmpfs for data directory: memory-backed, ephemeral, fast — ideal for integration tests
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valory_test -d valory_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

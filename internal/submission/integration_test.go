@@ -91,7 +91,7 @@ func integCourseSetup(ctx context.Context, t *testing.T, studentID uuid.UUID) uu
 	pool := db.IntegrationPool(t)
 	// AcquireAsUser sets app.current_user_id and app.current_role on the conn.
 	// The auth middleware encodes UUIDs as 32-char no-dash hex strings.
-	conn := db.AcquireAsUser(t, pool, fmt.Sprintf("%x", studentID), "student")
+	conn := db.AcquireAsUser(t, pool, fmt.Sprintf("%x", [16]byte(studentID)), "student")
 	defer conn.Release()
 
 	var id uuid.UUID
@@ -128,7 +128,7 @@ func integHomeworkSetup(ctx context.Context, t *testing.T, courseID uuid.UUID) u
 func integStudentCtx(ctx context.Context, t *testing.T, studentID uuid.UUID) (context.Context, func()) {
 	t.Helper()
 	pool := db.IntegrationPool(t)
-	conn := db.AcquireAsUser(t, pool, fmt.Sprintf("%x", studentID), "student")
+	conn := db.AcquireAsUser(t, pool, fmt.Sprintf("%x", [16]byte(studentID)), "student")
 	// auth.ContextWithConn injects conn under the same context key that
 	// Repository.conn(ctx) reads via auth.ConnFromContext.
 	enriched := auth.ContextWithConn(ctx, conn)

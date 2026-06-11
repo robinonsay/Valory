@@ -243,8 +243,13 @@ func (r *Repository) DeleteStudent(ctx context.Context, id uuid.UUID) error {
 		return ErrNotAStudent
 	}
 
+	// submissions has no course_id column (its course linkage is via homework);
+	// it does carry student_id directly, which is also the more complete
+	// predicate for REQ-USER-007 personal data deletion. Deleting submissions
+	// cascades the student's grades via grades.submission_id ON DELETE CASCADE;
+	// the explicit grades delete below remains as a belt-and-braces sweep.
 	if err := deleteIfTableExists(ctx, tx, "submissions",
-		`DELETE FROM submissions WHERE course_id IN (SELECT id FROM courses WHERE student_id = $1)`, id); err != nil {
+		`DELETE FROM submissions WHERE student_id = $1`, id); err != nil {
 		return err
 	}
 

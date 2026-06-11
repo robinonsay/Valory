@@ -517,8 +517,13 @@ func TestRLS_EmptyGUC_Control_AuthenticatedStudentSeesOwnRows(t *testing.T) {
 	// app.current_role to 'student', then issues SET ROLE valory_app so that
 	// the NULLIF-guarded policies are evaluated (not bypassed by superuser).
 	// The UUID is passed as a 32-char no-dash hex string — the format the
-	// auth middleware uses.
-	userIDHex := fmt.Sprintf("%x", studentID)
+	// auth middleware uses (middleware.go formats Session.UserID, a plain
+	// [16]byte, with %x). The [:] is load-bearing: uuid.UUID implements
+	// Stringer, and fmt applies %x to the String() result for Stringer
+	// operands — hex-encoding the dashed text form into a 72-char blob that
+	// the policies' ::uuid cast rejects (22P02). Slicing to []byte hex-encodes
+	// the raw bytes, matching the middleware exactly.
+	userIDHex := fmt.Sprintf("%x", studentID[:])
 	conn := AcquireAsUser(t, pool, userIDHex, "student")
 	defer conn.Release()
 

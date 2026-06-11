@@ -114,8 +114,10 @@ func acquireServerConn(ctx context.Context, t *testing.T, pool *pgxpool.Pool) *p
 func acquireStudentConn(ctx context.Context, t *testing.T, pool *pgxpool.Pool, studentID uuid.UUID) *pgxpool.Conn {
 	t.Helper()
 	// Use hex format (no dashes) — that is what the auth middleware passes and
-	// what the RLS policy's ::uuid cast expects.
-	userIDHex := fmt.Sprintf("%x", studentID)
+	// what the RLS policy's ::uuid cast expects. The [16]byte conversion is
+	// load-bearing: %x on uuid.UUID itself goes through its String() method
+	// and hex-encodes the dashed text form, which the ::uuid cast rejects.
+	userIDHex := fmt.Sprintf("%x", [16]byte(studentID))
 	return db.AcquireAsUser(t, pool, userIDHex, "student")
 }
 

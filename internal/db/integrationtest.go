@@ -46,6 +46,12 @@ var (
 	integrationOnce         sync.Once
 	integrationPool         *pgxpool.Pool
 	integrationAttemptedDSN string
+	// integrationInitErr records why pool initialization failed so every
+	// subsequent caller can report the real cause. Without it, a migration
+	// failure is indistinguishable from a missing Docker container — a
+	// confusion that once let an entire `make test-integration` run silently
+	// skip all but the first package while reporting green.
+	integrationInitErr error
 )
 
 // newTestPool builds a pgxpool that is safe for the integration test harness.
@@ -139,7 +145,8 @@ func IntegrationPool(t *testing.T) *pgxpool.Pool {
 
 		pool, err := newTestPool(connectCtx, dsn)
 		if err != nil {
-			// Store nil; every caller will detect this and skip.
+			// Store nil; every caller will detect this and skip/fail.
+			integrationInitErr = err
 			return
 		}
 
@@ -152,8 +159,9 @@ func IntegrationPool(t *testing.T) *pgxpool.Pool {
 
 		if err := applyTestMigrations(migrateCtx, pool); err != nil {
 			pool.Close()
-			// Store nil so callers skip rather than proceeding with a
+			// Store nil so callers skip/fail rather than proceeding with a
 			// schema-less database.
+			integrationInitErr = err
 			return
 		}
 
@@ -165,7 +173,17 @@ func IntegrationPool(t *testing.T) *pgxpool.Pool {
 		// A skip message that leaks credentials into log files is worse than
 		// not printing the DSN at all.
 		safeDSN := redactDSN(integrationAttemptedDSN)
-		t.Skipf("integration: database unreachable — run `make test-integration` to start the test container (attempted DSN: %s)", safeDSN)
+		// An explicitly configured DSN (the Makefile's test-integration target
+		// always sets one) means the caller has deliberately provisioned a
+		// database and expects these tests to run: fail loudly. Skipping here
+		// once let a migration error masquerade as "Docker not running" and an
+		// all-skip suite report green. The skip path remains for the implicit
+		// default DSN so a plain `go test -tags integration ./...` on a machine
+		// without Docker stays green, as Sprint 8 intended.
+		if os.Getenv("VALORY_TEST_DATABASE_URL") != "" {
+			t.Fatalf("integration: VALORY_TEST_DATABASE_URL is set but pool init failed (DSN: %s): %v", safeDSN, integrationInitErr)
+		}
+		t.Skipf("integration: database unreachable — run `make test-integration` to start the test container (attempted DSN: %s): %v", safeDSN, integrationInitErr)
 	}
 
 	return integrationPool
@@ -276,7 +294,11 @@ func TruncateTables(t *testing.T, pool *pgxpool.Pool, tables ...string) {
 // TruncateTables calls that need unrestricted access.
 //
 // Accepted userID formats: the auth middleware passes a 32-char no-dash hex
-// string (fmt.Sprintf("%x", uuid.UUID{...})). Test authors may also pass a
+// string — fmt.Sprintf("%x", session.UserID) where UserID is a plain [16]byte.
+// CAUTION: do NOT apply %x to a uuid.UUID directly; it implements Stringer, so
+// fmt hex-encodes the dashed *text* form into a 72-char blob that the policies'
+// ::uuid cast rejects. Convert first: fmt.Sprintf("%x", [16]byte(id)).
+// Test authors may also pass a
 // standard dashed UUID string (e.g. "550e8400-e29b-41d4-a716-446655440000").
 // Both forms are accepted by PostgreSQL's ::uuid cast used in RLS policies, so
 // either format exercises the same isolation logic.

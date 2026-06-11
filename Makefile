@@ -13,9 +13,11 @@ test:
 # Teardown always runs even on test failure to avoid resource leaks and orphaned containers.
 # -p 1 serializes package test binaries: they share one database, and concurrent
 # TRUNCATEs across packages would destroy each other's fixtures mid-run.
+# -count=1 disables the test cache: cached results don't observe database state,
+# so a cached skip/pass can be replayed against a freshly provisioned container.
 test-integration:
 	docker compose -f docker-compose.test.yml up -d --wait && \
-	VALORY_TEST_DATABASE_URL=postgres://valory_test:valory_test@localhost:55432/valory_test?sslmode=disable go test -tags integration -p 1 ./... ; \
+	VALORY_TEST_DATABASE_URL=postgres://valory_test:valory_test@localhost:55432/valory_test?sslmode=disable go test -tags integration -count=1 -p 1 ./... ; \
 	status=$$?; \
 	docker compose -f docker-compose.test.yml down -v; \
 	exit $$status

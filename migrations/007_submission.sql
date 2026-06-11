@@ -32,9 +32,17 @@ CREATE INDEX IF NOT EXISTS submissions_grading_status_idx ON submissions (gradin
     WHERE grading_status = 'pending';
 
 -- FK from student_badges.redeemed_for_submission_id (badge module migration ran first)
--- Only add if student_badges table exists (006_badge.sql may have run)
+-- Only add if student_badges table exists (006_badge.sql may have run) and the
+-- constraint is not already present: migrations are re-executed on every
+-- startup, and ADD CONSTRAINT has no IF NOT EXISTS form, so an unguarded
+-- re-run fails with SQLSTATE 42710 (duplicate_object).
 DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'student_badges') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'student_badges')
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_constraint
+           WHERE conname = 'fk_student_badges_submission'
+             AND conrelid = 'student_badges'::regclass
+       ) THEN
         ALTER TABLE student_badges
             ADD CONSTRAINT fk_student_badges_submission
             FOREIGN KEY (redeemed_for_submission_id) REFERENCES submissions(id) ON DELETE SET NULL;

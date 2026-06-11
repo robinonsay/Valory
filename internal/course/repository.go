@@ -218,7 +218,7 @@ func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowed
 		     pre_withdrawal_status = COALESCE($4, pre_withdrawal_status),
 		     updated_at = now()
 		 WHERE id = $1
-		   AND status = ANY($3::text[])
+		   AND status::text = ANY($3::text[])
 		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
 		id, newStatus, allowedFrom, preWithdrawalStatus).
 		Scan(
@@ -391,7 +391,7 @@ func (r *CourseRepository) TransitionTx(ctx context.Context, tx pgx.Tx, id uuid.
 		     pre_withdrawal_status = COALESCE($4, pre_withdrawal_status),
 		     updated_at = now()
 		 WHERE id = $1
-		   AND status = ANY($3::text[])
+		   AND status::text = ANY($3::text[])
 		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
 		id, newStatus, allowedFrom, preWithdrawalStatus).
 		Scan(

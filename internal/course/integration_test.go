@@ -462,7 +462,7 @@ func TestInteg_Repository_TransitionUpdatesUpdatedAt(t *testing.T) {
 		     pre_withdrawal_status = COALESCE($4, pre_withdrawal_status),
 		     updated_at = now()
 		 WHERE id = $1
-		   AND status = ANY($3::text[])
+		   AND status::text = ANY($3::text[])
 		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
 		courseID, "syllabus_draft", []string{"intake"}, nil,
 	).Scan(
@@ -531,7 +531,7 @@ func TestInteg_Repository_TransitionViaServerRole(t *testing.T) {
 		     pre_withdrawal_status = COALESCE($4, pre_withdrawal_status),
 		     updated_at = now()
 		 WHERE id = $1
-		   AND status = ANY($3::text[])
+		   AND status::text = ANY($3::text[])
 		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
 		courseID, "syllabus_draft", []string{"intake"}, nil,
 	).Scan(

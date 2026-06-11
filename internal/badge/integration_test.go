@@ -37,7 +37,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgconn"
+	// pgx/v5 returns *pgx/v5/pgconn.PgError; the identically named v1 package
+	// (github.com/jackc/pgconn) silently fails errors.As against v5 errors.
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valory/valory/internal/auth"
 	db "github.com/valory/valory/internal/db"
@@ -291,7 +293,35 @@ func TestInteg_StudentBadges_RedeemBadge_OwnerCanUpdateIntruderCannot(t *testing
 		t.Fatalf("seed student_badges for owner: %v", err)
 	}
 
-	fakeSubmissionID := uuid.New()
+	// fk_student_badges_submission (migration 007) requires the redemption
+	// target to be a real submissions row, so seed the owner's full
+	// course → homework → submission chain via the superuser pool (fixture
+	// seeding deliberately bypasses FORCE RLS).
+	var courseID uuid.UUID
+	if err := integPool.QueryRow(ctx,
+		`INSERT INTO courses (student_id, topic, status)
+		 VALUES ($1, 'Badge Redeem Topic', 'active') RETURNING id`,
+		owner,
+	).Scan(&courseID); err != nil {
+		t.Fatalf("seed course: %v", err)
+	}
+	var homeworkID uuid.UUID
+	if err := integPool.QueryRow(ctx,
+		`INSERT INTO homework (course_id, section_index, title, rubric, grade_weight)
+		 VALUES ($1, 0, 'Badge Redeem HW', 'rubric', 0.5) RETURNING id`,
+		courseID,
+	).Scan(&homeworkID); err != nil {
+		t.Fatalf("seed homework: %v", err)
+	}
+	var submissionID uuid.UUID
+	if err := integPool.QueryRow(ctx,
+		`INSERT INTO submissions (homework_id, student_id, format, file_path, file_size_bytes)
+		 VALUES ($1, $2, 'markdown', '/tmp/badge_redeem_test.md', 128) RETURNING id`,
+		homeworkID, owner,
+	).Scan(&submissionID); err != nil {
+		t.Fatalf("seed submission: %v", err)
+	}
+
 	repo := NewRepository(integPool)
 
 	// --- Negative: intruder cannot UPDATE owner's row ---
@@ -301,7 +331,7 @@ func TestInteg_StudentBadges_RedeemBadge_OwnerCanUpdateIntruderCannot(t *testing
 	defer connIntruder.Release()
 	ctxIntruder := auth.ContextWithConn(ctx, connIntruder)
 
-	if err := repo.RedeemBadge(ctxIntruder, owner, badgeID, fakeSubmissionID); !errors.Is(err, ErrNotFound) {
+	if err := repo.RedeemBadge(ctxIntruder, owner, badgeID, submissionID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("intruder redeem: expected ErrNotFound, got %v", err)
 	}
 
@@ -310,7 +340,7 @@ func TestInteg_StudentBadges_RedeemBadge_OwnerCanUpdateIntruderCannot(t *testing
 	defer connOwner.Release()
 	ctxOwner := auth.ContextWithConn(ctx, connOwner)
 
-	if err := repo.RedeemBadge(ctxOwner, owner, badgeID, fakeSubmissionID); err != nil {
+	if err := repo.RedeemBadge(ctxOwner, owner, badgeID, submissionID); err != nil {
 		t.Fatalf("owner redeem: expected success, got %v", err)
 	}
 
@@ -322,8 +352,8 @@ func TestInteg_StudentBadges_RedeemBadge_OwnerCanUpdateIntruderCannot(t *testing
 	).Scan(&gotSub); err != nil {
 		t.Fatalf("verify redemption: %v", err)
 	}
-	if gotSub != fakeSubmissionID {
-		t.Errorf("redeemed_for_submission_id: want %v, got %v", fakeSubmissionID, gotSub)
+	if gotSub != submissionID {
+		t.Errorf("redeemed_for_submission_id: want %v, got %v", submissionID, gotSub)
 	}
 }
 

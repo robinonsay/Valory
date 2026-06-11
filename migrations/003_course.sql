@@ -1,16 +1,31 @@
 BEGIN;
 
-CREATE TYPE course_status AS ENUM (
-    'intake',
-    'syllabus_draft',
-    'syllabus_approved',
-    'generating',
-    'active',
-    'archived',
-    'completed'
-);
+-- Sprint 3 — Course Module
+--
+-- Retrofitted for idempotent re-application (the migration 004 idiom):
+-- runMigrations re-executes every embedded file on every startup, so each
+-- statement must tolerate already-existing objects. Before this retrofit the
+-- bare CREATE TYPE below aborted any second application of the migration set —
+-- crashing server restarts against an existing database and silently skipping
+-- every integration-test package after the first in a `make test-integration` run.
 
-CREATE TABLE courses (
+INSERT INTO schema_migrations (version) VALUES ('003_course')
+    ON CONFLICT (version) DO NOTHING;
+
+DO $$ BEGIN
+    CREATE TYPE course_status AS ENUM (
+        'intake',
+        'syllabus_draft',
+        'syllabus_approved',
+        'generating',
+        'active',
+        'archived',
+        'completed'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS courses (
     id                     UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id             UUID          NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     title                  TEXT          NOT NULL DEFAULT '',
@@ -21,24 +36,34 @@ CREATE TABLE courses (
     updated_at             TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX courses_single_active_idx
+CREATE UNIQUE INDEX IF NOT EXISTS courses_single_active_idx
     ON courses (student_id)
     WHERE status NOT IN ('archived', 'completed');
 
-CREATE INDEX courses_student_id_idx   ON courses (student_id);
-CREATE INDEX courses_status_idx       ON courses (status);
-CREATE INDEX courses_created_at_id_idx ON courses (created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS courses_student_id_idx   ON courses (student_id);
+CREATE INDEX IF NOT EXISTS courses_status_idx       ON courses (status);
+CREATE INDEX IF NOT EXISTS courses_created_at_id_idx ON courses (created_at DESC, id DESC);
 
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courses FORCE ROW LEVEL SECURITY;
 
-CREATE POLICY courses_student_policy ON courses
-    USING (student_id = current_setting('app.current_user_id', true)::uuid);
+-- courses_student_policy is superseded by migration 004, which drops and
+-- recreates it with a NULLIF guard. A duplicate_object guard (rather than
+-- DROP + CREATE) is required here so a re-run of this file does not clobber
+-- 004's guarded version with this original unguarded one.
+DO $$ BEGIN
+    CREATE POLICY courses_student_policy ON courses
+        USING (student_id = current_setting('app.current_user_id', true)::uuid);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY courses_admin_policy ON courses
-    USING (current_setting('app.current_role', true) = 'admin');
+DO $$ BEGIN
+    CREATE POLICY courses_admin_policy ON courses
+        USING (current_setting('app.current_role', true) = 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE syllabi (
+CREATE TABLE IF NOT EXISTS syllabi (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id    UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     content_adoc TEXT        NOT NULL,
@@ -47,9 +72,9 @@ CREATE TABLE syllabi (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX syllabi_course_id_idx ON syllabi (course_id);
+CREATE INDEX IF NOT EXISTS syllabi_course_id_idx ON syllabi (course_id);
 
-CREATE TABLE homework (
+CREATE TABLE IF NOT EXISTS homework (
     id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id     UUID         NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     section_index INT          NOT NULL,
@@ -59,9 +84,9 @@ CREATE TABLE homework (
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX homework_course_id_idx ON homework (course_id);
+CREATE INDEX IF NOT EXISTS homework_course_id_idx ON homework (course_id);
 
-CREATE TABLE due_date_schedules (
+CREATE TABLE IF NOT EXISTS due_date_schedules (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id   UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     homework_id UUID        NOT NULL REFERENCES homework(id) ON DELETE CASCADE,
@@ -70,11 +95,11 @@ CREATE TABLE due_date_schedules (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX due_date_schedules_course_id_idx ON due_date_schedules (course_id);
-CREATE UNIQUE INDEX due_date_schedules_unique_hw
+CREATE INDEX IF NOT EXISTS due_date_schedules_course_id_idx ON due_date_schedules (course_id);
+CREATE UNIQUE INDEX IF NOT EXISTS due_date_schedules_unique_hw
     ON due_date_schedules (course_id, homework_id);
 
-CREATE TABLE agent_token_usage (
+CREATE TABLE IF NOT EXISTS agent_token_usage (
     id                 UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id         UUID    NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
     course_id          UUID    NOT NULL REFERENCES courses(id)  ON DELETE CASCADE,
@@ -84,7 +109,7 @@ CREATE TABLE agent_token_usage (
     CONSTRAINT uq_token_usage_student_course UNIQUE (student_id, course_id)
 );
 
-CREATE INDEX idx_token_usage_student_id ON agent_token_usage (student_id);
+CREATE INDEX IF NOT EXISTS idx_token_usage_student_id ON agent_token_usage (student_id);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON courses            TO valory_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON syllabi            TO valory_app;

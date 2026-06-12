@@ -260,3 +260,89 @@ func TestStripCodeFence_AsciidocFence_RemovedIncludingTag(t *testing.T) {
 		t.Errorf("content must survive stripping, got %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// chairSystemPrompt
+// ---------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-AGENT-022"]}
+func TestChairSystemPrompt_ContainsMarkdownGuidance(t *testing.T) {
+	prompt := chairSystemPrompt()
+	requiredPhrases := []string{
+		"Format your replies using Markdown",
+		"bullet lists",
+		"**bold**",
+		"fenced code blocks",
+	}
+	for _, phrase := range requiredPhrases {
+		if !strings.Contains(prompt, phrase) {
+			t.Errorf("chairSystemPrompt missing expected phrase: %q", phrase)
+		}
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-022"]}
+func TestChairSystemPrompt_ContainsLaTeXGuidance(t *testing.T) {
+	prompt := chairSystemPrompt()
+	requiredPhrases := []string{
+		"LaTeX",
+		"$...$",
+		"$$...$$",
+		"inline mathematics",
+		"display mathematics",
+	}
+	for _, phrase := range requiredPhrases {
+		if !strings.Contains(prompt, phrase) {
+			t.Errorf("chairSystemPrompt missing expected LaTeX phrase: %q", phrase)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// intakeSystemPrompt
+// ---------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-AGENT-022"]}
+func TestIntakeSystemPrompt_ContainsMarkdownGuidance(t *testing.T) {
+	prompt := intakeSystemPrompt("test topic")
+	requiredPhrases := []string{
+		"Format your replies using Markdown",
+		"bullet lists",
+		"**bold**",
+	}
+	for _, phrase := range requiredPhrases {
+		if !strings.Contains(prompt, phrase) {
+			t.Errorf("intakeSystemPrompt missing expected phrase: %q", phrase)
+		}
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-022"]}
+func TestIntakeSystemPrompt_ContainsLaTeXGuidance(t *testing.T) {
+	prompt := intakeSystemPrompt("test topic")
+	requiredPhrases := []string{
+		"LaTeX",
+		"$...$",
+		"$$...$$",
+	}
+	for _, phrase := range requiredPhrases {
+		if !strings.Contains(prompt, phrase) {
+			t.Errorf("intakeSystemPrompt missing expected LaTeX phrase: %q", phrase)
+		}
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-022", "REQ-AGENT-001"]}
+func TestIntakeSystemPrompt_PreservesSentinelRules(t *testing.T) {
+	prompt := intakeSystemPrompt("test topic")
+	requiredPhrases := []string{
+		"3 substantive student replies",
+		intakeSentinel,
+		"Do not include this marker until you have enough information",
+	}
+	for _, phrase := range requiredPhrases {
+		if !strings.Contains(prompt, phrase) {
+			t.Errorf("intakeSystemPrompt missing sentinel rule: %q", phrase)
+		}
+	}
+}

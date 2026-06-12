@@ -1,10 +1,12 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-270"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-270", "REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615", "REQ-FECOURSE-616"]}
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSSE } from '@/composables/useSSE'
 import { get, post, ApiError } from '@/api/client'
+import { renderMarkdown } from '@/utils/renderMarkdown'
+import 'katex/dist/katex.min.css'
 
 interface Message {
   role: 'agent' | 'user'
@@ -284,9 +286,21 @@ onUnmounted(() => {
         class="message"
         :class="message.role === 'user' ? 'message--user' : 'message--agent'"
       >
-        <div class="message-bubble">
-          {{ message.content }}
-        </div>
+        <!--
+          REQ-FECOURSE-612, -613, -614, -615: agent messages are rendered
+          through the markdown→KaTeX→DOMPurify pipeline and injected as HTML.
+          REQ-FECOURSE-616: student (user) messages are rendered as plain text
+          via {{ }} interpolation so no HTML is ever interpreted.
+        -->
+        <div
+          v-if="message.role === 'agent'"
+          class="message-bubble message-bubble--markdown"
+          v-html="renderMarkdown(message.content)"
+        ></div>
+        <div
+          v-else
+          class="message-bubble"
+        >{{ message.content }}</div>
       </div>
 
       <div v-if="isHistoryPolling && messages.length === 0" class="message message--agent">
@@ -531,5 +545,103 @@ onUnmounted(() => {
 .send-button:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+
+/* Markdown-rendered agent bubble: scope all generated elements so they don't
+   bleed into the surrounding layout. deep() is needed because v-html content
+   is not processed by Vue's scoped-attribute injection.
+   REQ-FECOURSE-612 */
+.message-bubble--markdown :deep(p) {
+  margin: 0 0 0.5em;
+}
+
+.message-bubble--markdown :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.message-bubble--markdown :deep(h1),
+.message-bubble--markdown :deep(h2),
+.message-bubble--markdown :deep(h3),
+.message-bubble--markdown :deep(h4),
+.message-bubble--markdown :deep(h5),
+.message-bubble--markdown :deep(h6) {
+  margin: 0.75em 0 0.25em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.message-bubble--markdown :deep(ul),
+.message-bubble--markdown :deep(ol) {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.4em;
+}
+
+.message-bubble--markdown :deep(li) {
+  margin-bottom: 0.2em;
+}
+
+.message-bubble--markdown :deep(code) {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.875em;
+  background-color: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
+.message-bubble--markdown :deep(pre) {
+  background-color: rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.message-bubble--markdown :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.875em;
+}
+
+.message-bubble--markdown :deep(blockquote) {
+  border-left: 3px solid rgba(0, 0, 0, 0.2);
+  margin: 0.5em 0;
+  padding: 0.25em 0.75em;
+  color: #555;
+}
+
+.message-bubble--markdown :deep(table) {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  width: 100%;
+  font-size: 0.9em;
+}
+
+.message-bubble--markdown :deep(th),
+.message-bubble--markdown :deep(td) {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+
+.message-bubble--markdown :deep(th) {
+  background-color: rgba(0, 0, 0, 0.05);
+  font-weight: 600;
+}
+
+/* Images from agent content: constrain width, REQ-FECOURSE-614 */
+.message-bubble--markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 0.5em 0;
+}
+
+/* KaTeX display-mode block: center it, REQ-FECOURSE-613 */
+.message-bubble--markdown :deep(.katex-display) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.5em 0;
 }
 </style>

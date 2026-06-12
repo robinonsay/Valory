@@ -74,9 +74,12 @@ added in the sprint shown; no code for those specs exists yet.
 | Drafting indicator shown; frontend polls and auto-renders when syllabus becomes available | REQ-FECOURSE-056, REQ-FECOURSE-057, REQ-FECOURSE-490, REQ-FECOURSE-491 | `processing-indicators.spec.ts` — `SyllabusDrafting_IndicatorThenAutoRender` |
 | Error banner shown (not drafting indicator) on non-404 fetch failure | REQ-FECOURSE-490, REQ-FECOURSE-590 | `processing-indicators.spec.ts` — `SyllabusFetchFailure_NonDraftErrorStillShown` |
 | Bounded-wait exceeded after 180 s of drafting polling — shows "Try Again" | REQ-FECOURSE-491 | Vitest unit test: `src/views/SyllabusView.test.ts` — "shows longer-than-expected message after 180s of drafting polling" |
-| AsciiDoc / Markdown rendering in syllabus body displays formatted content | REQ-FECONTENT-013 | **PLANNED-Sprint13** `content-rendering.spec.ts` |
-| LaTeX expressions in section content are rendered as math | — | **PLANNED-Sprint13** `content-rendering.spec.ts` |
-| Images embedded in section content are displayed | — | **PLANNED-Sprint15** `content-rendering.spec.ts` |
+| Agent chat messages render Markdown (heading, bold, list, code block) | REQ-FECOURSE-612 | `content-rendering.spec.ts` — `ChatMarkdown_RendersFormattedAgentMessage` (DELIVERED Sprint 14) |
+| Agent chat messages render LaTeX math (inline and display) via KaTeX | REQ-FECOURSE-613 | `content-rendering.spec.ts` — `ChatLaTeX_RendersTypesetMath` (DELIVERED Sprint 14) |
+| Agent chat messages render images with loading="lazy" | REQ-FECOURSE-614 | `content-rendering.spec.ts` — `ChatImage_RendersImgTag` (DELIVERED Sprint 14) |
+| XSS payloads (script, onerror, javascript: href) in agent messages are neutralised | REQ-FECOURSE-615 | `content-rendering.spec.ts` — `ChatXSS_ScriptAndEventHandlersInert` (DELIVERED Sprint 14) |
+| Student messages render as plain text — HTML and LaTeX are inert | REQ-FECOURSE-616 | `content-rendering.spec.ts` — `ChatStudentMessage_PlainTextNoHTML` (DELIVERED Sprint 14) |
+| AsciiDoc / Markdown rendering in syllabus body displays formatted content | REQ-FECONTENT-013 | **PLANNED-Sprint15** `content-rendering.spec.ts` (section reader surface) |
 
 ---
 
@@ -141,13 +144,44 @@ added in the sprint shown; no code for those specs exists yet.
 
 ---
 
+## Sprint 14 — Specs Added / Updated
+
+| File | Change | Tests |
+|---|---|---|
+| `frontend/e2e/content-rendering.spec.ts` | **NEW** | `ChatMarkdown_RendersFormattedAgentMessage`, `ChatLaTeX_RendersTypesetMath`, `ChatImage_RendersImgTag`, `ChatXSS_ScriptAndEventHandlersInert`, `ChatStudentMessage_PlainTextNoHTML` |
+
+### content-rendering.spec.ts — Detail
+
+Proves the markdown→KaTeX→DOMPurify rendering pipeline in `IntakeChatView`.
+All 5 tests are in the AI-free tier (0 Anthropic API calls).
+2 courses are created per run (1 kickoff call silenced each = 2 total).
+
+| Test | Governing REQ | What is asserted |
+|---|---|---|
+| `ChatMarkdown_RendersFormattedAgentMessage` | REQ-FECOURSE-612 | Agent bubble renders `h1`, `strong`, `ul li`, `pre code`; raw markdown syntax (`# `, `**`, `- `) absent from visible text |
+| `ChatLaTeX_RendersTypesetMath` | REQ-FECOURSE-613 | `.katex` elements exist in the agent bubble; raw `$...$` and `$$...$$` delimiters absent from visible text |
+| `ChatImage_RendersImgTag` | REQ-FECOURSE-614 | `img[alt="Valory logo"]` renders with `src="https://localhost/valory.svg"` and `loading="lazy"` |
+| `ChatXSS_ScriptAndEventHandlersInert` | REQ-FECOURSE-615 | `window.__pwned` undefined (script/onerror/javascript: all inert); no `script` element in bubble; no `javascript:` href |
+| `ChatStudentMessage_PlainTextNoHTML` | REQ-FECOURSE-616 | Student bubble contains literal `<b>not bold</b>` text; no `b`/`strong`/`.katex` DOM elements inside the bubble |
+
+XSS coverage notes:
+- `<script>window.__pwned=1</script>` — stripped by DOMPurify unconditionally
+- `<img src=x onerror="window.__pwned=2">` — `onerror` stripped by `afterSanitizeAttributes` hook in `renderMarkdown.ts`
+- `[click](javascript:window.__pwned=3)` — `javascript:` href removed by `afterSanitizeAttributes` hook
+
+Image src note: `renderMarkdown.ts` strips any `img src` that is not `https?://` or
+`data:image/`.  The image test uses `https://localhost/valory.svg` so the src
+survives the hook.
+
+---
+
 ## Planned Spec Summary
 
 | Planned File | Target Sprint | Status | Journeys Covered |
 |---|---|---|---|
 | `frontend/e2e/session-refresh.spec.ts` | Sprint 13 | **DELIVERED Sprint 13** | Session persistence across SPA navigation (5 tests) |
 | `frontend/e2e/branding.spec.ts` | Sprint 13 | **DELIVERED Sprint 13** | Valory logo on login/nav/sidebar; document title (3 tests) |
-| `frontend/e2e/content-rendering.spec.ts` | Sprint 13/15 | PLANNED | Markdown, LaTeX, image rendering in sections |
+| `frontend/e2e/content-rendering.spec.ts` | Sprint 13/15 | **DELIVERED Sprint 14** | Markdown, LaTeX, image, XSS in agent chat bubbles; student plain-text (5 tests) |
 | `frontend/e2e/sse-reconnect.spec.ts` | Sprint 14 | PLANNED | SSE reconnect / exponential backoff |
 | `frontend/e2e/admin-api-key.spec.ts` | Sprint 14 | PLANNED | Admin API key entry, config explanations |
 | `frontend/e2e/image-upload.spec.ts` | Sprint 15 | PLANNED | Image upload for course content |
@@ -156,13 +190,15 @@ added in the sprint shown; no code for those specs exists yet.
 
 ## Notes
 
-- Specs listed as existing are confirmed present in `frontend/e2e/` at Sprint 13.
+- Specs listed as existing are confirmed present in `frontend/e2e/` at Sprint 14.
 - REQ IDs in the "Governing REQ IDs" column point to `REQ-FE-COURSE.json`,
   `REQ-FE-CONTENT.json`, `REQ-FE-ADMIN.json`, and `requirements/l2-requirements.json`.
 - Session-refresh specs (Sprint 13) use the live production stack with real cookie
   auth — no mocking. The `request` fixture is used for cookie-free API calls.
-- Content-rendering specs for LaTeX and images depend on Sprint 15 backend
-  support for image storage and LaTeX pre-rendering.
+- Content-rendering specs (Sprint 14) use the DB seed helpers (no AI calls).
+  In-SPA navigation (click "Courses" nav → click course card) is used instead of
+  hard `page.goto()` for intake pages to avoid a router-guard redirect that can
+  occur during SPA boot before auth state is fully restored.
 - Branding has no formal requirement (no REQ-BRAND-* IDs). Branding tests are
   traced to the closest layout/login requirements that share the same Vue component.
 - Sprint 13 auth change: `helpers.ts archiveOpenCourses` pattern continues to

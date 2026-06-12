@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-270"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-270", "REQ-FECOURSE-612", "REQ-FECOURSE-616"]}
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -504,5 +504,61 @@ describe('IntakeChatView', () => {
 
     expect(wrapper.text()).toContain('Your professor is taking longer than expected')
     expect(wrapper.text()).toContain('feel free to introduce yourself')
+  })
+
+  // 20. Agent message with markdown renders formatted HTML in the bubble
+  // @{"verifies": ["REQ-FECOURSE-612"]}
+  it('renders agent message markdown as formatted HTML inside the bubble', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'assistant',
+          content: '## Hello\n\n- item one\n- item two',
+          created_at: '2026-06-12T10:00:00Z'
+        }
+      ]
+    })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    // The agent bubble should use v-html so it contains rendered elements
+    const agentBubble = wrapper.find('.message--agent .message-bubble--markdown')
+    expect(agentBubble.exists()).toBe(true)
+    // Should have rendered a heading element
+    expect(agentBubble.find('h2').exists()).toBe(true)
+    // Should have rendered list items
+    const listItems = agentBubble.findAll('li')
+    expect(listItems.length).toBe(2)
+    expect(listItems[0].text()).toBe('item one')
+  })
+
+  // 21. Student message containing HTML markup is rendered as plain text
+  // @{"verifies": ["REQ-FECOURSE-616"]}
+  it('renders student message containing <b>x</b> as literal text, not bold', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'student',
+          content: '<b>x</b>',
+          created_at: '2026-06-12T10:00:00Z'
+        }
+      ]
+    })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    // User bubble must NOT use v-html — the .message-bubble--markdown class should be absent
+    const userBubble = wrapper.find('.message--user .message-bubble')
+    expect(userBubble.exists()).toBe(true)
+    // No bold element should exist inside the user bubble
+    expect(userBubble.find('b').exists()).toBe(false)
+    // The raw angle-bracket text should appear as visible text (escaped)
+    expect(userBubble.text()).toContain('<b>x</b>')
   })
 })

@@ -5,7 +5,9 @@
     "description": "The auth module shall verify a user's username and password before granting access.",
     "rationale": "Authentication requires checking supplied credentials against stored values to confirm identity before issuing a session.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-001"]
+    "uses": [
+      "REQ-SYS-001"
+    ]
   },
   {
     "id": "REQ-AUTH-002",
@@ -13,7 +15,9 @@
     "description": "The auth module shall issue a signed session token upon successful credential verification.",
     "rationale": "A signed token ties an authenticated identity to subsequent requests without requiring repeated credential checks.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-001"]
+    "uses": [
+      "REQ-SYS-001"
+    ]
   },
   {
     "id": "REQ-AUTH-003",
@@ -21,7 +25,9 @@
     "description": "The auth module shall embed the user's role in the session token issued at login.",
     "rationale": "Downstream services need the role claim to make access-control decisions without a separate lookup on every request.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-002"]
+    "uses": [
+      "REQ-SYS-002"
+    ]
   },
   {
     "id": "REQ-AUTH-004",
@@ -29,7 +35,9 @@
     "description": "The auth module shall reject requests to role-restricted endpoints when the token's role is insufficient.",
     "rationale": "Enforcement at the request boundary prevents students from invoking admin-only operations regardless of how the request is constructed.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-002"]
+    "uses": [
+      "REQ-SYS-002"
+    ]
   },
   {
     "id": "REQ-AUTH-005",
@@ -37,7 +45,9 @@
     "description": "The auth module shall invalidate a session token after a configurable period of inactivity.",
     "rationale": "Expiring idle sessions limits exposure if a token is stolen or a user leaves a device unattended.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-024"]
+    "uses": [
+      "REQ-SYS-024"
+    ]
   },
   {
     "id": "REQ-AUTH-006",
@@ -45,7 +55,9 @@
     "description": "The auth module shall lock an account for a configurable duration after five consecutive failed login attempts.",
     "rationale": "Locking after repeated failures prevents automated credential-stuffing attacks from succeeding through exhaustive guessing.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-037"]
+    "uses": [
+      "REQ-SYS-037"
+    ]
   },
   {
     "id": "REQ-AUTH-007",
@@ -53,7 +65,9 @@
     "description": "The auth module shall reject all client connections not established over TLS.",
     "rationale": "Refusing plaintext connections at the auth boundary ensures credentials and session tokens are never transmitted without encryption.",
     "verification_method": "Inspection",
-    "uses": ["REQ-SYS-040"]
+    "uses": [
+      "REQ-SYS-040"
+    ]
   },
   {
     "id": "REQ-AUTH-008",
@@ -61,7 +75,9 @@
     "description": "The auth module shall store passwords using an adaptive cryptographic hashing algorithm.",
     "rationale": "Adaptive hashing raises the computational cost of offline attacks as hardware improves, protecting credentials if the database is compromised.",
     "verification_method": "Inspection",
-    "uses": ["REQ-SYS-041"]
+    "uses": [
+      "REQ-SYS-041"
+    ]
   },
   {
     "id": "REQ-USER-001",
@@ -69,7 +85,9 @@
     "description": "The user module shall allow an admin to create a new student or admin account.",
     "rationale": "Admins are responsible for provisioning all user accounts; a creation path is the starting point of every user's lifecycle.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-003"]
+    "uses": [
+      "REQ-SYS-003"
+    ]
   },
   {
     "id": "REQ-USER-002",
@@ -77,7 +95,9 @@
     "description": "The user module shall allow an admin to modify the profile fields of an existing account.",
     "rationale": "Account details may change after initial provisioning; admins need an update path without recreating the account.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-003"]
+    "uses": [
+      "REQ-SYS-003"
+    ]
   },
   {
     "id": "REQ-USER-003",
@@ -85,7 +105,9 @@
     "description": "The user module shall allow an admin to deactivate a student or admin account without deleting its records.",
     "rationale": "Deactivation revokes access while preserving audit trails and enabling reactivation if needed.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-004"]
+    "uses": [
+      "REQ-SYS-004"
+    ]
   },
   {
     "id": "REQ-USER-004",
@@ -93,7 +115,9 @@
     "description": "The user module shall prevent a deactivated account from successfully authenticating.",
     "rationale": "Deactivation is only effective if login is also blocked; a deactivated account that can still authenticate provides no access-revocation guarantee.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-004"]
+    "uses": [
+      "REQ-SYS-004"
+    ]
   },
   {
     "id": "REQ-USER-005",
@@ -101,7 +125,9 @@
     "description": "The user module shall deliver a one-time password-reset credential to the user's registered out-of-band contact.",
     "rationale": "Out-of-band delivery confirms the requester controls the registered contact point, preventing unauthorized password resets.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-026"]
+    "uses": [
+      "REQ-SYS-026"
+    ]
   },
   {
     "id": "REQ-USER-006",
@@ -109,7 +135,9 @@
     "description": "The user module shall invalidate a password-reset credential immediately after it is used.",
     "rationale": "Reusable reset tokens remain valid after the intended reset, creating an ongoing account-takeover risk.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-026"]
+    "uses": [
+      "REQ-SYS-026"
+    ]
   },
   {
     "id": "REQ-USER-007",
@@ -117,7 +145,9 @@
     "description": "The user module shall permanently delete all personal data for a student account upon an authorized deletion request.",
     "rationale": "Permanent deletion on request is a baseline obligation for platforms handling personal academic records.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-025"]
+    "uses": [
+      "REQ-SYS-025"
+    ]
   },
   {
     "id": "REQ-COURSE-001",
@@ -125,7 +155,9 @@
     "description": "The course module shall prevent a student from starting a new course while one is already active.",
     "rationale": "Limiting students to one active course ensures the personalized learning experience remains focused and undivided.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-008"]
+    "uses": [
+      "REQ-SYS-008"
+    ]
   },
   {
     "id": "REQ-COURSE-002",
@@ -133,7 +165,9 @@
     "description": "The course module shall provide admin users a listing of all courses and their current statuses.",
     "rationale": "Admins need full visibility into every course for support, quality assurance, and operational monitoring.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-005"]
+    "uses": [
+      "REQ-SYS-005"
+    ]
   },
   {
     "id": "REQ-COURSE-003",
@@ -141,7 +175,9 @@
     "description": "The course module shall set a course to archived status when the student withdraws from it.",
     "rationale": "Archiving preserves course state and data, enabling potential re-engagement without data loss.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-027"]
+    "uses": [
+      "REQ-SYS-027"
+    ]
   },
   {
     "id": "REQ-COURSE-004",
@@ -149,7 +185,9 @@
     "description": "The course module shall restore an archived course to active status upon the student's resumption request.",
     "rationale": "Resumption restores the student's exact course state, protecting prior learning investment after a break.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-028"]
+    "uses": [
+      "REQ-SYS-028"
+    ]
   },
   {
     "id": "REQ-COURSE-005",
@@ -157,7 +195,9 @@
     "description": "The course module shall allow a student to submit a modification request for a generated course syllabus.",
     "rationale": "Students must have agency over their course plan before generation begins to ensure content meets their actual learning goals.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-029"]
+    "uses": [
+      "REQ-SYS-029"
+    ]
   },
   {
     "id": "REQ-COURSE-006",
@@ -165,7 +205,9 @@
     "description": "The course module shall block content generation until the student explicitly approves the syllabus.",
     "rationale": "Generation must not proceed without student acceptance to avoid wasted work and misaligned expectations.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-030"]
+    "uses": [
+      "REQ-SYS-030"
+    ]
   },
   {
     "id": "REQ-COURSE-007",
@@ -173,7 +215,9 @@
     "description": "The course module shall store homework due dates derived from the approved course syllabus.",
     "rationale": "Persisting due dates allows the system to apply late penalties and display deadlines consistently throughout the course.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-031"]
+    "uses": [
+      "REQ-SYS-031"
+    ]
   },
   {
     "id": "REQ-COURSE-008",
@@ -181,7 +225,9 @@
     "description": "The course module shall require explicit student agreement before finalizing the homework due date schedule.",
     "rationale": "Explicit agreement ensures the student commits to a realistic plan that accounts for their availability.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-032"]
+    "uses": [
+      "REQ-SYS-032"
+    ]
   },
   {
     "id": "REQ-AGENT-001",
@@ -189,7 +235,9 @@
     "description": "The agent module shall conduct a structured questionnaire before initiating course syllabus generation.",
     "rationale": "Gathering knowledge level, objectives, and availability before generation ensures the syllabus is genuinely personalized.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-009"]
+    "uses": [
+      "REQ-SYS-009"
+    ]
   },
   {
     "id": "REQ-AGENT-002",
@@ -197,7 +245,9 @@
     "description": "The agent module shall derive homework and final-project point distribution from the approved course syllabus.",
     "rationale": "Grade weightings must reflect the agreed course structure rather than a fixed institutional default.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-010"]
+    "uses": [
+      "REQ-SYS-010"
+    ]
   },
   {
     "id": "REQ-AGENT-003",
@@ -205,7 +255,9 @@
     "description": "The agent module shall begin generating all lesson content and homework upon syllabus approval.",
     "rationale": "Generating content immediately after approval gives students access to their full course plan without delays during active study.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-011"]
+    "uses": [
+      "REQ-SYS-011"
+    ]
   },
   {
     "id": "REQ-AGENT-004",
@@ -213,7 +265,9 @@
     "description": "The agent module shall obtain explicit student consent before reusing or deriving content from the system content library.",
     "rationale": "Student consent ensures that both reused and derived material is acceptable for their learning context before content generation proceeds.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-012"]
+    "uses": [
+      "REQ-SYS-012"
+    ]
   },
   {
     "id": "REQ-AGENT-005",
@@ -221,7 +275,9 @@
     "description": "The agent module shall query external internet sources when generating course content.",
     "rationale": "Internet search grounds content in current research rather than stale training data, critical for rapidly evolving subjects.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-014"]
+    "uses": [
+      "REQ-SYS-014"
+    ]
   },
   {
     "id": "REQ-AGENT-006",
@@ -229,7 +285,9 @@
     "description": "The agent module shall emit real-time status updates for each stage of the content generation pipeline.",
     "rationale": "Visible pipeline status makes the generation and verification process transparent rather than a black box.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-015"]
+    "uses": [
+      "REQ-SYS-015"
+    ]
   },
   {
     "id": "REQ-AGENT-007",
@@ -237,7 +295,9 @@
     "description": "The agent module shall stop the content correction loop after reaching the admin-configured maximum iteration count.",
     "rationale": "Capping the loop prevents indefinite stalling and surfaces persistent failures for human resolution.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-016"]
+    "uses": [
+      "REQ-SYS-016"
+    ]
   },
   {
     "id": "REQ-AGENT-008",
@@ -245,7 +305,9 @@
     "description": "The agent module shall notify an admin when the content correction loop reaches its limit without success.",
     "rationale": "Escalation ensures persistent generation failures are not silently dropped and can be investigated by a human.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-016"]
+    "uses": [
+      "REQ-SYS-016"
+    ]
   },
   {
     "id": "REQ-AGENT-009",
@@ -253,7 +315,9 @@
     "description": "The agent module shall calculate and assign homework due dates from the approved course syllabus.",
     "rationale": "Due dates derived from the agreed course structure produce a schedule consistent with the student's plan.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-031"]
+    "uses": [
+      "REQ-SYS-031"
+    ]
   },
   {
     "id": "REQ-AGENT-010",
@@ -261,7 +325,9 @@
     "description": "The agent module shall regenerate a section's content when the student submits a change request for it.",
     "rationale": "Section-level regeneration keeps course content aligned with the student's comprehension as the course progresses.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-034"]
+    "uses": [
+      "REQ-SYS-034"
+    ]
   },
   {
     "id": "REQ-AGENT-011",
@@ -269,7 +335,9 @@
     "description": "The agent module shall halt all content generation when an AI API call exhausts its configured retries.",
     "rationale": "Continuing generation after an unrecoverable failure risks producing incomplete or corrupted course material.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-036"]
+    "uses": [
+      "REQ-SYS-036"
+    ]
   },
   {
     "id": "REQ-AGENT-012",
@@ -277,7 +345,9 @@
     "description": "The agent module shall apply exponential backoff between retries upon receiving an AI provider rate-limit response.",
     "rationale": "Rate-limit responses indicate the AI provider is saturated; increasing the delay between retries gives the provider time to recover and improves the probability of a successful retry without operator intervention.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-044"]
+    "uses": [
+      "REQ-SYS-044"
+    ]
   },
   {
     "id": "REQ-AGENT-013",
@@ -285,7 +355,9 @@
     "description": "The agent module shall terminate all in-flight generation operations for a student before account deletion executes.",
     "rationale": "Orderly termination before deletion prevents partial writes, orphaned resources, and inconsistent data state.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-045"]
+    "uses": [
+      "REQ-SYS-045"
+    ]
   },
   {
     "id": "REQ-AGENT-014",
@@ -293,7 +365,9 @@
     "description": "The agent module shall detect when upfront content generation exceeds the configured time limit.",
     "rationale": "Detecting the timeout is a prerequisite for notifying the student and enabling operator intervention.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-043"]
+    "uses": [
+      "REQ-SYS-043"
+    ]
   },
   {
     "id": "REQ-CONTENT-001",
@@ -301,7 +375,9 @@
     "description": "The content module shall reject lesson content that does not include at least one cited source.",
     "rationale": "Citations give students verifiable references and allow instructors to audit content accuracy against current research.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-013"]
+    "uses": [
+      "REQ-SYS-013"
+    ]
   },
   {
     "id": "REQ-AGENT-015",
@@ -309,7 +385,9 @@
     "description": "The agent module shall provide a natural language chat interface for student interaction throughout the course lifecycle.",
     "rationale": "A chat interface is the primary mechanism for personalized learning and addressing comprehension gaps in real time.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-021"]
+    "uses": [
+      "REQ-SYS-021"
+    ]
   },
   {
     "id": "REQ-CONTENT-002",
@@ -317,7 +395,9 @@
     "description": "The content module shall export any course content document to a PDF file upon request.",
     "rationale": "PDF export gives students and admins a portable, offline-usable version of course content.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-022"]
+    "uses": [
+      "REQ-SYS-022"
+    ]
   },
   {
     "id": "REQ-CONTENT-003",
@@ -325,7 +405,9 @@
     "description": "The content module shall export any course content document to a standalone HTML file upon request.",
     "rationale": "HTML export provides a self-contained, browser-viewable format for offline study and quality review.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-022"]
+    "uses": [
+      "REQ-SYS-022"
+    ]
   },
   {
     "id": "REQ-CONTENT-004",
@@ -333,7 +415,9 @@
     "description": "The content module shall allow a student to submit feedback on a course section upon completing it.",
     "rationale": "Section feedback gives students a structured mechanism to signal comprehension gaps before the next section begins.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-033"]
+    "uses": [
+      "REQ-SYS-033"
+    ]
   },
   {
     "id": "REQ-SUBMISSION-001",
@@ -341,7 +425,9 @@
     "description": "The submission module shall accept homework and project uploads in LaTeX, Markdown, and AsciiDoc formats only.",
     "rationale": "Restricting to structured text formats ensures submissions are parseable by the automated grading pipeline.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-017"]
+    "uses": [
+      "REQ-SYS-017"
+    ]
   },
   {
     "id": "REQ-SUBMISSION-002",
@@ -349,7 +435,9 @@
     "description": "The submission module shall reject any uploaded file that exceeds the configured maximum file size.",
     "rationale": "Oversized uploads can exhaust storage and processing resources, enabling denial-of-service conditions.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-054"]
+    "uses": [
+      "REQ-SYS-054"
+    ]
   },
   {
     "id": "REQ-SUBMISSION-003",
@@ -357,7 +445,9 @@
     "description": "The submission module shall reject any uploaded file whose content does not conform to its declared format.",
     "rationale": "Format validation prevents malformed files from reaching the grading pipeline and mitigates content-injection risks.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-055"]
+    "uses": [
+      "REQ-SYS-055"
+    ]
   },
   {
     "id": "REQ-GRADE-001",
@@ -365,7 +455,9 @@
     "description": "The grade module shall deduct five percent from a submission grade for each calendar day it is past the due date.",
     "rationale": "A consistent, predictable late penalty reflects the academic policy agreed by the student at course-planning time.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-018"]
+    "uses": [
+      "REQ-SYS-018"
+    ]
   },
   {
     "id": "REQ-GRADE-002",
@@ -373,7 +465,9 @@
     "description": "The grade module shall apply the late-penalty rate configured by an admin rather than a hardcoded value.",
     "rationale": "Grading policy must be tunable to match institutional rules without code changes.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-050"]
+    "uses": [
+      "REQ-SYS-050"
+    ]
   },
   {
     "id": "REQ-GRADE-003",
@@ -381,7 +475,9 @@
     "description": "The grade module shall apply homework and final-project weight distributions as configured by an admin.",
     "rationale": "Grade weight distributions vary by institution and course type and must be tunable independently of late-penalty rules.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-050"]
+    "uses": [
+      "REQ-SYS-050"
+    ]
   },
   {
     "id": "REQ-GRADE-004",
@@ -389,7 +485,9 @@
     "description": "The grade module shall increase a student's final grade by the amount specified in an earned badge reward.",
     "rationale": "Grade improvements tied to badges provide a tangible academic incentive beyond cosmetic recognition.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-052"]
+    "uses": [
+      "REQ-SYS-052"
+    ]
   },
   {
     "id": "REQ-GRADE-005",
@@ -397,7 +495,9 @@
     "description": "The grade module shall waive the late penalty on a submission when the student redeems a badge waiver.",
     "rationale": "Late-penalty waivers are operationally distinct from grade improvements and must be independently verifiable.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-053"]
+    "uses": [
+      "REQ-SYS-053"
+    ]
   },
   {
     "id": "REQ-BADGE-001",
@@ -405,7 +505,9 @@
     "description": "The badge module shall award a badge to a student when a defined academic milestone is reached.",
     "rationale": "Recognizing milestones with badges provides positive reinforcement and visible progress markers that encourage continued engagement.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-019"]
+    "uses": [
+      "REQ-SYS-019"
+    ]
   },
   {
     "id": "REQ-BADGE-002",
@@ -413,7 +515,9 @@
     "description": "The badge module shall associate a final grade improvement value with a badge designated as a grade-improvement reward.",
     "rationale": "The badge must carry the specific reward value so the grading module can apply it accurately when the badge is earned.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-052"]
+    "uses": [
+      "REQ-SYS-052"
+    ]
   },
   {
     "id": "REQ-BADGE-003",
@@ -421,7 +525,9 @@
     "description": "The badge module shall associate a late-penalty waiver entitlement with a badge designated as a waiver reward.",
     "rationale": "The badge must carry a distinct waiver entitlement so the grading module can apply it independently from grade improvements.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-053"]
+    "uses": [
+      "REQ-SYS-053"
+    ]
   },
   {
     "id": "REQ-ADMIN-001",
@@ -429,7 +535,9 @@
     "description": "The admin module shall allow an admin to set the maximum number of agent retries before escalation.",
     "rationale": "Retry limits control operational cost and latency; configurability lets operators tune the system without code changes.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-051"]
+    "uses": [
+      "REQ-SYS-051"
+    ]
   },
   {
     "id": "REQ-ADMIN-002",
@@ -437,7 +545,9 @@
     "description": "The admin module shall allow an admin to set the maximum number of content correction loop iterations.",
     "rationale": "A configurable cap ensures persistent correction failures surface for human resolution rather than blocking delivery indefinitely.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-016"]
+    "uses": [
+      "REQ-SYS-016"
+    ]
   },
   {
     "id": "REQ-ADMIN-003",
@@ -445,7 +555,9 @@
     "description": "The admin module shall allow an admin to set a maximum AI API token expenditure per student per course.",
     "rationale": "A per-course token cap ensures platform economic viability and prevents one student from consuming disproportionate API quota.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-049"]
+    "uses": [
+      "REQ-SYS-049"
+    ]
   },
   {
     "id": "REQ-ADMIN-004",
@@ -453,7 +565,9 @@
     "description": "The admin module shall halt AI processing for a student course when the configured token expenditure limit is reached.",
     "rationale": "Configuration without enforcement provides no cost protection; halting at the cap is the observable behavior that validates the limit.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-049"]
+    "uses": [
+      "REQ-SYS-049"
+    ]
   },
   {
     "id": "REQ-AUDIT-001",
@@ -461,7 +575,9 @@
     "description": "The audit module shall record a tamper-evident log entry for every admin create, modify, deactivate, delete, and policy-change action.",
     "rationale": "Tamper-evident logs provide accountability for privileged actions and support security incident investigation and compliance review.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-042"]
+    "uses": [
+      "REQ-SYS-042"
+    ]
   },
   {
     "id": "REQ-AUDIT-002",
@@ -469,7 +585,9 @@
     "description": "The audit module shall allow verification that no recorded log entry has been altered or deleted.",
     "rationale": "A log that can be silently altered provides no accountability guarantee; verifiability is what makes the log tamper-evident.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-042"]
+    "uses": [
+      "REQ-SYS-042"
+    ]
   },
   {
     "id": "REQ-NOTIFY-001",
@@ -477,7 +595,9 @@
     "description": "The notify module shall deliver a failure notification to the student when an AI API call exhausts its configured retry limit.",
     "rationale": "Notifying the student of an unrecoverable failure ensures they know to contact support rather than waiting indefinitely.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-035"]
+    "uses": [
+      "REQ-SYS-035"
+    ]
   },
   {
     "id": "REQ-NOTIFY-002",
@@ -485,7 +605,9 @@
     "description": "The notify module shall deliver a timeout notification to the student when content generation exceeds the configured time limit.",
     "rationale": "A timeout notification informs the student of the delay so they can take action rather than waiting in an undefined state.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-043"]
+    "uses": [
+      "REQ-SYS-043"
+    ]
   },
   {
     "id": "REQ-SECURITY-001",
@@ -493,7 +615,9 @@
     "description": "The security module shall supply AI API credentials exclusively through environment variables.",
     "rationale": "Environment variables prevent credentials from appearing in source control, container images, or application logs.",
     "verification_method": "Inspection",
-    "uses": ["REQ-SYS-007"]
+    "uses": [
+      "REQ-SYS-007"
+    ]
   },
   {
     "id": "REQ-SECURITY-002",
@@ -501,7 +625,9 @@
     "description": "The security module shall prevent any student from accessing another student's course data, submissions, grades, or chat history.",
     "rationale": "Strict per-student isolation protects sensitive academic data and is a prerequisite for responsible multi-user operation.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-023"]
+    "uses": [
+      "REQ-SYS-023"
+    ]
   },
   {
     "id": "REQ-SECURITY-003",
@@ -509,7 +635,9 @@
     "description": "The security module shall reject password-reset requests exceeding three per account per hour.",
     "rationale": "Rate-limiting the reset flow prevents its use as an account-enumeration or denial-of-service vector.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-038"]
+    "uses": [
+      "REQ-SYS-038"
+    ]
   },
   {
     "id": "REQ-SECURITY-004",
@@ -517,7 +645,9 @@
     "description": "The security module shall validate a CSRF token on every state-changing request before processing it.",
     "rationale": "CSRF token validation prevents malicious third-party sites from issuing authenticated requests on behalf of a logged-in user.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-048"]
+    "uses": [
+      "REQ-SYS-048"
+    ]
   },
   {
     "id": "REQ-SECURITY-005",
@@ -525,7 +655,9 @@
     "description": "The security module shall obtain explicit student consent before transmitting their content or chat history to the AI provider.",
     "rationale": "Informed consent before third-party data transfer is a legal and ethical obligation for platforms handling student data.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-SYS-046"]
+    "uses": [
+      "REQ-SYS-046"
+    ]
   },
   {
     "id": "REQ-INFRA-001",
@@ -533,7 +665,9 @@
     "description": "The infra module shall expose an HTTP endpoint that returns the operational status of all critical subsystems.",
     "rationale": "A machine-readable health endpoint enables load balancers, orchestrators, and monitoring systems to detect subsystem failures without manual intervention.",
     "verification_method": "Test",
-    "uses": ["REQ-SYS-047"]
+    "uses": [
+      "REQ-SYS-047"
+    ]
   },
   {
     "id": "REQ-INFRA-002",
@@ -555,7 +689,10 @@
     "description": "The agent module shall reject chat history requests for a course not owned by the authenticated student.",
     "rationale": "Chat messages contain the student's personal intake responses and learning dialogue; any student must be able to retrieve only their own history, never another student's.",
     "verification_method": "Test",
-    "uses": ["REQ-SECURITY-002", "REQ-AGENT-015"]
+    "uses": [
+      "REQ-SECURITY-002",
+      "REQ-AGENT-015"
+    ]
   },
   {
     "id": "REQ-AGENT-018",
@@ -563,7 +700,9 @@
     "description": "The agent module shall send the first intake question to the student when a course enters intake status.",
     "rationale": "Without a proactive opening message the student sees an empty chat on first load and has no prompt to begin the intake conversation, blocking the entire course-creation flow.",
     "verification_method": "Test",
-    "uses": ["REQ-AGENT-001"]
+    "uses": [
+      "REQ-AGENT-001"
+    ]
   },
   {
     "id": "REQ-AGENT-019",
@@ -571,7 +710,10 @@
     "description": "The agent module shall transition a course to syllabus_draft status when the agent determines intake is complete.",
     "rationale": "When the Chair agent has gathered sufficient intake information, the course must advance to syllabus_draft so syllabus generation can begin. Without this transition, the course remains in intake indefinitely.",
     "verification_method": "Test",
-    "uses": ["REQ-AGENT-001", "REQ-AGENT-006"]
+    "uses": [
+      "REQ-AGENT-001",
+      "REQ-AGENT-006"
+    ]
   },
   {
     "id": "REQ-AGENT-020",
@@ -579,7 +721,11 @@
     "description": "The agent module shall begin syllabus generation immediately after the course status transitions from intake to syllabus_draft.",
     "rationale": "Intake completion and syllabus generation are disconnected steps with no wiring between them; without this trigger, intake completion produces no course artefact and the student's workflow stalls at intake permanently.",
     "verification_method": "Test",
-    "uses": ["REQ-AGENT-001", "REQ-AGENT-003", "REQ-AGENT-019"]
+    "uses": [
+      "REQ-AGENT-001",
+      "REQ-AGENT-003",
+      "REQ-AGENT-019"
+    ]
   },
   {
     "id": "REQ-AGENT-021",
@@ -587,7 +733,10 @@
     "description": "The agent module shall emit a pipeline event with the new course status whenever a course status changes.",
     "rationale": "The frontend relies on SSE status_change events to navigate the student to the correct view after each lifecycle transition; without this emission the frontend cannot detect that intake has completed.",
     "verification_method": "Test",
-    "uses": ["REQ-AGENT-006", "REQ-AGENT-019"]
+    "uses": [
+      "REQ-AGENT-006",
+      "REQ-AGENT-019"
+    ]
   },
   {
     "id": "REQ-AUTH-009",
@@ -595,7 +744,10 @@
     "description": "The auth module shall set a __Host-session httpOnly, Secure, SameSite=Strict cookie on successful login.",
     "rationale": "An httpOnly cookie with host-binding and strict same-site policy carries the session credential to the browser without exposing it to JavaScript, satisfying XSS and CSRF-origin constraints simultaneously.",
     "verification_method": "Test",
-    "uses": ["REQ-AUTH-002", "REQ-AUTH-005"]
+    "uses": [
+      "REQ-AUTH-002",
+      "REQ-AUTH-005"
+    ]
   },
   {
     "id": "REQ-AUTH-010",
@@ -603,7 +755,9 @@
     "description": "The auth module shall clear the __Host-session cookie by setting it to an empty value with Max-Age=0 on logout.",
     "rationale": "Clearing the cookie on logout ensures the browser discards the session credential immediately, preventing the cookie from being replayed after the server-side session is revoked.",
     "verification_method": "Test",
-    "uses": ["REQ-AUTH-002"]
+    "uses": [
+      "REQ-AUTH-002"
+    ]
   },
   {
     "id": "REQ-AUTH-011",
@@ -611,7 +765,10 @@
     "description": "The auth module shall accept the session token from the __Host-session cookie when no Authorization header is present.",
     "rationale": "Browser clients no longer store the raw token in JavaScript; the middleware must fall back to the cookie so browser and API-client authentication paths both work without requiring code changes to existing API clients.",
     "verification_method": "Test",
-    "uses": ["REQ-AUTH-002", "REQ-SECURITY-004"]
+    "uses": [
+      "REQ-AUTH-002",
+      "REQ-SECURITY-004"
+    ]
   },
   {
     "id": "REQ-AUTH-012",
@@ -619,6 +776,20 @@
     "description": "The auth module shall expose a GET /api/v1/auth/session endpoint returning user identity, role, and consent state, or 401.",
     "rationale": "The SPA needs a single authenticated call at boot to restore user identity, role, and consent state without persisting any token in JavaScript; a dedicated endpoint eliminates multiple round-trips and enables the router guard to make correct decisions before the first navigation.",
     "verification_method": "Test",
-    "uses": ["REQ-AUTH-002", "REQ-AUTH-005", "REQ-SECURITY-005"]
+    "uses": [
+      "REQ-AUTH-002",
+      "REQ-AUTH-005",
+      "REQ-SECURITY-005"
+    ]
+  },
+  {
+    "id": "REQ-AGENT-022",
+    "title": "Chat Replies Formatted in Markdown",
+    "description": "The agent module shall produce chat replies formatted in Markdown with LaTeX notation for mathematical expressions.",
+    "rationale": "The frontend renders Markdown and LaTeX; unformatted replies waste the rendering capability and hurt teaching quality.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-AGENT-015"
+    ]
   }
 ]

@@ -4,7 +4,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { get, post, ApiError } from '@/api/client'
-import DOMPurify from 'dompurify'
+import { sanitizeHtml } from '@/utils/sanitizeHtml'
 
 interface SectionContent {
   id: string
@@ -213,7 +213,7 @@ function isNextDisabled(): boolean {
         <h1>{{ section.title }}</h1>
       </div>
 
-      <div class="section-body" v-html="DOMPurify.sanitize(section.content_adoc)"></div>
+      <div class="section-body" v-html="sanitizeHtml(section.content_adoc)"></div>
 
       <div v-if="feedbackSuccess" class="success-message">
         Feedback submitted.

@@ -1822,5 +1822,55 @@
     "description": "The course module shall display an error message when the generation event stream encounters a connection error.",
     "rationale": "Students must be informed of generation failures so they can contact support or retry rather than waiting indefinitely on a silently broken stream.",
     "verification_method": "Test"
+  },
+  {
+    "id": "REQ-FECOURSE-612",
+    "title": "Chat: Render Markdown in Agent Messages",
+    "description": "The course frontend module shall render agent chat messages as formatted Markdown.",
+    "rationale": "The professor's explanations use headings, lists, emphasis, and code blocks; plain text makes structured teaching content unreadable.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-224"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-613",
+    "title": "Chat: Render LaTeX Math in Agent Messages",
+    "description": "The course frontend module shall render LaTeX math expressions in agent chat messages as typeset formulas.",
+    "rationale": "Mathematical topics such as linear algebra are unteachable without properly typeset notation.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-612"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-614",
+    "title": "Chat: Render Images in Agent Messages",
+    "description": "The course frontend module shall display images referenced in agent chat messages.",
+    "rationale": "Diagrams and figures support visual learning and are part of generated teaching content.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-612"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-615",
+    "title": "Chat: Sanitize Rendered Message Content",
+    "description": "The course frontend module shall sanitize rendered chat content so no script or active content executes.",
+    "rationale": "AI-generated text is untrusted input; rendering it as HTML without sanitization creates a cross-site-scripting vector.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-612"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-616",
+    "title": "Chat: Student Messages Rendered as Plain Text",
+    "description": "The course frontend module shall render student chat messages as plain text without interpreting any markup.",
+    "rationale": "Student input must never be interpreted as markup; plain text rendering removes any injection surface from the student side.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-615"
+    ]
   }
 ]

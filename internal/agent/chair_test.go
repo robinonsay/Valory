@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -164,5 +165,98 @@ func TestBuildMessagesForIntake_UserFirst_NoInjection(t *testing.T) {
 	// No injection needed — count should be 1.
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 message (no injection), got %d", len(msgs))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildMessagesForSyllabus
+// ---------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-AGENT-020"]}
+func TestBuildMessagesForSyllabus_AssistantBookends_AnchoredWithUserTurns(t *testing.T) {
+	// Post-kickoff intake history: starts with the Chair's opening question and
+	// ends with the Chair's (sentinel-stripped) INTAKE_COMPLETE reply. The
+	// Anthropic API rejects assistant-first and assistant-final conversations,
+	// so both ends must be anchored with synthetic user turns.
+	history := []ChatMessageRow{
+		{Role: "assistant", Content: "Welcome! What is your background?"},
+		{Role: "student", Content: "Complete beginner."},
+		{Role: "assistant", Content: "Great, intake is complete."},
+	}
+	msgs := buildMessagesForSyllabus(history, "Linear Algebra")
+	if len(msgs) != 5 {
+		t.Fatalf("expected 5 messages (trigger + 3 history + closing), got %d", len(msgs))
+	}
+	if msgs[0].Role != anthropic.MessageParamRoleUser {
+		t.Errorf("first message must be a user turn, got %q", msgs[0].Role)
+	}
+	if msgs[len(msgs)-1].Role != anthropic.MessageParamRoleUser {
+		t.Errorf("last message must be a user turn, got %q", msgs[len(msgs)-1].Role)
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-020"]}
+func TestBuildMessagesForSyllabus_EmptyHistory_SingleUserTurn(t *testing.T) {
+	msgs := buildMessagesForSyllabus(nil, "Linear Algebra")
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Role != anthropic.MessageParamRoleUser {
+		t.Errorf("expected user role, got %q", msgs[0].Role)
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-020"]}
+func TestBuildMessagesForSyllabus_UserBookends_Unchanged(t *testing.T) {
+	history := []ChatMessageRow{
+		{Role: "student", Content: "I want to learn."},
+		{Role: "assistant", Content: "Tell me more."},
+		{Role: "student", Content: "Beginner, 5 hours a week."},
+	}
+	msgs := buildMessagesForSyllabus(history, "Linear Algebra")
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages unchanged, got %d", len(msgs))
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-015"]}
+func TestEnsureUserFirst_AssistantFirst_PrependsUserTurn(t *testing.T) {
+	history := []ChatMessageRow{
+		{Role: "assistant", Content: "Welcome! What would you like to learn?"},
+		{Role: "student", Content: "Tell me about eigenvalues."},
+	}
+	msgs := ensureUserFirst(buildMessages(history))
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages (trigger + 2 history), got %d", len(msgs))
+	}
+	if msgs[0].Role != anthropic.MessageParamRoleUser {
+		t.Errorf("first message must be a user turn, got %q", msgs[0].Role)
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-015"]}
+func TestEnsureUserFirst_UserFirst_Unchanged(t *testing.T) {
+	history := []ChatMessageRow{
+		{Role: "student", Content: "Tell me about eigenvalues."},
+		{Role: "assistant", Content: "Gladly."},
+	}
+	msgs := ensureUserFirst(buildMessages(history))
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages unchanged, got %d", len(msgs))
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-020"]}
+func TestStripCodeFence_AsciidocFence_RemovedIncludingTag(t *testing.T) {
+	in := "```asciidoc\n= Course Syllabus\n\n== Week 1\n```"
+	got := stripCodeFence(in)
+	if strings.HasPrefix(got, "```") || strings.HasSuffix(got, "```") {
+		t.Errorf("fences must be stripped, got %q", got)
+	}
+	if strings.HasPrefix(got, "asciidoc") {
+		t.Errorf("language tag must be stripped with the fence line, got %q", got)
+	}
+	if !strings.Contains(got, "= Course Syllabus") {
+		t.Errorf("content must survive stripping, got %q", got)
 	}
 }

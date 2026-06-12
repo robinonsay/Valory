@@ -1,4 +1,13 @@
-// Playwright configuration for Valory end-to-end test suite.
+// Playwright configuration for the Valory end-to-end test suite.
+//
+// TWO TIERS:
+//   • "chromium" (default): AI-free specs under frontend/e2e/*.spec.ts
+//     Run with: npm run test:e2e
+//   • "journey" (paid, on-demand): specs under frontend/e2e/journey/**/*.spec.ts
+//     Run with: npm run test:e2e:journey
+//     Each journey spec may trigger real Claude API calls; retries=0 so a
+//     failure is investigated rather than paid for again automatically.
+//
 // The suite drives the real running stack (https://localhost with a self-signed
 // cert) so ignoreHTTPSErrors must be true.  Workers is forced to 1 so that
 // tests are serialized: the demo student account can only hold one active course
@@ -7,8 +16,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
-  testDir: './e2e',
-
   // Run test files one at a time to avoid cross-test state conflicts on the
   // single demo student's single-active-course constraint.
   fullyParallel: false,
@@ -18,7 +25,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
 
   // Two retries on CI to absorb transient network latency; zero locally so
-  // failures are visible immediately.
+  // failures are visible immediately.  Overridden per-project for journey.
   retries: process.env.CI ? 2 : 0,
 
   // Report formats: human-readable list in the terminal and an HTML report
@@ -29,6 +36,7 @@ export default defineConfig({
   ],
 
   // Global timeout per test.  30 s is generous for demo-environment page loads.
+  // The journey project overrides this to 240 s (syllabus generation: 30–90 s).
   timeout: 30_000,
 
   // Wait up to 5 s for each expect() assertion to become true.
@@ -53,8 +61,29 @@ export default defineConfig({
   },
 
   projects: [
+    // -----------------------------------------------------------------------
+    // AI-free tier (default): every spec directly under e2e/ but NOT the
+    // journey/ subdirectory.  This is the tier that runs on every push and is
+    // guaranteed to incur zero Anthropic API costs.
+    // -----------------------------------------------------------------------
     {
       name: 'chromium',
+      testDir: './e2e',
+      // Exclude the journey subdirectory so journey specs never run here.
+      testIgnore: '**/journey/**',
+      use: { ...devices['Desktop Chrome'] }
+    },
+
+    // -----------------------------------------------------------------------
+    // Journey tier (paid, on-demand): specs under e2e/journey/ only.
+    // Longer timeout (240 s) covers the 30–90 s syllabus generation window.
+    // retries=0 so every failure costs money at most once per run.
+    // -----------------------------------------------------------------------
+    {
+      name: 'journey',
+      testDir: './e2e/journey',
+      timeout: 240_000,
+      retries: 0,
       use: { ...devices['Desktop Chrome'] }
     }
   ]

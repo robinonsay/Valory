@@ -109,40 +109,49 @@
     "rationale": "Silent failures leave admins unaware that their action had no effect; a visible error banner prompts a retry.",
     "verification_method": "Test",
     "implements": [
-      "REQ-FEADMIN-018"
+      "REQ-FEADMIN-018",
+      "REQ-FEADMIN-160"
     ]
   },
   {
     "id": "REQ-FEADMIN-010",
-    "title": "Nav link — Users",
+    "title": "Nav link \u2014 Users",
     "description": "The admin frontend module shall render a Users navigation link that routes to /admin/users.",
     "rationale": "Admin users need frequent access to user management without navigating through intermediary pages.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-001"]
+    "uses": [
+      "REQ-FEADMIN-001"
+    ]
   },
   {
     "id": "REQ-FEADMIN-011",
-    "title": "Nav link — Audit Log",
+    "title": "Nav link \u2014 Audit Log",
     "description": "The admin frontend module shall render an Audit Log navigation link that routes to /admin/audit.",
     "rationale": "Admins must be able to review and verify the tamper-evident audit trail at any time to meet oversight obligations.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-001"]
+    "uses": [
+      "REQ-FEADMIN-001"
+    ]
   },
   {
     "id": "REQ-FEADMIN-012",
-    "title": "Nav link — Config",
+    "title": "Nav link \u2014 Config",
     "description": "The admin frontend module shall render a Config navigation link that routes to /admin/config.",
     "rationale": "System configuration directly affects grading and agent behaviour; admins need direct access to adjust it without friction.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-001"]
+    "uses": [
+      "REQ-FEADMIN-001"
+    ]
   },
   {
     "id": "REQ-FEADMIN-013",
-    "title": "Nav link — Courses",
+    "title": "Nav link \u2014 Courses",
     "description": "The admin frontend module shall render a Courses navigation link that routes to /admin/courses.",
     "rationale": "Admins need visibility into all student courses system-wide to support quality assurance and student assistance.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-001"]
+    "uses": [
+      "REQ-FEADMIN-001"
+    ]
   },
   {
     "id": "REQ-FEADMIN-014",
@@ -150,7 +159,9 @@
     "description": "The admin frontend module shall redirect an unauthenticated visitor who navigates to any /admin route to /login.",
     "rationale": "Unauthenticated users must never reach admin views.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-002"]
+    "uses": [
+      "REQ-FEADMIN-002"
+    ]
   },
   {
     "id": "REQ-FEADMIN-015",
@@ -158,7 +169,9 @@
     "description": "The admin frontend module shall redirect an authenticated student who navigates to any /admin route to /dashboard.",
     "rationale": "Students must be returned to their own dashboard instead of receiving an error page.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-002"]
+    "uses": [
+      "REQ-FEADMIN-002"
+    ]
   },
   {
     "id": "REQ-FEADMIN-016",
@@ -166,7 +179,9 @@
     "description": "The admin frontend module shall read the username from the auth session store and render it in the navigation bar.",
     "rationale": "The username must come from local session state, not a separate API call, to avoid latency on every page load.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-007"]
+    "uses": [
+      "REQ-FEADMIN-007"
+    ]
   },
   {
     "id": "REQ-FEADMIN-017",
@@ -174,7 +189,9 @@
     "description": "The admin frontend module shall render a loading spinner in place of list content while data retrieval is pending.",
     "rationale": "Users must receive visual feedback that data is loading rather than seeing an empty list.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-008"]
+    "uses": [
+      "REQ-FEADMIN-008"
+    ]
   },
   {
     "id": "REQ-FEADMIN-018",
@@ -182,7 +199,9 @@
     "description": "The admin frontend module shall display a dismissible error banner with the server error message on any HTTP 500 response.",
     "rationale": "Server errors must be surfaced so admins can retry or report the issue.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-009"]
+    "uses": [
+      "REQ-FEADMIN-009"
+    ]
   },
   {
     "id": "REQ-FEADMIN-020",
@@ -190,12 +209,15 @@
     "description": "The admin frontend module shall retrieve all system users on mount and render one row per user.",
     "rationale": "The user management view requires a complete user list to perform management actions. Note: the GET /api/v1/users backend endpoint is being added in Sprint 5 T7 to support this view.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-003"],
+    "uses": [
+      "REQ-FEADMIN-003"
+    ],
     "implements": [
       "REQ-FEADMIN-100",
       "REQ-FEADMIN-101",
       "REQ-FEADMIN-102",
-      "REQ-FEADMIN-103"
+      "REQ-FEADMIN-103",
+      "REQ-FEADMIN-150"
     ]
   },
   {
@@ -204,7 +226,9 @@
     "description": "The admin frontend module shall open a user creation modal when the Create User button is clicked.",
     "rationale": "User creation requires a dedicated form to capture all required fields without navigating away from the list.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-003"],
+    "uses": [
+      "REQ-FEADMIN-003"
+    ],
     "implements": [
       "REQ-FEADMIN-110",
       "REQ-FEADMIN-111",
@@ -224,7 +248,9 @@
     "description": "The admin frontend module shall open an edit modal populated with the existing username and email when Edit is clicked.",
     "rationale": "Editing must show existing values so the admin only changes what is needed.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-003"],
+    "uses": [
+      "REQ-FEADMIN-003"
+    ],
     "implements": [
       "REQ-FEADMIN-120",
       "REQ-FEADMIN-121",
@@ -239,7 +265,9 @@
     "description": "The admin frontend module shall confirm then submit the user deactivation when Deactivate is clicked on an active user.",
     "rationale": "Deactivation is destructive to the user's session; a confirmation step prevents accidental deactivation.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-003"],
+    "uses": [
+      "REQ-FEADMIN-003"
+    ],
     "implements": [
       "REQ-FEADMIN-130",
       "REQ-FEADMIN-131",
@@ -253,7 +281,9 @@
     "description": "The admin frontend module shall submit the user activation when Activate is clicked on an inactive user.",
     "rationale": "Reactivation restores login access; the list must immediately reflect the change.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-003"],
+    "uses": [
+      "REQ-FEADMIN-003"
+    ],
     "implements": [
       "REQ-FEADMIN-134",
       "REQ-FEADMIN-135"
@@ -265,7 +295,9 @@
     "description": "The admin frontend module shall require confirmation before permanently deleting a student account.",
     "rationale": "Deletion is irreversible and removes all student data; a confirmation step with a specific warning prevents accidental deletion.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-003"],
+    "uses": [
+      "REQ-FEADMIN-003"
+    ],
     "implements": [
       "REQ-FEADMIN-140",
       "REQ-FEADMIN-141",
@@ -280,7 +312,9 @@
     "description": "The admin frontend module shall render the Delete button only on rows where the user's role is student.",
     "rationale": "The backend rejects deletion of non-student accounts; hiding the button prevents invalid requests and reduces admin confusion.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-003"]
+    "uses": [
+      "REQ-FEADMIN-003"
+    ]
   },
   {
     "id": "REQ-FEADMIN-027",
@@ -288,7 +322,9 @@
     "description": "The admin frontend module shall render the Deactivate button only on rows where the user is active.",
     "rationale": "Showing only the applicable action reduces cognitive load and prevents sending an invalid deactivation request for an already-inactive user.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-003"]
+    "uses": [
+      "REQ-FEADMIN-003"
+    ]
   },
   {
     "id": "REQ-FEADMIN-028",
@@ -296,7 +332,9 @@
     "description": "The admin frontend module shall render the Activate button only on rows where the user is inactive.",
     "rationale": "Showing only the applicable action reduces cognitive load and prevents sending an invalid activation request for an already-active user.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-003"]
+    "uses": [
+      "REQ-FEADMIN-003"
+    ]
   },
   {
     "id": "REQ-FEADMIN-030",
@@ -304,11 +342,21 @@
     "description": "The admin frontend module shall retrieve the audit log entries on mount and render each returned entry.",
     "rationale": "The audit view must start with the most recent entries using the server default page size of 50.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-004"],
+    "uses": [
+      "REQ-FEADMIN-004"
+    ],
     "implements": [
       "REQ-FEADMIN-200",
       "REQ-FEADMIN-201",
-      "REQ-FEADMIN-202"
+      "REQ-FEADMIN-202",
+      "REQ-FEADMIN-035",
+      "REQ-FEADMIN-036",
+      "REQ-FEADMIN-037",
+      "REQ-FEADMIN-038",
+      "REQ-FEADMIN-170",
+      "REQ-FEADMIN-175",
+      "REQ-FEADMIN-180",
+      "REQ-FEADMIN-195"
     ]
   },
   {
@@ -317,10 +365,14 @@
     "description": "The admin frontend module shall append older audit entries on Load More using the next_before cursor from the prior response.",
     "rationale": "The full audit log can be very large; cursor-based pagination loads only what is needed.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-004"],
+    "uses": [
+      "REQ-FEADMIN-004"
+    ],
     "implements": [
       "REQ-FEADMIN-203",
-      "REQ-FEADMIN-204"
+      "REQ-FEADMIN-204",
+      "REQ-FEADMIN-185",
+      "REQ-FEADMIN-190"
     ]
   },
   {
@@ -329,7 +381,9 @@
     "description": "The admin frontend module shall display admin_id, action, target_type, target_id, created_at, and a truncated entry_hash for each audit entry.",
     "rationale": "These are the fields returned by GET /api/v1/audit and are sufficient for an admin to identify the actor, action, and target.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-004"]
+    "uses": [
+      "REQ-FEADMIN-004"
+    ]
   },
   {
     "id": "REQ-FEADMIN-033",
@@ -337,7 +391,9 @@
     "description": "The admin frontend module shall request audit log integrity verification and display the outcome when Verify Integrity is clicked.",
     "rationale": "Integrity verification must be a manual admin action to avoid flooding the server with streaming verification on every page load.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-004"],
+    "uses": [
+      "REQ-FEADMIN-004"
+    ],
     "implements": [
       "REQ-FEADMIN-210",
       "REQ-FEADMIN-211",
@@ -351,7 +407,9 @@
     "description": "The admin frontend module shall retrieve the current system configuration on mount and populate all thirteen form fields.",
     "rationale": "All config keys must be loaded before the admin edits any value to prevent overwriting fields with stale or empty data.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-005"],
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
     "implements": [
       "REQ-FEADMIN-300",
       "REQ-FEADMIN-301",
@@ -374,7 +432,9 @@
     "description": "The admin frontend module shall submit the updated configuration with only changed keys when Save is clicked.",
     "rationale": "Sending unchanged keys wastes bandwidth and triggers unnecessary audit entries for config.change.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-005"],
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
     "implements": [
       "REQ-FEADMIN-320",
       "REQ-FEADMIN-321",
@@ -387,7 +447,9 @@
     "description": "The admin frontend module shall display You have unsaved changes. when any config field value differs from its fetched value.",
     "rationale": "Admins who navigate away from the config view after editing without saving lose their changes silently; the indicator prevents this.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-005"],
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
     "implements": [
       "REQ-FEADMIN-323"
     ]
@@ -398,7 +460,9 @@
     "description": "The admin frontend module shall display per-field validation errors before submit when any config value violates its defined constraint.",
     "rationale": "Client-side validation prevents a round-trip to the server for obviously invalid values and gives immediate feedback.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-005"],
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
     "implements": [
       "REQ-FEADMIN-330",
       "REQ-FEADMIN-331",
@@ -422,7 +486,9 @@
     "description": "The admin frontend module shall display a Configuration saved. banner when the configuration update succeeds.",
     "rationale": "Admins need positive confirmation that the save succeeded because the form stays visible after saving.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-005"],
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
     "implements": [
       "REQ-FEADMIN-324"
     ]
@@ -433,7 +499,9 @@
     "description": "The admin frontend module shall display server-returned validation errors as per-field messages when the configuration update is rejected.",
     "rationale": "The server enforces cross-field rules such as weight sum that cannot be fully validated on the client; these errors must be shown against the correct fields.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-005"],
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
     "implements": [
       "REQ-FEADMIN-325"
     ]
@@ -444,7 +512,9 @@
     "description": "The admin frontend module shall retrieve all courses in the system on mount and display each returned course.",
     "rationale": "Admin users receive all courses system-wide from the listCourses handler when no student filter is applied.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-006"],
+    "uses": [
+      "REQ-FEADMIN-006"
+    ],
     "implements": [
       "REQ-FEADMIN-400",
       "REQ-FEADMIN-401",
@@ -457,7 +527,9 @@
     "description": "The admin frontend module shall retrieve all courses filtered by the selected status when the status dropdown value changes.",
     "rationale": "Admins monitoring a specific pipeline stage need to narrow the list without scrolling through all courses.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-006"],
+    "uses": [
+      "REQ-FEADMIN-006"
+    ],
     "implements": [
       "REQ-FEADMIN-403",
       "REQ-FEADMIN-404"
@@ -469,7 +541,9 @@
     "description": "The admin frontend module shall display student_id, topic, status, and created_at for each course row.",
     "rationale": "These four fields give the admin enough information to identify the student, subject, current state, and age of the course.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-006"]
+    "uses": [
+      "REQ-FEADMIN-006"
+    ]
   },
   {
     "id": "REQ-FEADMIN-053",
@@ -477,7 +551,9 @@
     "description": "The admin frontend module shall retrieve and append the next course page on Load More using the prior response's next_cursor.",
     "rationale": "System-wide course lists can be very large; cursor pagination avoids loading all rows at once.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-006"],
+    "uses": [
+      "REQ-FEADMIN-006"
+    ],
     "implements": [
       "REQ-FEADMIN-405",
       "REQ-FEADMIN-406"
@@ -489,439 +565,549 @@
     "description": "The admin frontend module shall send GET /api/v1/users with the Authorization header on user list mount.",
     "rationale": "All authenticated admin endpoints require a valid session cookie and CSRF token.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-020"]
+    "uses": [
+      "REQ-FEADMIN-020"
+    ]
   },
   {
     "id": "REQ-FEADMIN-101",
-    "title": "User list row — username column",
+    "title": "User list row \u2014 username column",
     "description": "The admin frontend module shall render the username field from each user object in a dedicated table column.",
     "rationale": "Username is the primary human-readable identifier for each account.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-020"]
+    "uses": [
+      "REQ-FEADMIN-020"
+    ]
   },
   {
     "id": "REQ-FEADMIN-102",
-    "title": "User list row — role and status columns",
+    "title": "User list row \u2014 role and status columns",
     "description": "The admin frontend module shall render the role and is_active fields from each user object in dedicated table columns.",
     "rationale": "Role and active status determine which action buttons appear for each row.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-020"]
+    "uses": [
+      "REQ-FEADMIN-020"
+    ]
   },
   {
     "id": "REQ-FEADMIN-103",
-    "title": "User list row — created_at column",
+    "title": "User list row \u2014 created_at column",
     "description": "The admin frontend module shall render the created_at field from each user object formatted as a local date-time string.",
     "rationale": "Account age is useful context when reviewing the user list.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-020"]
+    "uses": [
+      "REQ-FEADMIN-020"
+    ]
   },
   {
     "id": "REQ-FEADMIN-110",
-    "title": "Create user modal — username field required",
+    "title": "Create user modal \u2014 username field required",
     "description": "The admin frontend module shall show Username is required. and block submission when the username field is empty.",
     "rationale": "The POST /api/v1/users handler returns HTTP 400 for a missing username; client-side validation avoids the round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-111",
-    "title": "Create user modal — role field required",
+    "title": "Create user modal \u2014 role field required",
     "description": "The admin frontend module shall show Role is required. and block submission when no role is selected.",
     "rationale": "The POST /api/v1/users handler returns HTTP 400 for a missing role; client-side validation avoids the round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-112",
-    "title": "Create user modal — password field required",
+    "title": "Create user modal \u2014 password field required",
     "description": "The admin frontend module shall show Password is required. and block submission when the password field is empty.",
     "rationale": "The POST /api/v1/users handler returns HTTP 400 for a missing password; client-side validation avoids the round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-113",
-    "title": "Create user modal — role dropdown options",
+    "title": "Create user modal \u2014 role dropdown options",
     "description": "The admin frontend module shall offer exactly two options in the role dropdown: student and admin.",
     "rationale": "The backend accepts only the string values student and admin for the role field.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-114",
-    "title": "Create user modal — POST request body",
+    "title": "Create user modal \u2014 POST request body",
     "description": "The admin frontend module shall send POST /api/v1/users with JSON body containing username, email, role, and password fields.",
     "rationale": "The createUser handler decodes exactly these four fields; extra or renamed fields are ignored or cause errors.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-115",
-    "title": "Create user modal — email is optional",
+    "title": "Create user modal \u2014 email is optional",
     "description": "The admin frontend module shall omit the email key from the POST body when the email field is empty.",
     "rationale": "The handler treats a missing email key differently from an empty string; an absent key maps to a nil pointer, preserving null in the database.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-116",
-    "title": "Create user — HTTP 201 success handling",
+    "title": "Create user \u2014 HTTP 201 success handling",
     "description": "The admin frontend module shall close the modal and prepend the returned user object to the list on HTTP 201.",
     "rationale": "Prepending the new user gives the admin immediate visual confirmation without a full list refresh.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-117",
-    "title": "Create user — HTTP 409 conflict handling",
+    "title": "Create user \u2014 HTTP 409 conflict handling",
     "description": "The admin frontend module shall display Username already exists. inline in the modal when POST /api/v1/users returns HTTP 409.",
     "rationale": "The handler returns 409 with error username already taken when a duplicate username is detected; this must surface as a human-readable inline error.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-118",
-    "title": "Create user modal — cancel closes without request",
+    "title": "Create user modal \u2014 cancel closes without request",
     "description": "The admin frontend module shall close the create user modal and discard all field values when Cancel is clicked.",
     "rationale": "Cancelling must be a no-op; no partial data should be submitted to the server.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-119",
-    "title": "Create user modal — submit button disabled during request",
+    "title": "Create user modal \u2014 submit button disabled during request",
     "description": "The admin frontend module shall disable the Submit button while the POST /api/v1/users request is in flight.",
     "rationale": "Double-submitting the form would create duplicate users; disabling the button prevents this.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-021"]
+    "uses": [
+      "REQ-FEADMIN-021"
+    ]
   },
   {
     "id": "REQ-FEADMIN-120",
-    "title": "Edit user modal — PATCH request body",
+    "title": "Edit user modal \u2014 PATCH request body",
     "description": "The admin frontend module shall send PATCH /api/v1/users/{id} with JSON body containing only the username and email fields.",
     "rationale": "The modifyUser handler accepts only username and email as patchable fields; including other fields has no effect but the body must match the expected shape.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-022"]
+    "uses": [
+      "REQ-FEADMIN-022"
+    ]
   },
   {
     "id": "REQ-FEADMIN-121",
-    "title": "Edit user — HTTP 200 success handling",
+    "title": "Edit user \u2014 HTTP 200 success handling",
     "description": "The admin frontend module shall close the edit modal and update the user's list row in place on HTTP 200.",
     "rationale": "In-place update avoids a full list refresh and preserves the scroll position.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-022"]
+    "uses": [
+      "REQ-FEADMIN-022"
+    ]
   },
   {
     "id": "REQ-FEADMIN-122",
-    "title": "Edit user — HTTP 409 conflict handling",
+    "title": "Edit user \u2014 HTTP 409 conflict handling",
     "description": "The admin frontend module shall display Username already exists. inline in the edit modal when PATCH /api/v1/users/{id} returns HTTP 409.",
     "rationale": "A renamed username may conflict with an existing account; the error must be shown in context.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-022"]
+    "uses": [
+      "REQ-FEADMIN-022"
+    ]
   },
   {
     "id": "REQ-FEADMIN-123",
-    "title": "Edit user modal — pre-fill current values",
+    "title": "Edit user modal \u2014 pre-fill current values",
     "description": "The admin frontend module shall populate the edit modal username and email fields from the user's current list row data.",
     "rationale": "Pre-filling prevents the admin from accidentally blanking a field they did not intend to change.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-022"]
+    "uses": [
+      "REQ-FEADMIN-022"
+    ]
   },
   {
     "id": "REQ-FEADMIN-124",
-    "title": "Edit user modal — submit button disabled during request",
+    "title": "Edit user modal \u2014 submit button disabled during request",
     "description": "The admin frontend module shall disable the Save button while the PATCH /api/v1/users/{id} request is in flight.",
     "rationale": "Double-submitting would send two consecutive PATCH requests that could conflict with each other.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-022"]
+    "uses": [
+      "REQ-FEADMIN-022"
+    ]
   },
   {
     "id": "REQ-FEADMIN-130",
-    "title": "Deactivate — confirm dialog text",
+    "title": "Deactivate \u2014 confirm dialog text",
     "description": "The admin frontend module shall confirm deactivation with the message Deactivate {username}? They will not be able to log in.",
     "rationale": "The confirmation message must name the specific user and state the consequence to prevent mistaken deactivation.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEADMIN-023"]
+    "uses": [
+      "REQ-FEADMIN-023"
+    ]
   },
   {
     "id": "REQ-FEADMIN-131",
-    "title": "Deactivate — POST request",
+    "title": "Deactivate \u2014 POST request",
     "description": "The admin frontend module shall send POST /api/v1/users/{id}/deactivate after the admin confirms the deactivation dialog.",
     "rationale": "The deactivateUser handler is registered at POST /{id}/deactivate in AdminRoutes.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-023"]
+    "uses": [
+      "REQ-FEADMIN-023"
+    ]
   },
   {
     "id": "REQ-FEADMIN-132",
-    "title": "Deactivate — HTTP 204 success handling",
+    "title": "Deactivate \u2014 HTTP 204 success handling",
     "description": "The admin frontend module shall mark the user inactive in the list when POST /api/v1/users/{id}/deactivate returns HTTP 204.",
     "rationale": "The deactivateUser handler returns 204 No Content on success; the list must reflect the new inactive status without a full refresh.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-023"]
+    "uses": [
+      "REQ-FEADMIN-023"
+    ]
   },
   {
     "id": "REQ-FEADMIN-133",
-    "title": "Deactivate — cancel dialog aborts request",
+    "title": "Deactivate \u2014 cancel dialog aborts request",
     "description": "The admin frontend module shall not issue the POST /api/v1/users/{id}/deactivate request when the admin dismisses the confirmation dialog.",
     "rationale": "Cancelling must be a no-op; no state change should occur.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-023"]
+    "uses": [
+      "REQ-FEADMIN-023"
+    ]
   },
   {
     "id": "REQ-FEADMIN-134",
-    "title": "Activate — POST request",
+    "title": "Activate \u2014 POST request",
     "description": "The admin frontend module shall send POST /api/v1/users/{id}/activate without a confirmation dialog when the Activate button is clicked.",
     "rationale": "Activation restores access but is reversible; a confirmation step is not required and would add friction.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-024"]
+    "uses": [
+      "REQ-FEADMIN-024"
+    ]
   },
   {
     "id": "REQ-FEADMIN-135",
-    "title": "Activate — HTTP 204 success handling",
+    "title": "Activate \u2014 HTTP 204 success handling",
     "description": "The admin frontend module shall mark the user active in the list when POST /api/v1/users/{id}/activate returns HTTP 204.",
     "rationale": "The activateUser handler returns 204 No Content on success; the list must reflect the active status without a full refresh.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-024"]
+    "uses": [
+      "REQ-FEADMIN-024"
+    ]
   },
   {
     "id": "REQ-FEADMIN-140",
-    "title": "Delete — confirm dialog text",
+    "title": "Delete \u2014 confirm dialog text",
     "description": "The admin frontend module shall confirm deletion with Permanently delete {username} and all their data? This cannot be undone.",
     "rationale": "Deletion is irreversible and cascades to all student data; the dialog must explicitly state the permanence to prevent accidental deletion.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEADMIN-025"]
+    "uses": [
+      "REQ-FEADMIN-025"
+    ]
   },
   {
     "id": "REQ-FEADMIN-141",
-    "title": "Delete — DELETE request",
+    "title": "Delete \u2014 DELETE request",
     "description": "The admin frontend module shall send DELETE /api/v1/users/{id} after the admin confirms the deletion dialog.",
     "rationale": "The deleteStudent handler is registered at DELETE /{id} in AdminRoutes.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-025"]
+    "uses": [
+      "REQ-FEADMIN-025"
+    ]
   },
   {
     "id": "REQ-FEADMIN-142",
-    "title": "Delete — HTTP 204 success handling",
+    "title": "Delete \u2014 HTTP 204 success handling",
     "description": "The admin frontend module shall remove the deleted user's row from the list when DELETE /api/v1/users/{id} returns HTTP 204.",
     "rationale": "The deleteStudent handler returns 204 No Content; the row must disappear from the list immediately.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-025"]
+    "uses": [
+      "REQ-FEADMIN-025"
+    ]
   },
   {
     "id": "REQ-FEADMIN-143",
-    "title": "Delete — HTTP 409 conflict handling",
+    "title": "Delete \u2014 HTTP 409 conflict handling",
     "description": "The admin frontend module shall display Cannot delete: student has an active course. when DELETE /api/v1/users/{id} returns HTTP 409.",
     "rationale": "The deleteStudent handler returns 409 with error agent operations could not be terminated when in-flight work blocks deletion; this must be surfaced clearly.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-025"]
+    "uses": [
+      "REQ-FEADMIN-025"
+    ]
   },
   {
     "id": "REQ-FEADMIN-144",
-    "title": "Delete — cancel dialog aborts request",
+    "title": "Delete \u2014 cancel dialog aborts request",
     "description": "The admin frontend module shall not issue the DELETE /api/v1/users/{id} request when the admin dismisses the deletion confirmation dialog.",
     "rationale": "Cancelling must be a no-op; no data must be deleted.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-025"]
+    "uses": [
+      "REQ-FEADMIN-025"
+    ]
   },
   {
     "id": "REQ-FEADMIN-200",
-    "title": "Audit list — GET request parameters",
+    "title": "Audit list \u2014 GET request parameters",
     "description": "The admin frontend module shall send GET /api/v1/audit with no query parameters on mount.",
     "rationale": "The audit list handler defaults to limit=50; omitting the parameter on first load uses the server default.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-030"]
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
   },
   {
     "id": "REQ-FEADMIN-201",
-    "title": "Audit list — response shape",
+    "title": "Audit list \u2014 response shape",
     "description": "The admin frontend module shall read the entries array and next_before integer from the GET /api/v1/audit response body.",
     "rationale": "The audit list handler returns { entries: [...], next_before: int64 }; the frontend must parse both fields.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-030"]
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
   },
   {
     "id": "REQ-FEADMIN-202",
-    "title": "Audit list — entry_hash truncation",
+    "title": "Audit list \u2014 entry_hash truncation",
     "description": "The admin frontend module shall display only the first eight characters of the entry_hash field for each audit entry.",
     "rationale": "Showing the full 64-character SHA-256 hex digest would make the table unreadable; truncation preserves recognisability.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEADMIN-030"]
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
   },
   {
     "id": "REQ-FEADMIN-203",
-    "title": "Audit list — Load More sends before cursor",
+    "title": "Audit list \u2014 Load More sends before cursor",
     "description": "The admin frontend module shall send GET /api/v1/audit?before={next_before} when Load More is clicked, using the cursor from the previous response.",
     "rationale": "The audit handler uses the before query parameter as a cursor for keyset pagination over int64 IDs.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-031"]
+    "uses": [
+      "REQ-FEADMIN-031"
+    ]
   },
   {
     "id": "REQ-FEADMIN-204",
-    "title": "Audit list — Load More hidden when exhausted",
+    "title": "Audit list \u2014 Load More hidden when exhausted",
     "description": "The admin frontend module shall hide the Load More button when the next_before value returned by the server is zero.",
     "rationale": "A next_before of zero indicates no more entries exist; the button must not appear when there is nothing further to load.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-031"]
+    "uses": [
+      "REQ-FEADMIN-031"
+    ]
   },
   {
     "id": "REQ-FEADMIN-210",
-    "title": "Audit verify — GET request",
+    "title": "Audit verify \u2014 GET request",
     "description": "The admin frontend module shall send GET /api/v1/audit/verify when the Verify Integrity button is clicked.",
     "rationale": "The verify handler streams all entries and recomputes the hash chain; this must be triggered explicitly by the admin.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-033"]
+    "uses": [
+      "REQ-FEADMIN-033"
+    ]
   },
   {
     "id": "REQ-FEADMIN-211",
-    "title": "Audit verify — valid=true success message",
+    "title": "Audit verify \u2014 valid=true success message",
     "description": "The admin frontend module shall display Audit log integrity verified. All {count} entries are intact. when valid=true.",
     "rationale": "A positive confirmation with the entry count gives the admin a complete picture of the verified chain.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-033"]
+    "uses": [
+      "REQ-FEADMIN-033"
+    ]
   },
   {
     "id": "REQ-FEADMIN-212",
-    "title": "Audit verify — valid=false warning message",
+    "title": "Audit verify \u2014 valid=false warning message",
     "description": "The admin frontend module shall display WARNING: Audit log integrity check failed. Chain broken at entry {first_broken_id}. when valid=false.",
     "rationale": "The verify handler returns first_broken_id when the chain is broken; the admin must see the exact entry ID to investigate.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-033"]
+    "uses": [
+      "REQ-FEADMIN-033"
+    ]
   },
   {
     "id": "REQ-FEADMIN-213",
-    "title": "Audit verify — network or server error message",
+    "title": "Audit verify \u2014 network or server error message",
     "description": "The admin frontend module shall display Verification failed. Please try again. when GET /api/v1/audit/verify fails.",
     "rationale": "Verification failures must not be silently swallowed; the admin must be prompted to retry.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-033"]
+    "uses": [
+      "REQ-FEADMIN-033"
+    ]
   },
   {
     "id": "REQ-FEADMIN-300",
-    "title": "Config field — agent_retry_limit",
+    "title": "Config field \u2014 agent_retry_limit",
     "description": "The admin frontend module shall render agent_retry_limit as a number input and reject values less than one before submission.",
     "rationale": "The backend validates agent_retry_limit as an integer >= 1; client-side enforcement matches that rule.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-301",
-    "title": "Config field — correction_loop_max_iterations",
+    "title": "Config field \u2014 correction_loop_max_iterations",
     "description": "The admin frontend module shall render correction_loop_max_iterations as a number input and reject values less than one before submission.",
     "rationale": "The backend validates correction_loop_max_iterations as an integer >= 1.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-302",
-    "title": "Config field — per_student_token_limit",
+    "title": "Config field \u2014 per_student_token_limit",
     "description": "The admin frontend module shall render per_student_token_limit as a number input and reject values less than zero before submission.",
     "rationale": "The backend validates per_student_token_limit as an integer >= 0; zero disables the limit.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-303",
-    "title": "Config field — late_penalty_rate",
+    "title": "Config field \u2014 late_penalty_rate",
     "description": "The admin frontend module shall render late_penalty_rate as a number input and reject values outside 0.0 to 1.0 before submission.",
     "rationale": "The backend validates late_penalty_rate as a float between 0.0 and 1.0 inclusive.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-304",
-    "title": "Config field — homework_weight",
+    "title": "Config field \u2014 homework_weight",
     "description": "The admin frontend module shall render homework_weight as a number input and reject non-positive or greater-than-one values.",
     "rationale": "The backend validates homework_weight as a float > 0.0 and <= 1.0.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-305",
-    "title": "Config field — project_weight",
+    "title": "Config field \u2014 project_weight",
     "description": "The admin frontend module shall render project_weight as a number input and reject non-positive or greater-than-one values.",
     "rationale": "The backend validates project_weight as a float > 0.0 and <= 1.0.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-306",
-    "title": "Config field — session_inactivity_seconds",
+    "title": "Config field \u2014 session_inactivity_seconds",
     "description": "The admin frontend module shall render session_inactivity_seconds as a number input and reject values less than one before submission.",
     "rationale": "The backend validates session_inactivity_seconds as an integer >= 1.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-307",
-    "title": "Config field — account_lockout_seconds",
+    "title": "Config field \u2014 account_lockout_seconds",
     "description": "The admin frontend module shall render account_lockout_seconds as a number input and reject values less than one before submission.",
     "rationale": "The backend validates account_lockout_seconds as an integer >= 1.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-308",
-    "title": "Config field — max_upload_bytes",
+    "title": "Config field \u2014 max_upload_bytes",
     "description": "The admin frontend module shall render max_upload_bytes as a number input and reject values less than 1024 before submission.",
     "rationale": "The backend validates max_upload_bytes as an integer >= 1024.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-309",
-    "title": "Config field — content_generation_timeout_seconds",
+    "title": "Config field \u2014 content_generation_timeout_seconds",
     "description": "The admin frontend module shall render content_generation_timeout_seconds as a number input and reject values less than one before submission.",
     "rationale": "The backend validates content_generation_timeout_seconds as an integer >= 1.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-310",
-    "title": "Config field — audit_retention_days",
+    "title": "Config field \u2014 audit_retention_days",
     "description": "The admin frontend module shall render audit_retention_days as a number input and reject values less than one before submission.",
     "rationale": "The backend validates audit_retention_days as an integer >= 1.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-311",
-    "title": "Config field — notification_retention_days",
+    "title": "Config field \u2014 notification_retention_days",
     "description": "The admin frontend module shall render notification_retention_days as a number input and reject values less than one before submission.",
     "rationale": "The backend validates notification_retention_days as an integer >= 1.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-312",
-    "title": "Config field — consent_version",
+    "title": "Config field \u2014 consent_version",
     "description": "The admin frontend module shall render consent_version as a text input and reject an empty string before submission.",
     "rationale": "The backend validates consent_version as a non-empty string.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-040"]
+    "uses": [
+      "REQ-FEADMIN-040"
+    ]
   },
   {
     "id": "REQ-FEADMIN-320",
-    "title": "Config PATCH — request body shape",
+    "title": "Config PATCH \u2014 request body shape",
     "description": "The admin frontend module shall send PATCH /api/v1/admin/config with a {\"config\":{}} body containing only the changed key-value pairs.",
     "rationale": "The patchConfig handler decodes a struct with a config map[string]string field; only changed keys are included to avoid redundant audit entries.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-041"]
+    "uses": [
+      "REQ-FEADMIN-041"
+    ]
   },
   {
     "id": "REQ-FEADMIN-321",
-    "title": "Config PATCH — all values sent as strings",
+    "title": "Config PATCH \u2014 all values sent as strings",
     "description": "The admin frontend module shall stringify all config values to strings before placing them in the PATCH request body.",
     "rationale": "The patchConfig handler accepts map[string]string; sending numeric types would cause a JSON decode error.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-041"]
+    "uses": [
+      "REQ-FEADMIN-041"
+    ]
   },
   {
     "id": "REQ-FEADMIN-322",
-    "title": "Config PATCH — Save button disabled during request",
+    "title": "Config PATCH \u2014 Save button disabled during request",
     "description": "The admin frontend module shall disable the Save button while the PATCH /api/v1/admin/config request is in flight.",
     "rationale": "Double-submitting would send two concurrent PATCH requests that could interleave and produce inconsistent config state.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-041"]
+    "uses": [
+      "REQ-FEADMIN-041"
+    ]
   },
   {
     "id": "REQ-FEADMIN-323",
@@ -929,7 +1115,9 @@
     "description": "The admin frontend module shall display You have unsaved changes. when any config field value differs from its fetched value.",
     "rationale": "The indicator must appear on the first keystroke so the admin always knows whether the current form state has been persisted.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-042"]
+    "uses": [
+      "REQ-FEADMIN-042"
+    ]
   },
   {
     "id": "REQ-FEADMIN-324",
@@ -937,7 +1125,9 @@
     "description": "The admin frontend module shall display Configuration saved. and clear the unsaved indicator when the config PATCH returns HTTP 200.",
     "rationale": "The banner confirms the save and the cleared indicator reflects that the form now matches the persisted state.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-044"]
+    "uses": [
+      "REQ-FEADMIN-044"
+    ]
   },
   {
     "id": "REQ-FEADMIN-325",
@@ -945,143 +1135,179 @@
     "description": "The admin frontend module shall render each validation_errors string beneath the form field whose key prefixes that error string.",
     "rationale": "The patchConfig handler prefixes each validation error with the key name followed by a colon, e.g. homework_weight: ...; the frontend must parse this prefix to attach the error to the correct field.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-045"]
+    "uses": [
+      "REQ-FEADMIN-045"
+    ]
   },
   {
     "id": "REQ-FEADMIN-330",
-    "title": "Config client validation — weight sum must equal 1.0",
+    "title": "Config client validation \u2014 weight sum must equal 1.0",
     "description": "The admin frontend module shall flag both weight fields when homework_weight plus project_weight does not equal 1.0 within 0.001.",
     "rationale": "The patchConfig handler enforces a cross-field weight sum rule; replicating it client-side prevents a server round-trip for this common constraint.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-331",
-    "title": "Config client validation — agent_retry_limit error message",
+    "title": "Config client validation \u2014 agent_retry_limit error message",
     "description": "The admin frontend module shall display agent_retry_limit must be an integer >= 1. when agent_retry_limit is not a positive integer.",
     "rationale": "Error text must match the backend message so instructions are consistent across the UI and API.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-332",
-    "title": "Config client validation — correction_loop_max_iterations error message",
+    "title": "Config client validation \u2014 correction_loop_max_iterations error message",
     "description": "The admin frontend module shall show correction_loop_max_iterations must be an integer >= 1. when that field is not valid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-333",
-    "title": "Config client validation — per_student_token_limit error message",
+    "title": "Config client validation \u2014 per_student_token_limit error message",
     "description": "The admin frontend module shall display per_student_token_limit must be an integer >= 0. when per_student_token_limit is negative or non-integer.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-334",
-    "title": "Config client validation — late_penalty_rate error message",
+    "title": "Config client validation \u2014 late_penalty_rate error message",
     "description": "The admin frontend module shall show late_penalty_rate must be a float between 0.0 and 1.0 inclusive. when invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-335",
-    "title": "Config client validation — homework_weight error message",
+    "title": "Config client validation \u2014 homework_weight error message",
     "description": "The admin frontend module shall show homework_weight must be a float > 0.0 and <= 1.0. when homework_weight is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-336",
-    "title": "Config client validation — project_weight error message",
+    "title": "Config client validation \u2014 project_weight error message",
     "description": "The admin frontend module shall show project_weight must be a float > 0.0 and <= 1.0. when project_weight is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-337",
-    "title": "Config client validation — session_inactivity_seconds error message",
+    "title": "Config client validation \u2014 session_inactivity_seconds error message",
     "description": "The admin frontend module shall show session_inactivity_seconds must be an integer >= 1. when session_inactivity_seconds is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-338",
-    "title": "Config client validation — account_lockout_seconds error message",
+    "title": "Config client validation \u2014 account_lockout_seconds error message",
     "description": "The admin frontend module shall show account_lockout_seconds must be an integer >= 1. when account_lockout_seconds is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-339",
-    "title": "Config client validation — max_upload_bytes error message",
+    "title": "Config client validation \u2014 max_upload_bytes error message",
     "description": "The admin frontend module shall show max_upload_bytes must be an integer >= 1024. when max_upload_bytes is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-340",
-    "title": "Config client validation — content_generation_timeout_seconds error message",
+    "title": "Config client validation \u2014 content_generation_timeout_seconds error message",
     "description": "The admin frontend module shall show content_generation_timeout_seconds must be an integer >= 1. when that field is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-341",
-    "title": "Config client validation — audit_retention_days error message",
+    "title": "Config client validation \u2014 audit_retention_days error message",
     "description": "The admin frontend module shall show audit_retention_days must be an integer >= 1. when audit_retention_days is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-342",
-    "title": "Config client validation — notification_retention_days error message",
+    "title": "Config client validation \u2014 notification_retention_days error message",
     "description": "The admin frontend module shall show notification_retention_days must be an integer >= 1. when that field is invalid.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-343",
-    "title": "Config client validation — consent_version error message",
+    "title": "Config client validation \u2014 consent_version error message",
     "description": "The admin frontend module shall display consent_version must be a non-empty string. when the field value is empty.",
     "rationale": "Error text must match the backend message.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-043"]
+    "uses": [
+      "REQ-FEADMIN-043"
+    ]
   },
   {
     "id": "REQ-FEADMIN-400",
-    "title": "Course oversight — GET request",
+    "title": "Course oversight \u2014 GET request",
     "description": "The admin frontend module shall send GET /api/v1/courses?limit=20 on mount to fetch the first page of all system-wide courses.",
     "rationale": "The listCourses handler returns all courses for admin role callers; the default limit of 20 is used for the initial load.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-050"]
+    "uses": [
+      "REQ-FEADMIN-050"
+    ]
   },
   {
     "id": "REQ-FEADMIN-401",
-    "title": "Course oversight — response shape",
+    "title": "Course oversight \u2014 response shape",
     "description": "The admin frontend module shall read the courses array and next_cursor string from the GET /api/v1/courses response body.",
     "rationale": "The listCourses handler returns { courses: [...], next_cursor: string }; the frontend must parse both fields.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-050"]
+    "uses": [
+      "REQ-FEADMIN-050"
+    ]
   },
   {
     "id": "REQ-FEADMIN-402",
-    "title": "Course oversight — no action buttons rendered",
+    "title": "Course oversight \u2014 no action buttons rendered",
     "description": "The admin frontend module shall render no action buttons for any course row in the course oversight view.",
     "rationale": "The course oversight view is read-only; admins must not be able to mutate course state from this view.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEADMIN-050"]
+    "uses": [
+      "REQ-FEADMIN-050"
+    ]
   },
   {
     "id": "REQ-FEADMIN-403",
@@ -1089,30 +1315,179 @@
     "description": "The admin frontend module shall provide all, intake, syllabus_draft, syllabus_approved, generating, active, archived, and completed in the status dropdown.",
     "rationale": "These are the only valid status values accepted by the listCourses handler's status query parameter.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEADMIN-051"]
+    "uses": [
+      "REQ-FEADMIN-051"
+    ]
   },
   {
     "id": "REQ-FEADMIN-404",
-    "title": "Course oversight status filter — request",
+    "title": "Course oversight status filter \u2014 request",
     "description": "The admin frontend module shall send GET /api/v1/courses?status={value} and replace the course list when the status dropdown changes.",
     "rationale": "Changing the filter must reload the list from the start so the cursor is reset; appending to the old list would mix statuses.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-051"]
+    "uses": [
+      "REQ-FEADMIN-051"
+    ]
   },
   {
     "id": "REQ-FEADMIN-405",
-    "title": "Course oversight — Load More sends cursor",
+    "title": "Course oversight \u2014 Load More sends cursor",
     "description": "The admin frontend module shall send GET /api/v1/courses?cursor={next_cursor} when Load More is clicked, preserving any active status filter.",
     "rationale": "The listCourses handler uses the cursor query parameter for keyset pagination; the status filter must be preserved across pages.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-053"]
+    "uses": [
+      "REQ-FEADMIN-053"
+    ]
   },
   {
     "id": "REQ-FEADMIN-406",
-    "title": "Course oversight — Load More hidden when exhausted",
+    "title": "Course oversight \u2014 Load More hidden when exhausted",
     "description": "The admin frontend module shall hide the Load More button when the server returns an empty next_cursor string.",
     "rationale": "An empty next_cursor indicates no further courses exist for the current filter; the button must not appear.",
     "verification_method": "Test",
-    "uses": ["REQ-FEADMIN-053"]
+    "uses": [
+      "REQ-FEADMIN-053"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-035",
+    "title": "Audit table \u2014 actor username column",
+    "description": "The admin frontend module shall render the actor_username field in a dedicated column for each audit entry.",
+    "rationale": "The actor_username is the human-readable identifier for the admin who performed the action; displaying it makes the log immediately readable without cross-referencing user IDs.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-036",
+    "title": "Audit table \u2014 formatted timestamp column",
+    "description": "The admin frontend module shall render the created_at field as a locale-formatted date-time string in each audit row.",
+    "rationale": "Raw ISO 8601 timestamps are hard to read at a glance; a locale date-time format reduces cognitive effort when scanning the audit log.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-037",
+    "title": "Audit table \u2014 action column",
+    "description": "The admin frontend module shall render the action field in a dedicated column for each audit entry.",
+    "rationale": "The action field names the specific operation that was performed, which is the central fact an admin needs when reviewing the log.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-038",
+    "title": "Audit table \u2014 target column",
+    "description": "The admin frontend module shall render target_type and target_id in a combined target column per audit row.",
+    "rationale": "Combining target_type and target_id in one column gives admins the object identity without consuming two table columns.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-170",
+    "title": "Audit view \u2014 loading state on initial fetch",
+    "description": "The admin frontend module shall display a loading indicator while the initial audit log fetch is in progress.",
+    "rationale": "Large audit logs take time to retrieve; a loading state prevents the admin from thinking the view is broken during fetch.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-175",
+    "title": "Audit view \u2014 error state display",
+    "description": "The admin frontend module shall display an error message when the audit log fetch returns a non-200 response.",
+    "rationale": "Audit fetch failures must be visible so the admin knows the log could not be loaded rather than seeing an empty table.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-180",
+    "title": "Audit view \u2014 empty state display",
+    "description": "The admin frontend module shall display No audit log entries found. when the server returns zero entries.",
+    "rationale": "An explicit empty state tells the admin there are genuinely no entries rather than implying a loading or fetch error.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-185",
+    "title": "Audit Load More \u2014 disabled during in-flight request",
+    "description": "The admin frontend module shall disable the Load More button while an audit fetch is in progress.",
+    "rationale": "Clicking Load More while a fetch is already in flight would issue a second overlapping request that could interleave or duplicate entries.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-031"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-190",
+    "title": "Audit Load More \u2014 appends entries to existing list",
+    "description": "The admin frontend module shall append entries from Load More responses to the existing entry list.",
+    "rationale": "Replacing the list on Load More would discard already-loaded entries; appending preserves the full displayed history.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-031"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-195",
+    "title": "Audit table \u2014 one row per entry",
+    "description": "The admin frontend module shall render exactly one table row for each audit entry returned by the server.",
+    "rationale": "A one-to-one mapping between server entries and rendered rows ensures no entries are silently dropped or duplicated in the display.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-030"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-150",
+    "title": "User list row \u2014 email column",
+    "description": "The admin frontend module shall render the email field from each user object in a dedicated table column.",
+    "rationale": "Email is an optional but commonly populated contact field; exposing it in the list lets admins verify account details without opening an edit modal.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-020"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-160",
+    "title": "Error banner dismiss button",
+    "description": "The admin frontend module shall hide the error banner when the admin clicks the Dismiss button.",
+    "rationale": "Errors that have been acknowledged must be dismissible so the admin can continue working without a persistent obstruction.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-009"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-215",
+    "title": "Config Fields Render With Persisted Values",
+    "description": "The admin module shall render all system configuration fields populated with their current persisted values.",
+    "rationale": "Administrators must see the live configuration state before editing; blank or stale fields would cause unintentional overwrites.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-FEADMIN-240",
+    "title": "Config Change Persists After Reload",
+    "description": "The admin module shall persist a saved configuration change so it is visible after a full page reload.",
+    "rationale": "Saving a value that reverts on reload gives a false sense of success; administrators need durable changes to trust the configuration workflow.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-FEADMIN-250",
+    "title": "Weight Sum Validation Blocks Save",
+    "description": "The admin module shall block saving and display an error when grading weight values do not sum to 1.0.",
+    "rationale": "Grading weights that do not sum to 1.0 would produce incorrect final grades; client-side validation prevents a wasted round-trip and immediate misconfiguration.",
+    "verification_method": "Test"
   }
 ]

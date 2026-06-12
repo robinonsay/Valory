@@ -142,7 +142,9 @@
     "description": "The content frontend module shall fetch the requested section content automatically on view mount.",
     "rationale": "Content must load automatically when the student navigates to a section without requiring manual action.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"],
+    "uses": [
+      "REQ-FECONTENT-001"
+    ],
     "implements": [
       "REQ-FECONTENT-100",
       "REQ-FECONTENT-101",
@@ -157,7 +159,9 @@
     "description": "The content frontend module shall display the title field from the section response.",
     "rationale": "The section title orients the student within the course structure.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"]
+    "uses": [
+      "REQ-FECONTENT-001"
+    ]
   },
   {
     "id": "REQ-FECONTENT-012",
@@ -165,7 +169,9 @@
     "description": "The content frontend module shall display the section_index field from the section response.",
     "rationale": "The section index tells the student their position in the course sequence.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"]
+    "uses": [
+      "REQ-FECONTENT-001"
+    ]
   },
   {
     "id": "REQ-FECONTENT-013",
@@ -173,7 +179,9 @@
     "description": "The content frontend module shall display the content_adoc field inside a preformatted text block.",
     "rationale": "AsciiDoc source must be readable without rendering artifacts when no renderer is present.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"],
+    "uses": [
+      "REQ-FECONTENT-001"
+    ],
     "implements": [
       "REQ-FECONTENT-104"
     ]
@@ -184,7 +192,9 @@
     "description": "The content frontend module shall display the citation_verified boolean from the section response.",
     "rationale": "Students should know whether the content has passed citation review before relying on it academically.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"],
+    "uses": [
+      "REQ-FECONTENT-001"
+    ],
     "implements": [
       "REQ-FECONTENT-106"
     ]
@@ -195,7 +205,9 @@
     "description": "The content frontend module shall display the version field from the section response.",
     "rationale": "Showing the version number helps students identify whether they are reading regenerated content.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"],
+    "uses": [
+      "REQ-FECONTENT-001"
+    ],
     "implements": [
       "REQ-FECONTENT-105"
     ]
@@ -206,7 +218,9 @@
     "description": "The content frontend module shall display an error message when the section fetch returns 404.",
     "rationale": "Students must see a clear message when a section does not exist rather than a blank or broken view.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"],
+    "uses": [
+      "REQ-FECONTENT-001"
+    ],
     "implements": [
       "REQ-FECONTENT-108",
       "REQ-FECONTENT-110",
@@ -219,7 +233,9 @@
     "description": "The content frontend module shall display a pending message when the section fetch returns 202.",
     "rationale": "Students must know the section is still under citation review so they do not assume failure.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-001"],
+    "uses": [
+      "REQ-FECONTENT-001"
+    ],
     "implements": [
       "REQ-FECONTENT-109"
     ]
@@ -230,7 +246,9 @@
     "description": "The content frontend module shall display a loading indicator while the section fetch is in flight.",
     "rationale": "A visible loading state prevents the student from thinking the page is broken during network delay.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-001"]
+    "uses": [
+      "REQ-FECONTENT-001"
+    ]
   },
   {
     "id": "REQ-FECONTENT-020",
@@ -238,7 +256,9 @@
     "description": "The content frontend module shall display the homework title and due date on the submission view.",
     "rationale": "Students need to confirm they are submitting to the correct assignment and check their deadline.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-002"]
+    "uses": [
+      "REQ-FECONTENT-002"
+    ]
   },
   {
     "id": "REQ-FECONTENT-021",
@@ -246,7 +266,9 @@
     "description": "The content frontend module shall restrict the file picker to .tex, .md, .markdown, .adoc, and .asciidoc extensions.",
     "rationale": "Restricting the picker to accepted extensions reduces invalid uploads before the request is sent.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"],
+    "uses": [
+      "REQ-FECONTENT-002"
+    ],
     "implements": [
       "REQ-FECONTENT-111"
     ]
@@ -257,7 +279,9 @@
     "description": "The content frontend module shall reject files with unsupported extensions without making an API request.",
     "rationale": "Early rejection saves bandwidth and gives the student instant feedback on file type errors.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"],
+    "uses": [
+      "REQ-FECONTENT-002"
+    ],
     "implements": [
       "REQ-FECONTENT-112"
     ]
@@ -268,7 +292,9 @@
     "description": "The content frontend module shall reject files larger than 10 MB without making an API request.",
     "rationale": "Early rejection saves bandwidth and gives the student instant feedback on oversized files.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"],
+    "uses": [
+      "REQ-FECONTENT-002"
+    ],
     "implements": [
       "REQ-FECONTENT-113",
       "REQ-FECONTENT-114"
@@ -280,7 +306,9 @@
     "description": "The content frontend module shall upload the selected file as a homework submission when the student confirms.",
     "rationale": "The backend upload endpoint requires multipart form data with the field named file.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"],
+    "uses": [
+      "REQ-FECONTENT-002"
+    ],
     "implements": [
       "REQ-FECONTENT-115",
       "REQ-FECONTENT-116",
@@ -295,7 +323,9 @@
     "description": "The content frontend module shall display upload progress while the submission request is in flight.",
     "rationale": "Large files can take several seconds to upload; progress feedback prevents the student from cancelling prematurely.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-002"],
+    "uses": [
+      "REQ-FECONTENT-002"
+    ],
     "implements": [
       "REQ-FECONTENT-168"
     ]
@@ -306,7 +336,9 @@
     "description": "The content frontend module shall display the text Submission received. and latest submission details on HTTP 201.",
     "rationale": "Explicit confirmation and the returned submission record assure the student their work was accepted.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"],
+    "uses": [
+      "REQ-FECONTENT-002"
+    ],
     "implements": [
       "REQ-FECONTENT-175"
     ]
@@ -317,7 +349,9 @@
     "description": "The content frontend module shall fetch and display the student's latest submission automatically on view mount.",
     "rationale": "Students must see any prior submission when they return to the submission view without re-uploading.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"]
+    "uses": [
+      "REQ-FECONTENT-002"
+    ]
   },
   {
     "id": "REQ-FECONTENT-028",
@@ -325,7 +359,9 @@
     "description": "The content frontend module shall display format, file_size_bytes, submitted_at, and grading_status from the latest submission response.",
     "rationale": "These fields tell the student what was submitted, when, and whether grading is complete.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"],
+    "uses": [
+      "REQ-FECONTENT-002"
+    ],
     "implements": [
       "REQ-FECONTENT-121",
       "REQ-FECONTENT-122",
@@ -339,7 +375,9 @@
     "description": "The content frontend module shall display no prior submission message when the latest submission fetch returns 404.",
     "rationale": "Students who have not yet submitted need a clear indication rather than an empty or broken view.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-002"]
+    "uses": [
+      "REQ-FECONTENT-002"
+    ]
   },
   {
     "id": "REQ-FECONTENT-030",
@@ -347,7 +385,9 @@
     "description": "The content frontend module shall retrieve the course grade summary automatically on grades view mount.",
     "rationale": "The course-level weighted grade must load automatically when the student opens the grades view.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-003"],
+    "uses": [
+      "REQ-FECONTENT-003"
+    ],
     "implements": [
       "REQ-FECONTENT-125",
       "REQ-FECONTENT-126"
@@ -359,7 +399,9 @@
     "description": "The content frontend module shall display weighted_score and total_weight from the course grade response.",
     "rationale": "Students need the overall course score and the weight denominator to understand how their grade was computed.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-003"]
+    "uses": [
+      "REQ-FECONTENT-003"
+    ]
   },
   {
     "id": "REQ-FECONTENT-032",
@@ -367,7 +409,9 @@
     "description": "The content frontend module shall derive and display a letter grade from the student's weighted score.",
     "rationale": "Letter grades translate numeric scores into a familiar academic scale understood by students and institutions.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-003"],
+    "uses": [
+      "REQ-FECONTENT-003"
+    ],
     "implements": [
       "REQ-FECONTENT-127",
       "REQ-FECONTENT-128",
@@ -382,7 +426,9 @@
     "description": "The content frontend module shall display the weighted_score formatted as a percentage.",
     "rationale": "Percentage format is the conventional representation students expect alongside a letter grade.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-003"]
+    "uses": [
+      "REQ-FECONTENT-003"
+    ]
   },
   {
     "id": "REQ-FECONTENT-034",
@@ -390,7 +436,9 @@
     "description": "The content frontend module shall retrieve the grade for each homework item in the course.",
     "rationale": "Per-homework grade details show the student exactly how each assignment contributed to the overall grade.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-003"]
+    "uses": [
+      "REQ-FECONTENT-003"
+    ]
   },
   {
     "id": "REQ-FECONTENT-035",
@@ -398,7 +446,9 @@
     "description": "The content frontend module shall display raw_score, late_penalty_amount, final_score, badge_waiver_applied, and graded_at for each homework grade.",
     "rationale": "These fields give students a complete audit trail of how their final homework score was derived.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-003"],
+    "uses": [
+      "REQ-FECONTENT-003"
+    ],
     "implements": [
       "REQ-FECONTENT-132",
       "REQ-FECONTENT-133",
@@ -415,7 +465,9 @@
     "description": "The content frontend module shall display No grades yet. when the course has no graded homework.",
     "rationale": "An explicit empty state prevents students from thinking the grades view is broken before any grading occurs.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-003"],
+    "uses": [
+      "REQ-FECONTENT-003"
+    ],
     "implements": [
       "REQ-FECONTENT-137",
       "REQ-FECONTENT-169"
@@ -427,7 +479,9 @@
     "description": "The content frontend module shall retrieve the list of available badges automatically on badges view mount.",
     "rationale": "All badge definitions must be loaded so unearned badges can be shown greyed out alongside earned ones.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-004"],
+    "uses": [
+      "REQ-FECONTENT-004"
+    ],
     "implements": [
       "REQ-FECONTENT-138"
     ]
@@ -438,7 +492,9 @@
     "description": "The content frontend module shall retrieve the student's earned badges automatically on badges view mount.",
     "rationale": "The student's earned badges must be fetched separately to cross-reference against all available badges.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-004"],
+    "uses": [
+      "REQ-FECONTENT-004"
+    ],
     "implements": [
       "REQ-FECONTENT-146"
     ]
@@ -449,7 +505,9 @@
     "description": "The content frontend module shall display name, description, milestone, reward, and reward_value for every badge.",
     "rationale": "Students need the full badge definition to understand what they must do and what they will receive.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-004"],
+    "uses": [
+      "REQ-FECONTENT-004"
+    ],
     "implements": [
       "REQ-FECONTENT-139",
       "REQ-FECONTENT-140",
@@ -464,7 +522,9 @@
     "description": "The content frontend module shall display awarded_at and redeemed status for each earned badge.",
     "rationale": "Students must know when they earned a badge and whether its reward has already been consumed.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-004"],
+    "uses": [
+      "REQ-FECONTENT-004"
+    ],
     "implements": [
       "REQ-FECONTENT-144",
       "REQ-FECONTENT-145",
@@ -478,7 +538,9 @@
     "description": "The content frontend module shall render unearned badges visually distinct with the milestone requirement shown.",
     "rationale": "Showing locked badges with their requirements motivates students toward specific academic milestones.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-004"],
+    "uses": [
+      "REQ-FECONTENT-004"
+    ],
     "implements": [
       "REQ-FECONTENT-147"
     ]
@@ -489,11 +551,16 @@
     "description": "The content frontend module shall retrieve the student's notifications on mount and every 30 seconds.",
     "rationale": "Regular polling ensures students see new system events within 30 seconds without requiring a page refresh.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-005"],
+    "uses": [
+      "REQ-FECONTENT-005"
+    ],
     "implements": [
       "REQ-FECONTENT-148",
       "REQ-FECONTENT-149",
-      "REQ-FECONTENT-178"
+      "REQ-FECONTENT-178",
+      "REQ-FECONTENT-190",
+      "REQ-FECONTENT-200",
+      "REQ-FECONTENT-215"
     ]
   },
   {
@@ -502,7 +569,9 @@
     "description": "The content frontend module shall show the unread notification count on the bell icon and hide it when zero.",
     "rationale": "A visible count badge draws attention to pending notifications without requiring the panel to be open.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-005"],
+    "uses": [
+      "REQ-FECONTENT-005"
+    ],
     "implements": [
       "REQ-FECONTENT-150",
       "REQ-FECONTENT-167"
@@ -514,7 +583,12 @@
     "description": "The content frontend module shall expand a notification dropdown listing all fetched notifications when the bell icon is clicked.",
     "rationale": "The dropdown gives students access to notification content without navigating away from their current view.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-005"]
+    "uses": [
+      "REQ-FECONTENT-005"
+    ],
+    "implements": [
+      "REQ-FECONTENT-063"
+    ]
   },
   {
     "id": "REQ-FECONTENT-053",
@@ -522,7 +596,9 @@
     "description": "The content frontend module shall display type, message, and created_at for each notification in the dropdown.",
     "rationale": "Students need the notification type, content, and timestamp to understand what happened and when.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-005"],
+    "uses": [
+      "REQ-FECONTENT-005"
+    ],
     "implements": [
       "REQ-FECONTENT-151",
       "REQ-FECONTENT-152",
@@ -535,7 +611,9 @@
     "description": "The content frontend module shall mark the notification as read when a notification is clicked.",
     "rationale": "Individual mark-read keeps the unread count accurate as students process each notification.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-005"],
+    "uses": [
+      "REQ-FECONTENT-005"
+    ],
     "implements": [
       "REQ-FECONTENT-154",
       "REQ-FECONTENT-156",
@@ -548,9 +626,13 @@
     "description": "The content frontend module shall mark each unread notification as read when mark all read is activated.",
     "rationale": "Bulk dismissal lets students clear all notifications at once without clicking each one individually.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-005"],
+    "uses": [
+      "REQ-FECONTENT-005"
+    ],
     "implements": [
-      "REQ-FECONTENT-155"
+      "REQ-FECONTENT-155",
+      "REQ-FECONTENT-205",
+      "REQ-FECONTENT-210"
     ]
   },
   {
@@ -559,7 +641,9 @@
     "description": "The content frontend module shall display No new notifications. when no unread notifications exist.",
     "rationale": "An explicit empty state prevents students from thinking the notification panel is broken or loading.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-005"]
+    "uses": [
+      "REQ-FECONTENT-005"
+    ]
   },
   {
     "id": "REQ-FECONTENT-060",
@@ -567,7 +651,9 @@
     "description": "The content frontend module shall download the PDF section export using an authenticated request.",
     "rationale": "The export endpoint requires the Authorization header; bare anchor navigation omits it and returns 401.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-006"],
+    "uses": [
+      "REQ-FECONTENT-006"
+    ],
     "implements": [
       "REQ-FECONTENT-157",
       "REQ-FECONTENT-159"
@@ -579,7 +665,9 @@
     "description": "The content frontend module shall download the HTML section export using an authenticated request.",
     "rationale": "The export endpoint requires the Authorization header; bare anchor navigation omits it and returns 401.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-006"],
+    "uses": [
+      "REQ-FECONTENT-006"
+    ],
     "implements": [
       "REQ-FECONTENT-158",
       "REQ-FECONTENT-159"
@@ -591,7 +679,9 @@
     "description": "The content frontend module shall display an error message when an export request returns a non-200 response.",
     "rationale": "Students must know the download failed rather than silently receiving no file.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-006"],
+    "uses": [
+      "REQ-FECONTENT-006"
+    ],
     "implements": [
       "REQ-FECONTENT-173",
       "REQ-FECONTENT-174"
@@ -603,7 +693,9 @@
     "description": "The content frontend module shall open a modal with a textarea when the submit feedback button is clicked.",
     "rationale": "A modal keeps feedback submission in context without navigating the student away from the section.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-007"],
+    "uses": [
+      "REQ-FECONTENT-007"
+    ],
     "implements": [
       "REQ-FECONTENT-179"
     ]
@@ -614,7 +706,9 @@
     "description": "The content frontend module shall submit the student's feedback text for the current section.",
     "rationale": "The backend feedback endpoint requires the JSON field feedback_text, not text.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-007"],
+    "uses": [
+      "REQ-FECONTENT-007"
+    ],
     "implements": [
       "REQ-FECONTENT-160",
       "REQ-FECONTENT-161"
@@ -626,7 +720,9 @@
     "description": "The content frontend module shall close the feedback modal when the feedback submission succeeds.",
     "rationale": "Closing the modal on success removes the input form and signals to the student that submission completed.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-007"],
+    "uses": [
+      "REQ-FECONTENT-007"
+    ],
     "implements": [
       "REQ-FECONTENT-162"
     ]
@@ -637,7 +733,9 @@
     "description": "The content frontend module shall display an error message inside the feedback modal without closing it on non-201 responses.",
     "rationale": "Keeping the modal open with the error preserves the student's feedback text so they can retry.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-007"]
+    "uses": [
+      "REQ-FECONTENT-007"
+    ]
   },
   {
     "id": "REQ-FECONTENT-074",
@@ -645,7 +743,9 @@
     "description": "The content frontend module shall prevent submission and show an error when feedback_text exceeds 2000 characters.",
     "rationale": "The backend rejects feedback exceeding 2000 characters; client-side validation gives instant feedback.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-007"],
+    "uses": [
+      "REQ-FECONTENT-007"
+    ],
     "implements": [
       "REQ-FECONTENT-163"
     ]
@@ -656,7 +756,9 @@
     "description": "The content frontend module shall prevent submission and show an error when feedback_text is empty.",
     "rationale": "The backend rejects empty feedback_text; client-side validation prevents a wasted network round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-007"]
+    "uses": [
+      "REQ-FECONTENT-007"
+    ]
   },
   {
     "id": "REQ-FECONTENT-080",
@@ -664,7 +766,9 @@
     "description": "The content frontend module shall render a loading indicator while any section content fetch is pending.",
     "rationale": "Students must see that content is loading so they do not navigate away before the section renders.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-008"]
+    "uses": [
+      "REQ-FECONTENT-008"
+    ]
   },
   {
     "id": "REQ-FECONTENT-081",
@@ -672,7 +776,9 @@
     "description": "The content frontend module shall display Submission failed. Please try again. on unhandled upload errors.",
     "rationale": "A generic fallback error message prevents students from seeing unhandled empty states on unexpected failures.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-008"],
+    "uses": [
+      "REQ-FECONTENT-008"
+    ],
     "implements": [
       "REQ-FECONTENT-120"
     ]
@@ -683,7 +789,9 @@
     "description": "The content frontend module shall display an error message when a grade fetch returns a non-200 response.",
     "rationale": "Students must be told grades could not be loaded rather than seeing a blank grades view.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-008"]
+    "uses": [
+      "REQ-FECONTENT-008"
+    ]
   },
   {
     "id": "REQ-FECONTENT-083",
@@ -691,7 +799,9 @@
     "description": "The content frontend module shall display an error message when a badge list fetch returns a non-200 response.",
     "rationale": "Students must be informed that badges could not be loaded rather than seeing an empty badge view.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-008"]
+    "uses": [
+      "REQ-FECONTENT-008"
+    ]
   },
   {
     "id": "REQ-FECONTENT-090",
@@ -699,7 +809,9 @@
     "description": "The content frontend module shall display a previous section button that navigates to sectionIndex minus one.",
     "rationale": "Sequential backward navigation lets students review earlier material without returning to the course hub.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-009"],
+    "uses": [
+      "REQ-FECONTENT-009"
+    ],
     "implements": [
       "REQ-FECONTENT-164"
     ]
@@ -710,7 +822,9 @@
     "description": "The content frontend module shall display a next section button that navigates to sectionIndex plus one.",
     "rationale": "Sequential forward navigation lets students progress through the course without returning to the course hub.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-009"],
+    "uses": [
+      "REQ-FECONTENT-009"
+    ],
     "implements": [
       "REQ-FECONTENT-165"
     ]
@@ -721,7 +835,9 @@
     "description": "The content frontend module shall disable the previous button when section_index equals zero.",
     "rationale": "Section index zero is the first section; navigating to index minus one would request an invalid section.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-009"],
+    "uses": [
+      "REQ-FECONTENT-009"
+    ],
     "implements": [
       "REQ-FECONTENT-166"
     ]
@@ -732,7 +848,9 @@
     "description": "The content frontend module shall send GET /api/v1/courses/{id}/content/{sectionIndex} with the Authorization header.",
     "rationale": "The backend requires an authenticated request; omitting the header returns 401 and no content.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-010"]
+    "uses": [
+      "REQ-FECONTENT-010"
+    ]
   },
   {
     "id": "REQ-FECONTENT-101",
@@ -740,7 +858,9 @@
     "description": "The content frontend module shall bind the id string field from the section JSON response to component state.",
     "rationale": "The section id is required for subsequent feedback and export requests scoped to the correct record.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-010"]
+    "uses": [
+      "REQ-FECONTENT-010"
+    ]
   },
   {
     "id": "REQ-FECONTENT-102",
@@ -748,7 +868,9 @@
     "description": "The content frontend module shall bind the course_id string field from the section JSON response to component state.",
     "rationale": "The course_id is needed to construct export and feedback URLs for the correct course.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-010"]
+    "uses": [
+      "REQ-FECONTENT-010"
+    ]
   },
   {
     "id": "REQ-FECONTENT-103",
@@ -756,7 +878,9 @@
     "description": "The content frontend module shall bind the section_index integer field from the section JSON response to component state.",
     "rationale": "The section_index drives navigation button targets and export URL construction.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-010"]
+    "uses": [
+      "REQ-FECONTENT-010"
+    ]
   },
   {
     "id": "REQ-FECONTENT-104",
@@ -764,7 +888,9 @@
     "description": "The content frontend module shall bind the content_adoc string field from the section JSON response to component state.",
     "rationale": "The content_adoc value is the raw AsciiDoc the view must render in the preformatted block.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-013"]
+    "uses": [
+      "REQ-FECONTENT-013"
+    ]
   },
   {
     "id": "REQ-FECONTENT-105",
@@ -772,7 +898,9 @@
     "description": "The content frontend module shall bind the version integer field from the section JSON response to component state.",
     "rationale": "The version number must be stored in state so it can be displayed in the section header.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-015"]
+    "uses": [
+      "REQ-FECONTENT-015"
+    ]
   },
   {
     "id": "REQ-FECONTENT-106",
@@ -780,7 +908,9 @@
     "description": "The content frontend module shall bind the citation_verified boolean field from the section JSON response to component state.",
     "rationale": "The citation_verified flag drives a status indicator that informs students of content review status.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-014"]
+    "uses": [
+      "REQ-FECONTENT-014"
+    ]
   },
   {
     "id": "REQ-FECONTENT-107",
@@ -788,7 +918,9 @@
     "description": "The content frontend module shall bind the created_at ISO 8601 string field from the section JSON response to component state.",
     "rationale": "The creation timestamp provides students with the date the section content was generated.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-010"]
+    "uses": [
+      "REQ-FECONTENT-010"
+    ]
   },
   {
     "id": "REQ-FECONTENT-108",
@@ -796,7 +928,9 @@
     "description": "The content frontend module shall display the text Section not found when the section fetch returns HTTP 404.",
     "rationale": "A specific message tells the student the section does not exist rather than suggesting a network problem.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-016"]
+    "uses": [
+      "REQ-FECONTENT-016"
+    ]
   },
   {
     "id": "REQ-FECONTENT-109",
@@ -804,7 +938,9 @@
     "description": "The content frontend module shall display a pending review message when the section fetch returns HTTP 202.",
     "rationale": "This message matches the backend message field and correctly sets the student's expectation.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-017"]
+    "uses": [
+      "REQ-FECONTENT-017"
+    ]
   },
   {
     "id": "REQ-FECONTENT-110",
@@ -812,7 +948,9 @@
     "description": "The content frontend module shall display a generic error message when the section fetch returns HTTP 500.",
     "rationale": "An internal server error must surface to the student as an actionable message rather than silence.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-016"]
+    "uses": [
+      "REQ-FECONTENT-016"
+    ]
   },
   {
     "id": "REQ-FECONTENT-111",
@@ -820,7 +958,9 @@
     "description": "The content frontend module shall set the file input accept attribute to .tex,.md,.markdown,.adoc,.asciidoc.",
     "rationale": "These five extensions are the exact set accepted by DetectFormat in the submission backend.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FECONTENT-021"]
+    "uses": [
+      "REQ-FECONTENT-021"
+    ]
   },
   {
     "id": "REQ-FECONTENT-112",
@@ -828,7 +968,9 @@
     "description": "The content frontend module shall display an unsupported file type error listing the accepted extensions.",
     "rationale": "Naming the accepted extensions exactly tells the student what to use without requiring backend consultation.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-022"]
+    "uses": [
+      "REQ-FECONTENT-022"
+    ]
   },
   {
     "id": "REQ-FECONTENT-113",
@@ -836,7 +978,9 @@
     "description": "The content frontend module shall reject files whose size exceeds 10485760 bytes before making an upload request.",
     "rationale": "10485760 bytes is the defaultMaxUploadBytes constant in the submission backend handler.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-023"]
+    "uses": [
+      "REQ-FECONTENT-023"
+    ]
   },
   {
     "id": "REQ-FECONTENT-114",
@@ -844,7 +988,9 @@
     "description": "The content frontend module shall display File too large. Maximum size is 10 MB. on client-side size rejection.",
     "rationale": "The size limit in human-readable form lets the student immediately understand the constraint.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-023"]
+    "uses": [
+      "REQ-FECONTENT-023"
+    ]
   },
   {
     "id": "REQ-FECONTENT-115",
@@ -852,7 +998,9 @@
     "description": "The content frontend module shall include the file in the multipart body under the form field name file.",
     "rationale": "The backend calls r.FormFile(\"file\"); any other field name results in HTTP 400.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-024"]
+    "uses": [
+      "REQ-FECONTENT-024"
+    ]
   },
   {
     "id": "REQ-FECONTENT-116",
@@ -860,7 +1008,9 @@
     "description": "The content frontend module shall display File too large. Maximum size is 10 MB. when the upload returns HTTP 413.",
     "rationale": "413 means the server also enforces the size limit; the same user-friendly message applies.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-024"]
+    "uses": [
+      "REQ-FECONTENT-024"
+    ]
   },
   {
     "id": "REQ-FECONTENT-117",
@@ -868,7 +1018,9 @@
     "description": "The content frontend module shall display an unsupported format error when the upload returns HTTP 422 UNSUPPORTED_FORMAT.",
     "rationale": "The backend returns 422 with UNSUPPORTED_FORMAT when DetectFormat fails; the UI must surface this clearly.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-024"]
+    "uses": [
+      "REQ-FECONTENT-024"
+    ]
   },
   {
     "id": "REQ-FECONTENT-118",
@@ -876,7 +1028,9 @@
     "description": "The content frontend module shall display a content mismatch error when the upload returns HTTP 422 INVALID_CONTENT.",
     "rationale": "The backend validates content against the format heuristics; the student must be told the file content was rejected.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-024"]
+    "uses": [
+      "REQ-FECONTENT-024"
+    ]
   },
   {
     "id": "REQ-FECONTENT-119",
@@ -884,7 +1038,9 @@
     "description": "The content frontend module shall display You have already submitted for this homework. when the upload returns HTTP 409.",
     "rationale": "The backend enforces a single submission per student per homework; the student must be told they already submitted.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-024"]
+    "uses": [
+      "REQ-FECONTENT-024"
+    ]
   },
   {
     "id": "REQ-FECONTENT-120",
@@ -892,7 +1048,9 @@
     "description": "The content frontend module shall display Submission failed. Please try again. on unhandled upload error responses.",
     "rationale": "A catch-all error message prevents students from seeing an unhandled blank state on unexpected failures.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-081"]
+    "uses": [
+      "REQ-FECONTENT-081"
+    ]
   },
   {
     "id": "REQ-FECONTENT-121",
@@ -900,7 +1058,9 @@
     "description": "The content frontend module shall display the format string field from the latest submission response.",
     "rationale": "The format field identifies whether the submitted file is latex, markdown, or asciidoc.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-028"]
+    "uses": [
+      "REQ-FECONTENT-028"
+    ]
   },
   {
     "id": "REQ-FECONTENT-122",
@@ -908,7 +1068,9 @@
     "description": "The content frontend module shall display the file_size_bytes integer from the latest submission response.",
     "rationale": "Showing the file size confirms the student's file was stored as expected.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-028"]
+    "uses": [
+      "REQ-FECONTENT-028"
+    ]
   },
   {
     "id": "REQ-FECONTENT-123",
@@ -916,7 +1078,9 @@
     "description": "The content frontend module shall display the submitted_at RFC 3339 timestamp from the latest submission response.",
     "rationale": "The submission timestamp confirms the recorded time in case a student disputes lateness.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-028"]
+    "uses": [
+      "REQ-FECONTENT-028"
+    ]
   },
   {
     "id": "REQ-FECONTENT-124",
@@ -924,7 +1088,9 @@
     "description": "The content frontend module shall display the grading_status string from the latest submission response.",
     "rationale": "The grading_status tells the student whether their submission is pending, graded, or failed.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-028"]
+    "uses": [
+      "REQ-FECONTENT-028"
+    ]
   },
   {
     "id": "REQ-FECONTENT-125",
@@ -932,7 +1098,9 @@
     "description": "The content frontend module shall read the weighted_score numeric field from the course grade JSON response.",
     "rationale": "weighted_score is the primary value from which the percentage and letter grade are derived.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-030"]
+    "uses": [
+      "REQ-FECONTENT-030"
+    ]
   },
   {
     "id": "REQ-FECONTENT-126",
@@ -940,7 +1108,9 @@
     "description": "The content frontend module shall read the total_weight numeric field from the course grade JSON response.",
     "rationale": "total_weight is needed to inform the student how many assignments contributed to the grade.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-030"]
+    "uses": [
+      "REQ-FECONTENT-030"
+    ]
   },
   {
     "id": "REQ-FECONTENT-127",
@@ -948,7 +1118,9 @@
     "description": "The content frontend module shall display the letter A when weighted_score is greater than or equal to 90.",
     "rationale": "90 is the standard lower bound for an A on the 0-to-100 scale used in the grade module.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-032"]
+    "uses": [
+      "REQ-FECONTENT-032"
+    ]
   },
   {
     "id": "REQ-FECONTENT-128",
@@ -956,7 +1128,9 @@
     "description": "The content frontend module shall display the letter B when weighted_score is between 80 inclusive and 90 exclusive.",
     "rationale": "80-89 maps to B on the standard academic scale.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-032"]
+    "uses": [
+      "REQ-FECONTENT-032"
+    ]
   },
   {
     "id": "REQ-FECONTENT-129",
@@ -964,7 +1138,9 @@
     "description": "The content frontend module shall display the letter C when weighted_score is between 70 inclusive and 80 exclusive.",
     "rationale": "70-79 maps to C on the standard academic scale.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-032"]
+    "uses": [
+      "REQ-FECONTENT-032"
+    ]
   },
   {
     "id": "REQ-FECONTENT-130",
@@ -972,7 +1148,9 @@
     "description": "The content frontend module shall display the letter D when weighted_score is between 60 inclusive and 70 exclusive.",
     "rationale": "60-69 maps to D on the standard academic scale.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-032"]
+    "uses": [
+      "REQ-FECONTENT-032"
+    ]
   },
   {
     "id": "REQ-FECONTENT-131",
@@ -980,7 +1158,9 @@
     "description": "The content frontend module shall display the letter F when weighted_score is less than 60.",
     "rationale": "Below 60 maps to F on the standard academic scale indicating a failing grade.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-032"]
+    "uses": [
+      "REQ-FECONTENT-032"
+    ]
   },
   {
     "id": "REQ-FECONTENT-132",
@@ -988,7 +1168,9 @@
     "description": "The content frontend module shall display the raw_score numeric field from the per-homework grade response.",
     "rationale": "raw_score shows the score before penalties so the student can see the AI professor's unmodified assessment.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-035"]
+    "uses": [
+      "REQ-FECONTENT-035"
+    ]
   },
   {
     "id": "REQ-FECONTENT-133",
@@ -996,7 +1178,9 @@
     "description": "The content frontend module shall display the late_penalty_amount numeric field from the per-homework grade response.",
     "rationale": "Showing the penalty amount lets the student see exactly how many points were deducted for lateness.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-035"]
+    "uses": [
+      "REQ-FECONTENT-035"
+    ]
   },
   {
     "id": "REQ-FECONTENT-134",
@@ -1004,7 +1188,9 @@
     "description": "The content frontend module shall display the final_score numeric field from the per-homework grade response.",
     "rationale": "final_score is the grade that counts toward the weighted average after all adjustments.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-035"]
+    "uses": [
+      "REQ-FECONTENT-035"
+    ]
   },
   {
     "id": "REQ-FECONTENT-135",
@@ -1012,7 +1198,9 @@
     "description": "The content frontend module shall display whether badge_waiver_applied is true for each per-homework grade.",
     "rationale": "Students must know if their late penalty was waived by a badge so they understand the grade calculation.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-035"]
+    "uses": [
+      "REQ-FECONTENT-035"
+    ]
   },
   {
     "id": "REQ-FECONTENT-136",
@@ -1020,7 +1208,9 @@
     "description": "The content frontend module shall display the graded_at RFC 3339 timestamp from the per-homework grade response.",
     "rationale": "The graded_at timestamp tells the student when the AI professor assessed their submission.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-035"]
+    "uses": [
+      "REQ-FECONTENT-035"
+    ]
   },
   {
     "id": "REQ-FECONTENT-137",
@@ -1028,7 +1218,9 @@
     "description": "The content frontend module shall display Not yet graded when the per-homework grade fetch returns HTTP 404.",
     "rationale": "404 means no grade row exists yet; the student must see a clear not-yet-graded state.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-036"]
+    "uses": [
+      "REQ-FECONTENT-036"
+    ]
   },
   {
     "id": "REQ-FECONTENT-138",
@@ -1036,7 +1228,9 @@
     "description": "The content frontend module shall bind the id string field from each badge in the GET /api/v1/badges response.",
     "rationale": "The badge id is needed to cross-reference the earned badges list from GET /api/v1/users/me/badges.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-040"]
+    "uses": [
+      "REQ-FECONTENT-040"
+    ]
   },
   {
     "id": "REQ-FECONTENT-139",
@@ -1044,7 +1238,9 @@
     "description": "The content frontend module shall display the name string field from each badge definition.",
     "rationale": "The badge name is the primary identifier the student sees in the badge catalogue.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-042"]
+    "uses": [
+      "REQ-FECONTENT-042"
+    ]
   },
   {
     "id": "REQ-FECONTENT-140",
@@ -1052,7 +1248,9 @@
     "description": "The content frontend module shall display the description string field from each badge definition.",
     "rationale": "The description explains what the badge represents in student-readable language.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-042"]
+    "uses": [
+      "REQ-FECONTENT-042"
+    ]
   },
   {
     "id": "REQ-FECONTENT-141",
@@ -1060,7 +1258,9 @@
     "description": "The content frontend module shall display the milestone string field from each badge definition.",
     "rationale": "The milestone names the specific achievement that triggers the badge award.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-042"]
+    "uses": [
+      "REQ-FECONTENT-042"
+    ]
   },
   {
     "id": "REQ-FECONTENT-142",
@@ -1068,7 +1268,9 @@
     "description": "The content frontend module shall display the reward string field from each badge definition.",
     "rationale": "The reward type tells the student what benefit they receive upon earning the badge.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-042"]
+    "uses": [
+      "REQ-FECONTENT-042"
+    ]
   },
   {
     "id": "REQ-FECONTENT-143",
@@ -1076,7 +1278,9 @@
     "description": "The content frontend module shall display the reward_value numeric field from each badge definition.",
     "rationale": "The reward_value quantifies the benefit, such as percentage points of grade improvement.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-042"]
+    "uses": [
+      "REQ-FECONTENT-042"
+    ]
   },
   {
     "id": "REQ-FECONTENT-144",
@@ -1084,7 +1288,9 @@
     "description": "The content frontend module shall display the awarded_at ISO 8601 timestamp from each earned badge response.",
     "rationale": "The award date confirms when the student achieved the milestone.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-043"]
+    "uses": [
+      "REQ-FECONTENT-043"
+    ]
   },
   {
     "id": "REQ-FECONTENT-145",
@@ -1092,7 +1298,9 @@
     "description": "The content frontend module shall indicate redeemed when redeemed_for_submission_id is non-null in the earned badge response.",
     "rationale": "Students must know whether a badge's reward has already been consumed to avoid expecting a second benefit.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-043"]
+    "uses": [
+      "REQ-FECONTENT-043"
+    ]
   },
   {
     "id": "REQ-FECONTENT-146",
@@ -1100,7 +1308,9 @@
     "description": "The content frontend module shall match earned badges to definitions using the badge_id field from GET /api/v1/users/me/badges.",
     "rationale": "Cross-referencing by badge_id links earned records to their definition without a separate per-badge request.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-041"]
+    "uses": [
+      "REQ-FECONTENT-041"
+    ]
   },
   {
     "id": "REQ-FECONTENT-147",
@@ -1108,7 +1318,9 @@
     "description": "The content frontend module shall display the milestone field as the unlock requirement for each unearned badge.",
     "rationale": "Showing the milestone requirement tells students exactly what action will unlock the badge.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-044"]
+    "uses": [
+      "REQ-FECONTENT-044"
+    ]
   },
   {
     "id": "REQ-FECONTENT-148",
@@ -1116,7 +1328,9 @@
     "description": "The content frontend module shall poll GET /api/v1/notifications?unread=true&limit=10 at a 30000 millisecond interval.",
     "rationale": "A fixed 30-second interval balances notification freshness with API load.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-050"]
+    "uses": [
+      "REQ-FECONTENT-050"
+    ]
   },
   {
     "id": "REQ-FECONTENT-149",
@@ -1124,7 +1338,9 @@
     "description": "The content frontend module shall cancel the polling interval when the notification component unmounts.",
     "rationale": "Leaving an active interval after unmount causes memory leaks and spurious API calls.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-050"]
+    "uses": [
+      "REQ-FECONTENT-050"
+    ]
   },
   {
     "id": "REQ-FECONTENT-150",
@@ -1132,7 +1348,9 @@
     "description": "The content frontend module shall derive the unread count from notifications where read_at is absent or null.",
     "rationale": "The backend omits the read_at key entirely for unread notifications; counting entries where read_at is absent or null gives the correct unread total.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-051"]
+    "uses": [
+      "REQ-FECONTENT-051"
+    ]
   },
   {
     "id": "REQ-FECONTENT-151",
@@ -1140,7 +1358,9 @@
     "description": "The content frontend module shall display the type field value for each notification in the dropdown.",
     "rationale": "The type identifies the notification category: api_failure, generation_timeout, or admin_escalation.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-053"]
+    "uses": [
+      "REQ-FECONTENT-053"
+    ]
   },
   {
     "id": "REQ-FECONTENT-152",
@@ -1148,7 +1368,9 @@
     "description": "The content frontend module shall display the message field for each notification in the dropdown.",
     "rationale": "The message carries the human-readable description of what occurred.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-053"]
+    "uses": [
+      "REQ-FECONTENT-053"
+    ]
   },
   {
     "id": "REQ-FECONTENT-153",
@@ -1156,7 +1378,9 @@
     "description": "The content frontend module shall display the created_at timestamp for each notification in the dropdown.",
     "rationale": "The timestamp tells the student when the event occurred, which is important for time-sensitive failures.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-053"]
+    "uses": [
+      "REQ-FECONTENT-053"
+    ]
   },
   {
     "id": "REQ-FECONTENT-154",
@@ -1164,7 +1388,9 @@
     "description": "The content frontend module shall update the local notification list to reflect read_at after a successful POST /api/v1/notifications/{id}/read.",
     "rationale": "The local state must match the server so the unread count decrements immediately without waiting for the next poll.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-054"]
+    "uses": [
+      "REQ-FECONTENT-054"
+    ]
   },
   {
     "id": "REQ-FECONTENT-155",
@@ -1172,7 +1398,9 @@
     "description": "The content frontend module shall issue one POST /api/v1/notifications/{id}/read per notification whose read_at is null.",
     "rationale": "The backend does not provide a bulk mark-read endpoint; each notification must be individually marked.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-055"]
+    "uses": [
+      "REQ-FECONTENT-055"
+    ]
   },
   {
     "id": "REQ-FECONTENT-156",
@@ -1180,7 +1408,9 @@
     "description": "The content frontend module shall silently ignore HTTP 404 responses from POST /api/v1/notifications/{id}/read.",
     "rationale": "A 404 means the notification no longer exists; ignoring it prevents a noisy error for a benign race condition.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-054"]
+    "uses": [
+      "REQ-FECONTENT-054"
+    ]
   },
   {
     "id": "REQ-FECONTENT-157",
@@ -1188,7 +1418,9 @@
     "description": "The content frontend module shall fetch /api/v1/courses/{id}/content/{sectionIndex}/export?format=pdf with a Bearer token.",
     "rationale": "The backend exportSection handler requires an authenticated request; the URL must include the format=pdf query parameter.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-060"]
+    "uses": [
+      "REQ-FECONTENT-060"
+    ]
   },
   {
     "id": "REQ-FECONTENT-158",
@@ -1196,7 +1428,9 @@
     "description": "The content frontend module shall fetch /api/v1/courses/{id}/content/{sectionIndex}/export?format=html with a Bearer token.",
     "rationale": "The backend exportSection handler requires an authenticated request; the URL must include the format=html query parameter.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-061"]
+    "uses": [
+      "REQ-FECONTENT-061"
+    ]
   },
   {
     "id": "REQ-FECONTENT-159",
@@ -1204,7 +1438,10 @@
     "description": "The content frontend module shall convert the authenticated export response to a Blob and trigger a programmatic browser download.",
     "rationale": "Converting the fetch response to a Blob and using a programmatic click on a temporary object URL delivers the file without requiring anchor navigation that would lose the Authorization header.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FECONTENT-060", "REQ-FECONTENT-061"]
+    "uses": [
+      "REQ-FECONTENT-060",
+      "REQ-FECONTENT-061"
+    ]
   },
   {
     "id": "REQ-FECONTENT-160",
@@ -1212,7 +1449,9 @@
     "description": "The content frontend module shall serialize the feedback textarea value under the JSON key feedback_text in the POST request body.",
     "rationale": "The backend decodes the field feedback_text; using any other key returns HTTP 400 BAD_REQUEST.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-071"]
+    "uses": [
+      "REQ-FECONTENT-071"
+    ]
   },
   {
     "id": "REQ-FECONTENT-161",
@@ -1220,7 +1459,9 @@
     "description": "The content frontend module shall set Content-Type: application/json on the POST feedback request.",
     "rationale": "The backend decoder expects JSON; without the correct content type the body will not parse correctly.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-071"]
+    "uses": [
+      "REQ-FECONTENT-071"
+    ]
   },
   {
     "id": "REQ-FECONTENT-162",
@@ -1228,7 +1469,9 @@
     "description": "The content frontend module shall treat HTTP 201 as the success status for the feedback POST request.",
     "rationale": "The backend returns 201 Created on success, not 200; treating 200 as success would silently drop the confirmation.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-072"]
+    "uses": [
+      "REQ-FECONTENT-072"
+    ]
   },
   {
     "id": "REQ-FECONTENT-163",
@@ -1236,7 +1479,9 @@
     "description": "The content frontend module shall display the current character count and the 2000-character limit in the feedback modal.",
     "rationale": "A visible counter tells students how much of the limit they have used before hitting the maximum.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-074"]
+    "uses": [
+      "REQ-FECONTENT-074"
+    ]
   },
   {
     "id": "REQ-FECONTENT-164",
@@ -1244,7 +1489,9 @@
     "description": "The content frontend module shall fetch sectionIndex minus one when the previous section button is clicked.",
     "rationale": "The previous button must load the immediately preceding section in the course sequence.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-090"]
+    "uses": [
+      "REQ-FECONTENT-090"
+    ]
   },
   {
     "id": "REQ-FECONTENT-165",
@@ -1252,7 +1499,9 @@
     "description": "The content frontend module shall fetch sectionIndex plus one when the next section button is clicked.",
     "rationale": "The next button must load the immediately following section in the course sequence.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-091"]
+    "uses": [
+      "REQ-FECONTENT-091"
+    ]
   },
   {
     "id": "REQ-FECONTENT-166",
@@ -1260,7 +1509,9 @@
     "description": "The content frontend module shall set the previous button to a disabled state when section_index equals zero.",
     "rationale": "Section index zero is the first section; navigating to index minus one would request an invalid section.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-092"]
+    "uses": [
+      "REQ-FECONTENT-092"
+    ]
   },
   {
     "id": "REQ-FECONTENT-167",
@@ -1268,7 +1519,9 @@
     "description": "The content frontend module shall hide the unread count badge element when the unread count is zero.",
     "rationale": "A zero badge is noise; hiding it keeps the nav clean and the badge meaningful when it appears.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-051"]
+    "uses": [
+      "REQ-FECONTENT-051"
+    ]
   },
   {
     "id": "REQ-FECONTENT-168",
@@ -1276,7 +1529,9 @@
     "description": "The content frontend module shall report upload progress using the XMLHttpRequest upload progress event.",
     "rationale": "The fetch API does not expose upload progress; XHR is required to get byte-level progress events.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FECONTENT-025"]
+    "uses": [
+      "REQ-FECONTENT-025"
+    ]
   },
   {
     "id": "REQ-FECONTENT-169",
@@ -1284,7 +1539,9 @@
     "description": "The content frontend module shall display No grades yet. when weighted_score and total_weight are both zero.",
     "rationale": "A zero weighted_score with zero total_weight means no graded homework exists yet in the course.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-036"]
+    "uses": [
+      "REQ-FECONTENT-036"
+    ]
   },
   {
     "id": "REQ-FECONTENT-170",
@@ -1292,7 +1549,9 @@
     "description": "The content frontend module shall display the badge_name field from each earned badge in GET /api/v1/users/me/badges.",
     "rationale": "The earned badge response includes badge_name directly, avoiding a separate lookup in the badge definitions list.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-043"]
+    "uses": [
+      "REQ-FECONTENT-043"
+    ]
   },
   {
     "id": "REQ-FECONTENT-171",
@@ -1300,7 +1559,9 @@
     "description": "The content frontend module shall display the badge_reward and badge_reward_value fields from each earned badge response.",
     "rationale": "The earned badge response includes reward details directly, confirming what reward the student received.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-043"]
+    "uses": [
+      "REQ-FECONTENT-043"
+    ]
   },
   {
     "id": "REQ-FECONTENT-172",
@@ -1308,7 +1569,9 @@
     "description": "The content frontend module shall display an error message when POST /api/v1/notifications/{id}/read returns HTTP 403.",
     "rationale": "403 indicates the student tried to mark another student's notification as read, which must not silently succeed.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-054"]
+    "uses": [
+      "REQ-FECONTENT-054"
+    ]
   },
   {
     "id": "REQ-FECONTENT-173",
@@ -1316,7 +1579,9 @@
     "description": "The content frontend module shall display a pending review error when an export request returns HTTP 202.",
     "rationale": "The backend returns 202 when the section exists but citation review is not complete; exports are unavailable until review passes.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-062"]
+    "uses": [
+      "REQ-FECONTENT-062"
+    ]
   },
   {
     "id": "REQ-FECONTENT-174",
@@ -1324,7 +1589,9 @@
     "description": "The content frontend module shall display Section not found. when an export request returns HTTP 404.",
     "rationale": "The export endpoint returns 404 when GetSectionContent returns ErrNotFound; the user must be informed.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-062"]
+    "uses": [
+      "REQ-FECONTENT-062"
+    ]
   },
   {
     "id": "REQ-FECONTENT-175",
@@ -1332,7 +1599,9 @@
     "description": "The content frontend module shall populate latest submission display from the HTTP 201 upload response body.",
     "rationale": "The upload response body contains the new submission record; a redundant GET wastes a round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-026"]
+    "uses": [
+      "REQ-FECONTENT-026"
+    ]
   },
   {
     "id": "REQ-FECONTENT-176",
@@ -1340,7 +1609,9 @@
     "description": "The content frontend module shall display the late_days integer field from the per-homework grade response.",
     "rationale": "Displaying the number of late days shows the student exactly how their lateness was measured.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-035"]
+    "uses": [
+      "REQ-FECONTENT-035"
+    ]
   },
   {
     "id": "REQ-FECONTENT-177",
@@ -1348,7 +1619,9 @@
     "description": "The content frontend module shall display the badge_improvement numeric field from the per-homework grade response.",
     "rationale": "badge_improvement shows any score boost applied by a grade_improvement badge at the course level.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-035"]
+    "uses": [
+      "REQ-FECONTENT-035"
+    ]
   },
   {
     "id": "REQ-FECONTENT-178",
@@ -1356,7 +1629,9 @@
     "description": "The content frontend module shall parse the notifications array from the notifications key in the poll response body.",
     "rationale": "The backend wraps the list in {\"notifications\": [...]}; accessing the root directly returns an object, not an array.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-050"]
+    "uses": [
+      "REQ-FECONTENT-050"
+    ]
   },
   {
     "id": "REQ-FECONTENT-179",
@@ -1364,7 +1639,9 @@
     "description": "The content frontend module shall provide a cancel button in the feedback modal that closes it without submitting.",
     "rationale": "Students must be able to dismiss the feedback modal if they opened it by mistake.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FECONTENT-070"]
+    "uses": [
+      "REQ-FECONTENT-070"
+    ]
   },
   {
     "id": "REQ-FECONTENT-180",
@@ -1372,7 +1649,9 @@
     "description": "The content frontend module shall display an error message when the section fetch throws a network error.",
     "rationale": "Network failures must surface as errors rather than leaving the loading indicator spinning indefinitely.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-016"]
+    "uses": [
+      "REQ-FECONTENT-016"
+    ]
   },
   {
     "id": "REQ-FECONTENT-181",
@@ -1380,7 +1659,9 @@
     "description": "The content frontend module shall display Feedback submitted. after the feedback modal closes on HTTP 201.",
     "rationale": "An explicit confirmation message tells the student their feedback was received and regeneration is pending.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-007"]
+    "uses": [
+      "REQ-FECONTENT-007"
+    ]
   },
   {
     "id": "REQ-FECONTENT-182",
@@ -1388,6 +1669,68 @@
     "description": "The content frontend module shall disable the next button when section_index equals the last section index.",
     "rationale": "Navigating past the last section would request a non-existent index; disabling prevents that invalid request.",
     "verification_method": "Test",
-    "uses": ["REQ-FECONTENT-009"]
+    "uses": [
+      "REQ-FECONTENT-009"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-063",
+    "title": "Notification Dropdown Closes on Overlay Click",
+    "description": "The content frontend module shall close the notification dropdown when the user clicks outside it.",
+    "rationale": "Students who open the notification dropdown must be able to dismiss it by clicking anywhere outside, a standard UX expectation for dropdown panels.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-052"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-190",
+    "title": "Notification Fetch Silences 401 Errors",
+    "description": "The content frontend module shall suppress notification fetch errors when the response status is 401.",
+    "rationale": "A 401 during polling means the session expired; surfacing it as an error notification would create noise while the user is being redirected to login.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-050"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-200",
+    "title": "Notification Fetch Non-401 Error Display",
+    "description": "The content frontend module shall display Failed to fetch notifications. when a poll request returns a non-401 error.",
+    "rationale": "Non-401 errors indicate a real service problem that the student should be aware of so they can report or retry.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-050"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-205",
+    "title": "Mark-All-Read Button Visible Only When Unread Exist",
+    "description": "The content frontend module shall render the mark-all-read button only when unread notification count is greater than zero.",
+    "rationale": "Showing a mark-all-read button when nothing is unread would be confusing and trigger pointless API calls.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-055"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-210",
+    "title": "Mark-All-Read Issues Parallel Requests",
+    "description": "The content frontend module shall mark all unread notifications as read concurrently.",
+    "rationale": "Sequential requests multiply latency proportionally to unread count; concurrent requests complete in a single round-trip regardless of count.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-055"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-215",
+    "title": "Notification Polling Interval Cancelled on Unmount",
+    "description": "The content frontend module shall cancel the notification polling interval when the panel component unmounts.",
+    "rationale": "An uncancelled interval continues firing after the component is destroyed, leaking memory and issuing API calls against a non-existent component.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-050"
+    ]
   }
 ]

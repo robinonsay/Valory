@@ -86,17 +86,15 @@ func (c *Chair) GenerateSyllabus(ctx context.Context, courseID, studentID uuid.U
 		return uuid.UUID{}, fmt.Errorf("chair: generate syllabus: load history: %w", err)
 	}
 
-	messages := buildMessages(history)
-	if len(messages) == 0 {
-		messages = []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock("Please generate the course syllabus based on my intake responses.")),
-		}
-	}
+	messages := buildMessagesForSyllabus(history, topic)
 
 	syllabusAdoc, err := c.callClaude(ctx, studentID, courseID, syllabusSystemPrompt(topic), messages, 4096)
 	if err != nil {
 		return uuid.UUID{}, fmt.Errorf("chair: generate syllabus: call claude: %w", err)
 	}
+	// Claude often wraps the document in ```asciidoc fences; stored verbatim
+	// they render as literal first/last lines in the syllabus view.
+	syllabusAdoc = stripCodeFence(syllabusAdoc)
 
 	var syllabusID uuid.UUID
 	err = c.pool.QueryRow(ctx,
@@ -188,7 +186,11 @@ func (c *Chair) Chat(ctx context.Context, courseID, studentID uuid.UUID, userMes
 		return "", fmt.Errorf("chair: chat: load history: %w", err)
 	}
 
-	messages := buildMessages(history)
+	// ensureUserFirst: since the kickoff feature, every course history starts
+	// with the Chair's opening question (assistant turn), and the Anthropic
+	// API rejects assistant-first conversations. The history always ends with
+	// the student message stored above, so only the head needs anchoring.
+	messages := ensureUserFirst(buildMessages(history))
 
 	replyText, err := c.callClaude(ctx, studentID, courseID, chairSystemPrompt(), messages, 1024)
 	if err != nil {
@@ -449,14 +451,67 @@ func buildMessagesForIntake(history []ChatMessageRow, topic string) []anthropic.
 	return msgs
 }
 
+// ensureUserFirst prepends a neutral synthetic user turn when the
+// conversation starts with an assistant message — the Anthropic API requires
+// the first message to be a user turn. Kickoff-era courses always start with
+// the Chair's opening question, so general chat needs this anchor too.
+//
+// @{"req": ["REQ-AGENT-015"]}
+func ensureUserFirst(msgs []anthropic.MessageParam) []anthropic.MessageParam {
+	if len(msgs) > 0 && msgs[0].Role == "assistant" {
+		trigger := anthropic.NewUserMessage(anthropic.NewTextBlock(
+			"Let's continue our course discussion.",
+		))
+		msgs = append([]anthropic.MessageParam{trigger}, msgs...)
+	}
+	return msgs
+}
+
+// buildMessagesForSyllabus converts the intake history for the syllabus
+// generation call. The Anthropic API requires the first message to be a user
+// turn AND rejects conversations ending with an assistant turn ("assistant
+// message prefill" is unsupported on this model). Since the kickoff feature,
+// intake history both starts (opening question) and ends (INTAKE_COMPLETE
+// reply) with the Chair, so both ends must be anchored with synthetic user
+// turns or the call 400s — found live by the journey e2e suite.
+//
+// @{"req": ["REQ-AGENT-020"]}
+func buildMessagesForSyllabus(history []ChatMessageRow, topic string) []anthropic.MessageParam {
+	msgs := buildMessages(history)
+	closing := anthropic.NewUserMessage(anthropic.NewTextBlock(
+		"Please generate the course syllabus for " + topic + " based on my intake responses.",
+	))
+	if len(msgs) == 0 {
+		return []anthropic.MessageParam{closing}
+	}
+	if msgs[0].Role == "assistant" {
+		trigger := anthropic.NewUserMessage(anthropic.NewTextBlock(
+			"I'd like to learn about " + topic + ".",
+		))
+		msgs = append([]anthropic.MessageParam{trigger}, msgs...)
+	}
+	if msgs[len(msgs)-1].Role == "assistant" {
+		msgs = append(msgs, closing)
+	}
+	return msgs
+}
+
 // stripCodeFence removes optional ```json / ``` fences that Claude sometimes adds.
 //
 // @{"req": ["REQ-AGENT-001", "REQ-AGENT-009", "REQ-CONTENT-001"]}
 func stripCodeFence(s string) string {
 	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "```json")
-	s = strings.TrimPrefix(s, "```")
-	s = strings.TrimSuffix(s, "```")
+	if strings.HasPrefix(s, "```") {
+		// Drop the whole opening fence line so any language tag goes with it
+		// (```json, ```asciidoc, …) — a bare TrimPrefix("```") would leave
+		// the tag word behind as the first line of the document.
+		if i := strings.IndexByte(s, '\n'); i >= 0 {
+			s = s[i+1:]
+		} else {
+			s = strings.TrimPrefix(s, "```")
+		}
+	}
+	s = strings.TrimSuffix(strings.TrimSpace(s), "```")
 	return strings.TrimSpace(s)
 }
 

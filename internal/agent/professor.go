@@ -29,16 +29,18 @@ type GeneratedSection struct {
 
 // Professor generates course section content using the Anthropic API,
 // internet search, and the shared content library.
+// The braveAPIKey is resolved per-call via SecretResolver so that key
+// updates via the admin UI take effect within the cache TTL (REQ-ADMIN-006).
 type Professor struct {
-	client      *ThrottledClient
-	pool        *pgxpool.Pool
-	agentRepo   *AgentRepository
-	braveAPIKey string // Brave Search API key; empty disables web search
+	client    *ThrottledClient
+	pool      *pgxpool.Pool
+	agentRepo *AgentRepository
+	secrets   SecretResolver // resolves "brave_api_key" at search time
 }
 
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-004", "REQ-AGENT-005", "REQ-AGENT-010"]}
-func NewProfessor(client *ThrottledClient, pool *pgxpool.Pool, agentRepo *AgentRepository, braveAPIKey string) *Professor {
-	return &Professor{client: client, pool: pool, agentRepo: agentRepo, braveAPIKey: braveAPIKey}
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-004", "REQ-AGENT-005", "REQ-AGENT-010", "REQ-ADMIN-006", "REQ-ADMIN-008"]}
+func NewProfessor(client *ThrottledClient, pool *pgxpool.Pool, agentRepo *AgentRepository, secrets SecretResolver) *Professor {
+	return &Professor{client: client, pool: pool, agentRepo: agentRepo, secrets: secrets}
 }
 
 // GenerateSection creates AsciiDoc lesson content for one section.
@@ -209,9 +211,10 @@ Rewrite the content addressing the feedback. Requirements:
 // prompt snippet (REQ-AGENT-005). Returns an empty string on error or when the
 // Brave API key is not configured.
 //
-// @{"req": ["REQ-AGENT-005"]}
+// @{"req": ["REQ-AGENT-005", "REQ-ADMIN-006", "REQ-ADMIN-008"]}
 func (p *Professor) searchInternet(ctx context.Context, query string) string {
-	if p.braveAPIKey == "" {
+	key := p.secrets.Get(ctx, "brave_api_key")
+	if key == "" {
 		return ""
 	}
 
@@ -221,7 +224,7 @@ func (p *Professor) searchInternet(ctx context.Context, query string) string {
 		return ""
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Subscription-Token", p.braveAPIKey)
+	req.Header.Set("X-Subscription-Token", key)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

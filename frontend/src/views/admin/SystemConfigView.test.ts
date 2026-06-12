@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330", "REQ-FEADMIN-331", "REQ-FEADMIN-332", "REQ-FEADMIN-333", "REQ-FEADMIN-334", "REQ-FEADMIN-335", "REQ-FEADMIN-336", "REQ-FEADMIN-337", "REQ-FEADMIN-338", "REQ-FEADMIN-339", "REQ-FEADMIN-340", "REQ-FEADMIN-341", "REQ-FEADMIN-342", "REQ-FEADMIN-343"]}
+// @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330", "REQ-FEADMIN-331", "REQ-FEADMIN-332", "REQ-FEADMIN-333", "REQ-FEADMIN-334", "REQ-FEADMIN-335", "REQ-FEADMIN-336", "REQ-FEADMIN-337", "REQ-FEADMIN-338", "REQ-FEADMIN-339", "REQ-FEADMIN-340", "REQ-FEADMIN-341", "REQ-FEADMIN-342", "REQ-FEADMIN-343", "REQ-FEADMIN-500", "REQ-FEADMIN-501", "REQ-FEADMIN-502", "REQ-FEADMIN-503", "REQ-FEADMIN-504", "REQ-FEADMIN-510", "REQ-FEADMIN-511", "REQ-FEADMIN-512", "REQ-FEADMIN-513", "REQ-FEADMIN-514", "REQ-FEADMIN-515", "REQ-FEADMIN-516"]}
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -7,10 +7,13 @@ import SystemConfigView from './SystemConfigView.vue'
 import { validateWeights } from './systemConfig'
 import * as clientModule from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { useSystemConfigStore, type SecretStatus } from '@/stores/admin/systemConfig'
 
 vi.mock('@/api/client', () => ({
   get: vi.fn(),
   patch: vi.fn(),
+  put: vi.fn(),
+  del: vi.fn(),
   ApiError: class extends Error {
     status: number
     body: unknown
@@ -23,7 +26,7 @@ vi.mock('@/api/client', () => ({
   }
 }))
 
-const { get, patch } = await import('@/api/client')
+const { get, patch, put, del } = await import('@/api/client')
 
 const FULL_CONFIG = {
   agent_retry_limit: '3',
@@ -51,6 +54,40 @@ function mountWithAuth() {
   auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
   return mount(SystemConfigView)
 }
+
+const EMPTY_SECRETS: SecretStatus[] = [
+  {
+    name: 'anthropic_api_key',
+    configured: false,
+    last4: null,
+    updated_at: null,
+    source: 'none'
+  },
+  {
+    name: 'brave_api_key',
+    configured: false,
+    last4: null,
+    updated_at: null,
+    source: 'none'
+  }
+]
+
+const CONFIGURED_SECRETS: SecretStatus[] = [
+  {
+    name: 'anthropic_api_key',
+    configured: true,
+    last4: 'sk-5678',
+    updated_at: '2024-06-12T10:00:00Z',
+    source: 'managed'
+  },
+  {
+    name: 'brave_api_key',
+    configured: false,
+    last4: null,
+    updated_at: null,
+    source: 'none'
+  }
+]
 
 async function flushAll() {
   await new Promise(resolve => setTimeout(resolve, 50))
@@ -281,5 +318,193 @@ describe('SystemConfigView', () => {
     const fieldErrors = wrapper.findAll('.field-error')
     expect(fieldErrors.length).toBeGreaterThan(0)
     expect(fieldErrors[0].text()).toContain('agent_retry_limit must be an integer >= 1')
+  })
+
+  // @{"req": ["REQ-FEADMIN-500", "REQ-FEADMIN-503"]}
+  it('secrets section renders with status badges from API response', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: CONFIGURED_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const secretCard = wrapper.find('.secrets-card')
+    expect(secretCard.exists()).toBe(true)
+
+    const badges = wrapper.findAll('.secret-badge')
+    expect(badges.length).toBe(2)
+    expect(badges[0].text()).toContain('Configured (••••sk-5678)')
+    expect(badges[1].text()).toContain('Not configured')
+  })
+
+  // @{"req": ["REQ-FEADMIN-501", "REQ-FEADMIN-502"]}
+  it('secret input is type=password and never prefilled with saved value', async () => {
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: CONFIGURED_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const secretInput = wrapper.find('#secret-anthropic_api_key')
+    expect(secretInput.exists()).toBe(true)
+    expect(secretInput.attributes('type')).toBe('password')
+    expect(secretInput.attributes('autocomplete')).toBe('new-password')
+    expect(secretInput.element.value).toBe('')
+  })
+
+  // @{"req": ["REQ-FEADMIN-501", "REQ-FEADMIN-502"]}
+  it('save secret flow: PUT request sent, input cleared, secrets refetched', async () => {
+    let secretsFetchCount = 0
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        secretsFetchCount++
+        return Promise.resolve({ secrets: CONFIGURED_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+    vi.mocked(put).mockResolvedValue(undefined)
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const secretInput = wrapper.find('#secret-anthropic_api_key')
+    await secretInput.setValue('test-api-key-12345')
+
+    const saveButton = wrapper.find('.save-secret-button')
+    await saveButton.trigger('click')
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    expect(vi.mocked(put)).toHaveBeenCalledWith(
+      '/api/v1/admin/secrets/anthropic_api_key',
+      { value: 'test-api-key-12345' }
+    )
+
+    expect(secretsFetchCount).toBe(2)
+
+    const updatedInput = wrapper.find('#secret-anthropic_api_key')
+    expect(updatedInput.element.value).toBe('')
+  })
+
+  // @{"req": ["REQ-FEADMIN-504"]}
+  it('clear button visible only for managed secrets and deletes after confirmation', async () => {
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: CONFIGURED_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+    vi.mocked(del).mockResolvedValue(undefined)
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const clearButtons = wrapper.findAll('.delete-secret-button')
+    expect(clearButtons).toHaveLength(1)
+    expect(clearButtons[0].text()).toBe('Clear')
+
+    window.confirm = vi.fn().mockReturnValue(true)
+    await clearButtons[0].trigger('click')
+    await flushAll()
+
+    expect(vi.mocked(del)).toHaveBeenCalledWith('/api/v1/admin/secrets/anthropic_api_key')
+  })
+
+  // @{"req": ["REQ-FEADMIN-510"]}
+  it('all 13 config fields render with explanation blocks', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: EMPTY_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const toggleButtons = wrapper.findAll('.explanation-toggle')
+    expect(toggleButtons).toHaveLength(13)
+  })
+
+  // @{"req": ["REQ-FEADMIN-511"]}
+  it('reserved keys show honest disclosure about env-override behavior', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: EMPTY_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const toggleButtons = wrapper.findAll('.explanation-toggle')
+    const sessionInactivityIndex = 6
+
+    await toggleButtons[sessionInactivityIndex].trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const allExplanationBlocks = wrapper.findAll('.explanation-block')
+    let foundSession = false
+    for (const block of allExplanationBlocks) {
+      const text = block.text()
+      if (text.includes('AUTH_INACTIVITY_PERIOD')) {
+        foundSession = true
+        expect(text).toContain('Changing this value has no effect on the running server')
+        expect(text).toContain('AUTH_INACTIVITY_PERIOD')
+        break
+      }
+    }
+    expect(foundSession).toBe(true)
+  })
+
+  // @{"req": ["REQ-FEADMIN-512"]}
+  it('audit_retention_days explanation discloses missing purge worker', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: EMPTY_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const toggleButtons = wrapper.findAll('.explanation-toggle')
+    const auditRetentionIndex = 10
+    await toggleButtons[auditRetentionIndex].trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const allExplanationBlocks = wrapper.findAll('.explanation-block')
+    let foundAudit = false
+    for (const block of allExplanationBlocks) {
+      const text = block.text()
+      if (text.includes('No automated purge')) {
+        foundAudit = true
+        expect(text).toContain('No automated purge is currently implemented')
+        expect(text).toContain('no background worker')
+        break
+      }
+    }
+    expect(foundAudit).toBe(true)
   })
 })

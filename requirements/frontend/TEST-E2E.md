@@ -92,8 +92,12 @@ added in the sprint shown; no code for those specs exists yet.
 | Unsaved changes indicator appears on first edit | REQ-FEADMIN-042, REQ-FEADMIN-323 | `admin-config.spec.ts` |
 | Invalid weight sum triggers client-side validation error before submit | REQ-FEADMIN-043, REQ-FEADMIN-330 | `admin-config.spec.ts` |
 | Server validation error displays per-field | REQ-FEADMIN-045, REQ-FEADMIN-325 | `admin-config.spec.ts` |
-| Admin enters AI API key via config form | REQ-FEADMIN-040 | **PLANNED-Sprint14** `admin-api-key.spec.ts` |
-| Config field explanatory labels describe each setting | REQ-FEADMIN-005 | **PLANNED-Sprint14** `admin-api-key.spec.ts` |
+| Admin enters AI API key via config form | REQ-FEADMIN-040 | `admin-api-key.spec.ts` — `AdminSecrets_SaveRoundTrip_NeverEchoed` (DELIVERED Sprint 16) |
+| Config field explanatory labels describe each setting | REQ-FEADMIN-005 | `admin-api-key.spec.ts` — `AdminConfig_ExplanationsVisible` (DELIVERED Sprint 16) |
+| API Keys section renders with per-key status badges and empty password inputs | REQ-FEADMIN-500, REQ-FEADMIN-501, REQ-FEADMIN-502 | `admin-api-key.spec.ts` — `AdminSecrets_SectionRendersWithStatuses` (DELIVERED Sprint 16) |
+| Save updates badge to Configured (••••last4); full value never appears in page or GET response | REQ-FEADMIN-503, REQ-FEADMIN-504, REQ-ADMIN-007, REQ-SECURITY-008 | `admin-api-key.spec.ts` — `AdminSecrets_SaveRoundTrip_NeverEchoed` (DELIVERED Sprint 16) |
+| Audit log secret.set/secret.clear entries for brave_api_key contain no plaintext secret value | REQ-SECURITY-008 | `admin-api-key.spec.ts` — `AdminSecrets_AuditRedaction` (DELIVERED Sprint 16) |
+| "?" toggles expand explanations; audit_retention_days shows "No automated purge"; session_inactivity_seconds shows env-override disclosure | REQ-FEADMIN-510, REQ-FEADMIN-511, REQ-FEADMIN-512, REQ-FEADMIN-515 | `admin-api-key.spec.ts` — `AdminConfig_ExplanationsVisible` (DELIVERED Sprint 16) |
 | Image upload for course content is accepted and stored | REQ-SUBMISSION-001, REQ-AGENT-024, REQ-AGENT-025 | `image-upload.spec.ts` — DELIVERED Sprint 15 |
 
 ---
@@ -231,8 +235,36 @@ survives the hook.
 | `frontend/e2e/branding.spec.ts` | Sprint 13 | **DELIVERED Sprint 13** | Valory logo on login/nav/sidebar; document title (3 tests) |
 | `frontend/e2e/content-rendering.spec.ts` | Sprint 13/15 | **DELIVERED Sprint 14** | Markdown, LaTeX, image, XSS in agent chat bubbles; student plain-text (5 tests) |
 | `frontend/e2e/sse-reconnect.spec.ts` | Sprint 14 | PLANNED | SSE reconnect / exponential backoff |
-| `frontend/e2e/admin-api-key.spec.ts` | Sprint 14 | PLANNED | Admin API key entry, config explanations |
+| `frontend/e2e/admin-api-key.spec.ts` | Sprint 14 | **DELIVERED Sprint 16** | Admin API key entry, config explanations, audit redaction, secret status badges |
 | `frontend/e2e/image-upload.spec.ts` | Sprint 15 | **DELIVERED Sprint 15** | Image upload (chat preview, validation, owner-only access, homework attach) |
+
+---
+
+---
+
+## Sprint 16 — Specs Added / Updated
+
+| File | Change | Tests |
+|---|---|---|
+| `frontend/e2e/admin-api-key.spec.ts` | **NEW** | `AdminSecrets_SectionRendersWithStatuses`, `AdminSecrets_SaveRoundTrip_NeverEchoed`, `AdminSecrets_AuditRedaction`, `AdminConfig_ExplanationsVisible` |
+
+### admin-api-key.spec.ts — Detail
+
+Proves the managed API Keys admin UI (Sprint 16 feature) and the config-field explanation toggles.
+All 4 tests are in the AI-free tier (0 Anthropic API calls).
+
+**ZERO ANTHROPIC TOUCHES**: `anthropic_api_key` is never written or read in any test.  A fake value
+entered via UI would replace the live key and break all AI features for the test's duration.
+`brave_api_key` is used instead: a fake Brave key silently disables web-search grounding but does
+not interrupt content generation, grading, or chat.  All mutations are cleaned up in `finally`-blocks
+via `DELETE /api/v1/admin/secrets/brave_api_key`.
+
+| Test | Governing REQ | What is asserted | Coverage type |
+|---|---|---|---|
+| `AdminSecrets_SectionRendersWithStatuses` | REQ-FEADMIN-500, REQ-FEADMIN-501, REQ-FEADMIN-502 | `.secrets-card h2` = "API Keys"; both key labels visible; each badge text is one of the 3 valid states; all password inputs are `type=password` and initially empty | E2E |
+| `AdminSecrets_SaveRoundTrip_NeverEchoed` | REQ-FEADMIN-503, REQ-FEADMIN-504, REQ-ADMIN-007, REQ-SECURITY-008 | Save fake Brave key → badge = "Configured (••••9999)"; `page.content()` does not contain full value; `GET /api/v1/admin/secrets` response body does not contain full value; input cleared after save; Clear button → confirm dialog → badge returns to non-configured state; Clear button hidden; restored in `finally` | E2E |
+| `AdminSecrets_AuditRedaction` | REQ-SECURITY-008 | PUT + DELETE via `page.request`; `GET /api/v1/audit` response text does not contain fake value; `secret.set` entry exists with `payload = {name: "brave_api_key"}`; `secret.clear` entry exists with `payload = {name: "brave_api_key"}`; no extra payload fields (no value, no last4) | E2E |
+| `AdminConfig_ExplanationsVisible` | REQ-FEADMIN-510, REQ-FEADMIN-511, REQ-FEADMIN-512, REQ-FEADMIN-515 | brave_api_key `.secret-explanation` always visible (no toggle); `agent_retry_limit` toggle expands explanation mentioning "AI agent retries"; `audit_retention_days` explanation contains "No automated purge"; `session_inactivity_seconds` explanation contains "has no effect on the running server"; toggle collapses on second click | E2E |
 
 ---
 

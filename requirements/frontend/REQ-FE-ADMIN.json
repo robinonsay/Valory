@@ -66,7 +66,9 @@
       "REQ-FEADMIN-042",
       "REQ-FEADMIN-043",
       "REQ-FEADMIN-044",
-      "REQ-FEADMIN-045"
+      "REQ-FEADMIN-045",
+      "REQ-FEADMIN-500",
+      "REQ-FEADMIN-510"
     ]
   },
   {
@@ -1489,5 +1491,146 @@
     "description": "The admin module shall block saving and display an error when grading weight values do not sum to 1.0.",
     "rationale": "Grading weights that do not sum to 1.0 would produce incorrect final grades; client-side validation prevents a wasted round-trip and immediate misconfiguration.",
     "verification_method": "Test"
+  },
+  {
+    "id": "REQ-FEADMIN-500",
+    "title": "Secrets section renders on admin config page",
+    "description": "The admin frontend module shall render a secrets section above the configuration fields on the system config view.",
+    "rationale": "Managed secrets are a distinct credential concern from numeric configuration keys; placing the secrets section first on the config page makes their priority visible to admins.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
+    "implements": [
+      "REQ-FEADMIN-501",
+      "REQ-FEADMIN-502",
+      "REQ-FEADMIN-503",
+      "REQ-FEADMIN-504"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-501",
+    "title": "Anthropic API key entry field is password-type and write-only",
+    "description": "The admin frontend module shall render the Anthropic API key entry as a password-type input, never pre-filled.",
+    "rationale": "A password-type input masks keystrokes from shoulder-surfing; never pre-filling ensures the stored credential is not transmitted back to the browser where it could be exfiltrated.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-500",
+      "REQ-ADMIN-005",
+      "REQ-SECURITY-008"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-502",
+    "title": "Brave Search API key entry field is password-type and write-only",
+    "description": "The admin frontend module shall render the Brave Search API key entry as a password-type input, never pre-filled.",
+    "rationale": "A password-type input masks keystrokes from shoulder-surfing; never pre-filling ensures the stored credential is not transmitted back to the browser where it could be exfiltrated.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-500",
+      "REQ-ADMIN-006",
+      "REQ-SECURITY-008"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-503",
+    "title": "Secret configured badge shows last-4 characters for managed secrets only",
+    "description": "The admin frontend module shall display the last four characters of a managed secret value in the status badge.",
+    "rationale": "Showing the last four characters gives the admin enough context to confirm which credential is active without exposing the full secret in the browser.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-500",
+      "REQ-ADMIN-007"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-504",
+    "title": "Clear button removes managed secret with confirmation dialog",
+    "description": "The admin frontend module shall display a Clear button only for managed secrets and require a confirmation dialog before deletion.",
+    "rationale": "Clearing a managed secret reverts the system to its environment-variable fallback; a confirmation step prevents accidental credential removal that would interrupt AI features.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEADMIN-500"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-510",
+    "title": "Explanation blocks render for all 15 config and secret keys",
+    "description": "The admin frontend module shall render an explanation block for each of the fifteen configuration and secret keys.",
+    "rationale": "Configuration keys have non-obvious consequences; an always-available explanation block lets admins understand the impact of a change without consulting external documentation.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FEADMIN-005"
+    ],
+    "implements": [
+      "REQ-FEADMIN-511",
+      "REQ-FEADMIN-512",
+      "REQ-FEADMIN-513",
+      "REQ-FEADMIN-514",
+      "REQ-FEADMIN-515",
+      "REQ-FEADMIN-516"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-511",
+    "title": "Reserved-key explanations disclose env-override behaviour honestly",
+    "description": "The admin frontend module shall label reserved configuration keys as having no effect on the running server.",
+    "rationale": "Admins who change a reserved key expect it to take effect immediately; honest labeling prevents wasted troubleshooting time and protects against false assurance of a security configuration change.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEADMIN-510"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-512",
+    "title": "Inert-key explanations disclose missing purge worker for audit_retention_days",
+    "description": "The admin frontend module shall disclose in the audit_retention_days explanation that no automated purge worker is implemented.",
+    "rationale": "Without this disclosure an admin setting audit_retention_days would believe aged entries are being deleted; the honest label prevents a false compliance expectation.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEADMIN-510"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-513",
+    "title": "Agent and generation key explanations accurate to implementation",
+    "description": "The admin frontend module shall state the consequence of changing each agent and content-generation configuration key in its explanation.",
+    "rationale": "Agent and generation parameters directly affect student wait times and AI cost; admins must understand the operational trade-off before adjusting any of these keys.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEADMIN-510"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-514",
+    "title": "Grading key explanations accurate to implementation",
+    "description": "The admin frontend module shall state the consequence of changing each grading configuration key in its explanation.",
+    "rationale": "Grading keys directly affect student scores and course outcomes; incorrect or absent explanations could lead to misconfiguration that harms students' grades.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEADMIN-510"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-515",
+    "title": "Session and security key explanations accurate to implementation",
+    "description": "The admin frontend module shall identify the effective source for each session and security configuration key in its explanation.",
+    "rationale": "Session and security keys have mixed effectiveness: some are wired to live state, others are reserved for future use; admins must know which keys actually govern runtime behaviour.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEADMIN-510"
+    ]
+  },
+  {
+    "id": "REQ-FEADMIN-516",
+    "title": "Managed-secret key explanations describe resolution order accurately",
+    "description": "The admin frontend module shall state in each managed-secret explanation that a managed value takes precedence over the environment variable.",
+    "rationale": "The resolution order (managed secret beats env var) is a non-obvious system property; an explanation stating this order prevents confusion when both sources are set simultaneously.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEADMIN-510",
+      "REQ-ADMIN-005",
+      "REQ-ADMIN-006"
+    ]
   }
 ]

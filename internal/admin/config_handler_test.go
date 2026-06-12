@@ -201,12 +201,30 @@ func applyHandlerMigrations(ctx context.Context, p *pgxpool.Pool) error {
 		return err
 	}
 
+	// migration013: managed_secrets table (Sprint 16).
+	// Mirrors 013_managed_secrets.sql without the REVOKE/GRANT statements which
+	// only apply to the production valory_app role (absent in the test DB schema).
+	migration013 := `
+	CREATE TABLE IF NOT EXISTS managed_secrets (
+	    name        VARCHAR(120) PRIMARY KEY,
+	    ciphertext  BYTEA        NOT NULL,
+	    nonce       BYTEA        NOT NULL,
+	    last4       VARCHAR(4)   NOT NULL DEFAULT '',
+	    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+	    updated_by  UUID         REFERENCES users(id) ON DELETE SET NULL
+	);
+	`
+	if _, err := p.Exec(ctx, migration013); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func truncateHandlerTables(ctx context.Context, p *pgxpool.Pool) error {
 	statements := []string{
 		`TRUNCATE TABLE audit_log CASCADE`,
+		`TRUNCATE TABLE managed_secrets CASCADE`,
 		`TRUNCATE TABLE student_consent CASCADE`,
 		`TRUNCATE TABLE password_reset_attempts CASCADE`,
 		`TRUNCATE TABLE password_reset_tokens CASCADE`,

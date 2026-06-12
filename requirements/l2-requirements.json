@@ -848,5 +848,57 @@
     "uses": [
       "REQ-USER-007"
     ]
+  },
+  {
+    "id": "REQ-ADMIN-005",
+    "title": "Admin-Managed Anthropic API Key Storage",
+    "description": "The admin module shall store the Anthropic API key as an admin-managed encrypted secret.",
+    "rationale": "Operators need to supply the Anthropic API key through the admin UI without modifying container environment variables, enabling live credential rotation without a container restart.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-ADMIN-006",
+    "title": "Admin-Managed Brave Search API Key Storage",
+    "description": "The admin module shall store the Brave Search API key as an admin-managed encrypted secret.",
+    "rationale": "Operators need to supply the Brave Search API key through the admin UI without modifying container environment variables, enabling live credential rotation without a container restart.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-ADMIN-007",
+    "title": "Managed Secret Write-Only Masking",
+    "description": "The admin module shall return only the last four characters of any managed secret value in API responses.",
+    "rationale": "Returning the full secret in a GET or list response would expose the credential to any network observer or log aggregation system that records API traffic.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-SECURITY-008"
+    ]
+  },
+  {
+    "id": "REQ-ADMIN-008",
+    "title": "Hot Reload of Managed Secrets Without Container Restart",
+    "description": "The admin module shall apply a newly saved managed secret to AI calls within thirty seconds without a restart.",
+    "rationale": "Requiring a container restart to activate a newly saved credential causes a service interruption; hot reload lets operators rotate credentials with zero downtime.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-SECURITY-006",
+    "title": "Managed Secrets Encrypted at Rest with AES-256-GCM",
+    "description": "The security module shall encrypt managed secrets at rest using AES-256-GCM.",
+    "rationale": "Storing secrets in plaintext in the database would expose them in any backup or database compromise; AES-256-GCM provides authenticated encryption that resists both confidentiality and integrity attacks.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-SECURITY-007",
+    "title": "Master Encryption Key Supplied Exclusively via Environment Variable",
+    "description": "The security module shall read the managed-secrets master key exclusively from an environment variable.",
+    "rationale": "Hardcoding or storing the master encryption key in source code or the database would make all managed secrets trivially recoverable; an environment variable keeps the key out of all persistent storage.",
+    "verification_method": "Inspection"
+  },
+  {
+    "id": "REQ-SECURITY-008",
+    "title": "No Plaintext Secret Value in Logs, Audit Payloads, or API Responses",
+    "description": "The security module shall prevent any plaintext managed secret value from appearing in logs, audit payloads, or API responses.",
+    "rationale": "Log aggregation systems and audit trails are frequently accessible to support personnel with lower privilege levels; a plaintext credential in any recorded output defeats the purpose of encrypted storage.",
+    "verification_method": "Test"
   }
 ]

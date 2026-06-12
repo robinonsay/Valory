@@ -41,7 +41,10 @@ func main() {
 
 	// --- Required environment variables ---
 	databaseURL := mustEnv("DATABASE_URL")
-	anthropicAPIKey := mustEnv("ANTHROPIC_API_KEY") // validated at startup; consumed by ThrottledClient
+	// ANTHROPIC_API_KEY is now optional at startup: the managed-secrets subsystem
+	// can supply it via the admin UI without a container restart (REQ-ADMIN-005).
+	// A WARN is logged at the end of startup if neither source is configured.
+	anthropicAPIKey := envOrDefault("ANTHROPIC_API_KEY", "")
 	uploadsDir := envOrDefault("UPLOADS_DIR", "/app/uploads")
 	acmeDomain := os.Getenv("ACME_DOMAIN")
 	acmeCacheDir := envOrDefault("ACME_CACHE_DIR", "/app/acme-cache")
@@ -101,6 +104,15 @@ func main() {
 		log.Fatalf("server: load config service: %v", err)
 	}
 
+	// --- Managed secrets subsystem (REQ-ADMIN-005..008, REQ-SECURITY-006..008) ---
+	// loadKEK reads VALORY_SECRET_KEY; returns nil+false with a single WARN when
+	// absent or invalid.  The server continues in env-fallback mode either way.
+	kek, _ := admin.LoadKEK()
+	secretProvider := admin.NewSecretProvider(kek, pool)
+	if anthropicAPIKey == "" && !secretProvider.HasManaged("anthropic_api_key") {
+		log.Printf("server: WARN: ANTHROPIC_API_KEY is not set and no managed secret exists; AI features will fail until a key is configured")
+	}
+
 	// --- Auth wiring ---
 	authRepo := auth.NewRepository(pool)
 	authSvc := auth.NewService(authRepo, lockoutDuration, sessionMaxDuration)
@@ -118,12 +130,15 @@ func main() {
 	// --- Agent module wiring ---
 	// Agent is wired before User so AgentRunner can be passed to UserService as
 	// the terminator that cancels in-flight runs on account deletion (REQ-AGENT-013).
-	braveAPIKey := envOrDefault("BRAVE_API_KEY", "")
-	if braveAPIKey == "" {
-		log.Printf("server: BRAVE_API_KEY is not set; web search grounding will be unavailable")
+	// Brave key and Anthropic key are both resolved per-call via secretProvider
+	// so that admin UI updates take effect within the cache TTL (REQ-ADMIN-005..008).
+	// Log a startup hint when brave is absent in both env and managed store.
+	if envOrDefault("BRAVE_API_KEY", "") == "" && !secretProvider.HasManaged("brave_api_key") {
+		log.Printf("server: BRAVE_API_KEY is not set and no managed secret exists; web search grounding will be unavailable")
 	}
 
-	throttledClient := agent.NewThrottledClient(anthropicAPIKey, pool, configSvc)
+	// @{"req": ["REQ-AGENT-012", "REQ-ADMIN-005", "REQ-ADMIN-008"]}
+	throttledClient := agent.NewThrottledClient(anthropicAPIKey, pool, configSvc, secretProvider)
 
 	// Agent-side repositories and actors use serverPool so that every pool
 	// connection already carries app.current_role='server' via BeforeAcquire.
@@ -138,7 +153,8 @@ func main() {
 	agentRepo := agent.NewAgentRepository(serverPool)
 	chatRepo := agent.NewChatRepository(serverPool)
 	chair := agent.NewChair(throttledClient, serverPool, agentRepo, chatRepo)
-	professor := agent.NewProfessor(throttledClient, serverPool, agentRepo, braveAPIKey)
+	// Professor resolves brave_api_key per-call via secretProvider (REQ-ADMIN-006).
+	professor := agent.NewProfessor(throttledClient, serverPool, agentRepo, secretProvider)
 	reviewer := agent.NewReviewer(throttledClient, serverPool, agentRepo)
 
 	// --- Badge module wiring (required by grade module) ---
@@ -222,6 +238,11 @@ func main() {
 
 	// --- Admin config handler ---
 	adminConfigHandler := admin.NewConfigHandler(configSvc, auditRepo, pool)
+
+	// --- Admin secrets handler (REQ-ADMIN-005..008, REQ-SECURITY-006..008) ---
+	// Mounted under the same admin role + CSRF group as adminConfigHandler.
+	// @{"req": ["REQ-ADMIN-005", "REQ-ADMIN-006", "REQ-ADMIN-007", "REQ-ADMIN-008", "REQ-SECURITY-008"]}
+	secretsHandler := admin.NewSecretsHandler(secretProvider, auditRepo, pool)
 
 	// --- Content module wiring ---
 	contentRepo := content.NewContentRepository(pool)
@@ -362,6 +383,17 @@ func main() {
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireRole("admin"))
 					adminConfigHandler.Routes(r)
+				})
+			})
+
+			// @{"req": ["REQ-ADMIN-005", "REQ-ADMIN-006", "REQ-ADMIN-007", "REQ-ADMIN-008", "REQ-SECURITY-008"]}
+			// --- Admin secrets routes ---
+			// CSRF is already enforced by the enclosing group; RequireRole("admin")
+			// is applied here so only admins can read/write managed secrets.
+			r.Route("/admin/secrets", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireRole("admin"))
+					secretsHandler.Routes(r)
 				})
 			})
 		})

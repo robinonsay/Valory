@@ -20,8 +20,10 @@ const GenesisHash = "00000000000000000000000000000000000000000000000000000000000
 // be stored in plaintext. The set is intentionally unexported so that callers
 // cannot widen it at runtime. Extend this list whenever a new credential or
 // secret field can appear in audit payloads.
+// @{"req": ["REQ-SECURITY-008"]}
 var redactedKeys = map[string]bool{
 	"anthropic_api_key": true,
+	"brave_api_key":     true, // REQ-SECURITY-008: managed secret; must never appear in audit payloads
 	"password":          true,
 	"password_hash":     true,
 	"token":             true,

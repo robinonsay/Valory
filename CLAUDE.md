@@ -65,4 +65,4 @@ All requirement files must validate against `schemas/requirements.schema.json`. 
 - No speculative abstractions — implement exactly what requirements specify
 - No database mocks in integration tests — use a real PostgreSQL instance via Docker Compose
 - AsciiDoc course content: max 500 lines per document, use `include::` for composition
-- Secrets and API keys come from environment variables only — never hardcoded
+- Secrets and API keys come from environment variables by default and must never be hardcoded. The `VALORY_SECRET_KEY` environment variable (a 32-byte base64-encoded master key set once at install) enables the managed-secrets subsystem, which allows admins to supply `ANTHROPIC_API_KEY` and `BRAVE_API_KEY` via the admin config UI. When set via the UI, managed secrets are stored AES-256-GCM encrypted in the `managed_secrets` table. The managed secret takes precedence over the env var; if `VALORY_SECRET_KEY` is absent or invalid, the system falls back to env vars and logs a single WARN at startup without crashing. No plaintext secret value may appear in source code, logs, audit payloads, or any HTTP response body.

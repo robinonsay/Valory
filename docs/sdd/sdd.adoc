@@ -41,3 +41,5 @@ include::15-intake-chat.adoc[leveloffset=+1]
 include::16-session-persistence.adoc[leveloffset=+1]
 
 include::17-image-upload.adoc[leveloffset=+1]
+
+include::18-managed-secrets.adoc[leveloffset=+1]

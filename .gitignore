@@ -35,3 +35,4 @@ go.work.sum
 # also ignore the cmd/server/ directory and silently hide new source files there.
 /server
 .gomodcache
+node_modules/

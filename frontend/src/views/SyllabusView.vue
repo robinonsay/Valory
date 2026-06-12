@@ -1,9 +1,10 @@
-// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-510", "REQ-FECOURSE-520"]}
+// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-510", "REQ-FECOURSE-520", "REQ-FECOURSE-629"]}
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { get, post, ApiError } from '@/api/client'
+import { renderAsciidoc } from '@/utils/renderAsciidoc'
 
 interface SyllabusResponse {
   id: string
@@ -21,7 +22,9 @@ const courseId = route.params.id as string
 
 const isLoading = ref(true)
 const fetchError = ref('')
-const syllabusContent = ref('')
+// syllabusHtml holds the sanitized HTML produced by renderAsciidoc.
+// It starts null so that the template knows rendering is not yet complete.
+const syllabusHtml = ref<string | null>(null)
 const isDrafting = ref(false)
 const isDraftingWaitExceeded = ref(false)
 
@@ -38,7 +41,7 @@ let draftingPollInterval: NodeJS.Timeout | null = null
 let draftingBoundedWaitTimer: NodeJS.Timeout | null = null
 let draftingPollInFlight = false
 
-// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
+// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-629"]}
 async function fetchSyllabus() {
   isLoading.value = true
   fetchError.value = ''
@@ -48,7 +51,9 @@ async function fetchSyllabus() {
     const response = await get<SyllabusResponse>(
       `/api/v1/courses/${courseId}/syllabus`,
     )
-    syllabusContent.value = response.content_adoc
+    // renderAsciidoc dynamically imports @asciidoctor/core (code-split chunk)
+    // and applies the strict sanitizer before returning the HTML string.
+    syllabusHtml.value = await renderAsciidoc(response.content_adoc)
     stopDraftingPolling()
   } catch (err) {
     if (err instanceof ApiError) {
@@ -94,7 +99,7 @@ function startDraftingPolling(): void {
       const response = await get<SyllabusResponse>(
         `/api/v1/courses/${courseId}/syllabus`,
       )
-      syllabusContent.value = response.content_adoc
+      syllabusHtml.value = await renderAsciidoc(response.content_adoc)
       isDrafting.value = false
       isDraftingWaitExceeded.value = false
       isLoading.value = false
@@ -245,9 +250,14 @@ onUnmounted(() => {
 
     <template v-if="!isLoading && !isDrafting && !fetchError">
       <div class="syllabus-content">
-        <div class="syllabus-text">
-          <pre>{{ syllabusContent }}</pre>
+        <div v-if="syllabusHtml === null" class="loading">
+          Rendering syllabus…
         </div>
+        <div
+          v-else
+          class="syllabus-rendered adoc-content"
+          v-html="syllabusHtml"
+        ></div>
       </div>
 
       <div v-if="approveError" class="error-message">
@@ -427,20 +437,145 @@ h3 {
   border-radius: 8px;
 }
 
-.syllabus-text {
+/* Rendered AsciiDoc document styling — keeps visual consistency with the app */
+.syllabus-rendered {
   background-color: white;
-  padding: 1rem;
+  padding: 1.5rem 2rem;
   border-radius: 4px;
   border-left: 4px solid #1976d2;
+  color: #333;
+  line-height: 1.7;
 }
 
-.syllabus-text pre {
-  margin: 0;
-  font-family: 'Courier New', monospace;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+/* Deep selectors target Asciidoctor's output elements inside v-html */
+.syllabus-rendered :deep(h1) {
+  font-size: 1.8rem;
+  margin: 0 0 1.5rem;
+  color: #1a1a1a;
+}
+
+.syllabus-rendered :deep(h2) {
+  font-size: 1.4rem;
+  margin: 1.5rem 0 0.75rem;
   color: #333;
-  line-height: 1.6;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 0.25rem;
+}
+
+.syllabus-rendered :deep(h3),
+.syllabus-rendered :deep(h4),
+.syllabus-rendered :deep(h5),
+.syllabus-rendered :deep(h6) {
+  font-size: 1.1rem;
+  margin: 1.25rem 0 0.5rem;
+  color: #444;
+}
+
+.syllabus-rendered :deep(p) {
+  margin: 0.5rem 0;
+}
+
+.syllabus-rendered :deep(ul),
+.syllabus-rendered :deep(ol) {
+  margin: 0.5rem 0 0.5rem 1.5rem;
+}
+
+.syllabus-rendered :deep(li) {
+  margin-bottom: 0.25rem;
+}
+
+.syllabus-rendered :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.95rem;
+}
+
+.syllabus-rendered :deep(th),
+.syllabus-rendered :deep(td) {
+  border: 1px solid #ddd;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.syllabus-rendered :deep(th) {
+  background-color: #f5f5f5;
+  font-weight: 600;
+}
+
+.syllabus-rendered :deep(pre) {
+  background-color: #f6f8fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.syllabus-rendered :deep(code) {
+  font-family: 'Courier New', 'Consolas', monospace;
+  background-color: #f0f0f0;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.syllabus-rendered :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Admonition blocks (NOTE, TIP, WARNING, etc.) */
+.syllabus-rendered :deep(.admonitionblock) {
+  margin: 1rem 0;
+  border-left: 4px solid #1976d2;
+  background-color: #e3f2fd;
+  border-radius: 0 4px 4px 0;
+  padding: 0.75rem 1rem;
+}
+
+.syllabus-rendered :deep(.admonitionblock.warning) {
+  border-left-color: #f57c00;
+  background-color: #fff3e0;
+}
+
+.syllabus-rendered :deep(.admonitionblock.caution) {
+  border-left-color: #d32f2f;
+  background-color: #ffebee;
+}
+
+.syllabus-rendered :deep(.admonitionblock.important) {
+  border-left-color: #7b1fa2;
+  background-color: #f3e5f5;
+}
+
+.syllabus-rendered :deep(.admonitionblock.tip) {
+  border-left-color: #388e3c;
+  background-color: #e8f5e9;
+}
+
+/* Asciidoctor wraps content sections in .sect1/.sectionbody divs */
+.syllabus-rendered :deep(.sect1) {
+  margin-bottom: 1.5rem;
+}
+
+.syllabus-rendered :deep(.sectionbody) {
+  margin-top: 0.5rem;
+}
+
+/* Listing/code blocks */
+.syllabus-rendered :deep(.listingblock .content) {
+  margin: 0;
+}
+
+.syllabus-rendered :deep(blockquote) {
+  border-left: 3px solid #bbb;
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+  color: #555;
+  font-style: italic;
 }
 
 .learning-objectives {

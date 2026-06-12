@@ -49,6 +49,7 @@ const auth = useAuthStore()
 
 const messages = ref<Message[]>([])
 const userInput = ref('')
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const isSending = ref(false)
 const connectionError = ref(false)
 const sendError = ref(false)
@@ -324,6 +325,7 @@ async function sendMessage(): Promise<void> {
     attachments: attachmentUrls.length > 0 ? attachmentUrls : undefined
   })
   userInput.value = ''
+  resetTextareaHeight()
   // Revoke object URLs before clearing pending images (LOW priority cleanup)
   for (const image of pendingImages.value) {
     URL.revokeObjectURL(image.objectUrl)
@@ -367,6 +369,23 @@ function scrollToBottom(): void {
       chatContainer.value.scrollTop = chatContainer.value.scrollHeight
     }
   })
+}
+
+// @{"req": ["REQ-FECOURSE-627"]}
+function autoGrowTextarea(): void {
+  if (!textareaRef.value) return
+  // Reset height to auto to get the correct scrollHeight for the current content
+  textareaRef.value.style.height = 'auto'
+  // Cap height at 6 rows (~144px with 24px line-height), then internal scroll
+  const maxHeight = 144
+  const newHeight = Math.min(textareaRef.value.scrollHeight, maxHeight)
+  textareaRef.value.style.height = `${newHeight}px`
+}
+
+function resetTextareaHeight(): void {
+  if (textareaRef.value) {
+    textareaRef.value.style.height = 'auto'
+  }
 }
 
 function dismissSendError(): void {
@@ -414,10 +433,10 @@ onUnmounted(() => {
         <!--
           REQ-FECOURSE-612, -613, -614, -615: agent messages are rendered
           through the markdown→KaTeX→DOMPurify pipeline and injected as HTML.
-          REQ-FECOURSE-616: student (user) messages are rendered as plain text
-          via {{ }} interpolation so no HTML is ever interpreted.
+          REQ-FECOURSE-616 (AMENDED): student (user) messages are now also rendered
+          through the same sanitized pipeline, supporting Markdown and LaTeX.
           REQ-FECOURSE-625: user message attachments are rendered as bound <img> elements
-          alongside the plain-text content.
+          alongside the rendered content.
         -->
         <div
           v-if="message.role === 'agent'"
@@ -426,9 +445,9 @@ onUnmounted(() => {
         ></div>
         <div
           v-else
-          class="message-bubble"
+          class="message-bubble message-bubble--markdown"
         >
-          <div>{{ message.content }}</div>
+          <div v-html="renderMarkdown(message.content)"></div>
           <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
             <img
               v-for="(url, idx) in message.attachments"
@@ -468,14 +487,20 @@ onUnmounted(() => {
 
     <div class="chat-input-area">
       <div class="input-section">
-        <input
+        <!-- @{"req": ["REQ-FECOURSE-627", "REQ-FECOURSE-628"]}
+             REQ-FECOURSE-627: textarea allows multi-line input; Shift+Enter inserts newline.
+             REQ-FECOURSE-628: Enter without modifier sends the message.
+        -->
+        <textarea
+          ref="textareaRef"
           v-model="userInput"
-          type="text"
           class="chat-input"
           placeholder="Type a message..."
           :disabled="isSending"
-          @keydown.enter="sendMessage"
-        />
+          rows="1"
+          @keydown.enter.exact.prevent="sendMessage"
+          @input="autoGrowTextarea"
+        ></textarea>
         <button
           class="attach-button"
           :disabled="isSending || pendingImages.length >= MAX_CHAT_IMAGES"
@@ -717,6 +742,9 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 1rem;
   box-sizing: border-box;
+  font-family: inherit;
+  resize: none;
+  overflow-y: auto;
 }
 
 .chat-input:focus {
@@ -930,5 +958,53 @@ onUnmounted(() => {
   overflow-x: auto;
   overflow-y: hidden;
   margin: 0.5em 0;
+}
+
+/* User message bubble markdown styling: ensure visibility on blue background.
+   REQ-FECOURSE-616: user messages rendered through sanitized markdown pipeline.
+*/
+.message--user.message-bubble--markdown :deep(code) {
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+.message--user.message-bubble--markdown :deep(pre) {
+  background-color: rgba(0, 0, 0, 0.15);
+  padding: 0.75em 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.message--user.message-bubble--markdown :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.message--user.message-bubble--markdown :deep(a) {
+  color: #e3f2fd;
+  text-decoration: underline;
+}
+
+.message--user.message-bubble--markdown :deep(a:hover) {
+  color: #fff;
+}
+
+.message--user.message-bubble--markdown :deep(blockquote) {
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+  padding: 0.25em 0.75em;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message--user.message-bubble--markdown :deep(strong),
+.message--user.message-bubble--markdown :deep(b) {
+  font-weight: 600;
+}
+
+.message--user.message-bubble--markdown :deep(em),
+.message--user.message-bubble--markdown :deep(i) {
+  font-style: italic;
 }
 </style>

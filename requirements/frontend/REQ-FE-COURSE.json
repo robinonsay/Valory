@@ -1865,9 +1865,9 @@
   },
   {
     "id": "REQ-FECOURSE-616",
-    "title": "Chat: Student Messages Rendered as Plain Text",
-    "description": "The course frontend module shall render student chat messages as plain text without interpreting any markup.",
-    "rationale": "Student input must never be interpreted as markup; plain text rendering removes any injection surface from the student side.",
+    "title": "Chat: Student Messages Rendered via Sanitized Pipeline",
+    "description": "The course frontend module shall render student chat messages through the same sanitized rendering pipeline as agent messages.",
+    "rationale": "Students compose Markdown and LaTeX too; the hardened pipeline escapes raw markup, so formatting support adds no injection surface.",
     "verification_method": "Test",
     "uses": [
       "REQ-FECOURSE-615"
@@ -1921,6 +1921,36 @@
     "verification_method": "Test",
     "uses": [
       "REQ-FECOURSE-622"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-627",
+    "title": "Chat: Multi-Line Message Composition",
+    "description": "The course frontend module shall allow composing multi-line chat messages with a new line inserted on Shift+Enter.",
+    "rationale": "Longer questions, code samples, and step-by-step work need line breaks; a single-line input forces unreadable run-on messages.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-616"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-628",
+    "title": "Chat: Enter Sends the Message",
+    "description": "The course frontend module shall send the composed message when Enter is pressed without a modifier key.",
+    "rationale": "Enter-to-send is the established chat convention; requiring a button click slows the conversation.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-627"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-629",
+    "title": "Syllabus Rendered as Formatted Document",
+    "description": "The course frontend module shall render the syllabus as a formatted document rather than raw markup text.",
+    "rationale": "Students review and approve the syllabus; raw markup obscures the structure and looks broken in a demo.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-460"
     ]
   }
 ]

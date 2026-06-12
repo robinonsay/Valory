@@ -1,10 +1,10 @@
-// @{"req": ["REQ-FECONTENT-001", "REQ-FECONTENT-002", "REQ-FECONTENT-010", "REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017", "REQ-FECONTENT-100", "REQ-FECONTENT-110", "REQ-FECONTENT-115", "REQ-FECONTENT-130", "REQ-FECONTENT-140"]}
+// @{"req": ["REQ-FECONTENT-001", "REQ-FECONTENT-002", "REQ-FECONTENT-010", "REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017", "REQ-FECONTENT-100", "REQ-FECONTENT-110", "REQ-FECONTENT-115", "REQ-FECONTENT-130", "REQ-FECONTENT-140", "REQ-FECONTENT-225"]}
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { get, post, ApiError } from '@/api/client'
-import { sanitizeHtml } from '@/utils/sanitizeHtml'
+import { renderAsciidoc } from '@/utils/renderAsciidoc'
 
 interface SectionContent {
   id: string
@@ -30,6 +30,9 @@ const courseId = route.params.id as string
 const sectionId = route.params.sectionId as string
 
 const section = ref<SectionContent | null>(null)
+// sectionHtml holds the sanitized HTML produced by renderAsciidoc.
+// It is null until the async conversion completes after a successful fetch.
+const sectionHtml = ref<string | null>(null)
 const sectionList = ref<SectionListItem[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -42,7 +45,7 @@ const isSubmittingFeedback = ref(false)
 
 const showExportError = ref(false)
 
-// @{"req": ["REQ-FECONTENT-010", "REQ-FECONTENT-100", "REQ-FECONTENT-001"]}
+// @{"req": ["REQ-FECONTENT-010", "REQ-FECONTENT-100", "REQ-FECONTENT-001", "REQ-FECONTENT-225"]}
 async function fetchSection(): Promise<void> {
   loading.value = true
   error.value = null
@@ -51,6 +54,9 @@ async function fetchSection(): Promise<void> {
       `/api/v1/courses/${courseId}/content/${sectionId}`
     )
     section.value = data
+    // renderAsciidoc dynamically imports @asciidoctor/core (code-split chunk)
+    // and passes the HTML through the strict sanitizer before storing.
+    sectionHtml.value = await renderAsciidoc(data.content_adoc)
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.status === 404) {
@@ -213,7 +219,10 @@ function isNextDisabled(): boolean {
         <h1>{{ section.title }}</h1>
       </div>
 
-      <div class="section-body" v-html="sanitizeHtml(section.content_adoc)"></div>
+      <div
+        class="section-body adoc-content"
+        v-html="sectionHtml ?? ''"
+      ></div>
 
       <div v-if="feedbackSuccess" class="success-message">
         Feedback submitted.
@@ -329,6 +338,112 @@ function isNextDisabled(): boolean {
   line-height: 1.7;
   color: #444;
   margin-bottom: 2rem;
+}
+
+/* Rendered AsciiDoc document styling inside section-body */
+.section-body :deep(h1),
+.section-body :deep(h2) {
+  margin: 1.25rem 0 0.75rem;
+  color: #333;
+}
+
+.section-body :deep(h1) { font-size: 1.6rem; }
+.section-body :deep(h2) { font-size: 1.3rem; border-bottom: 1px solid #e0e0e0; padding-bottom: 0.25rem; }
+.section-body :deep(h3),
+.section-body :deep(h4),
+.section-body :deep(h5),
+.section-body :deep(h6) {
+  font-size: 1.05rem;
+  margin: 1rem 0 0.5rem;
+  color: #444;
+}
+
+.section-body :deep(ul),
+.section-body :deep(ol) {
+  margin: 0.5rem 0 0.5rem 1.5rem;
+}
+
+.section-body :deep(li) {
+  margin-bottom: 0.25rem;
+}
+
+.section-body :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.95rem;
+}
+
+.section-body :deep(th),
+.section-body :deep(td) {
+  border: 1px solid #ddd;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.section-body :deep(th) {
+  background-color: #f5f5f5;
+  font-weight: 600;
+}
+
+.section-body :deep(pre) {
+  background-color: #f6f8fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.section-body :deep(code) {
+  font-family: 'Courier New', 'Consolas', monospace;
+  background-color: #f0f0f0;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.section-body :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.section-body :deep(.admonitionblock) {
+  margin: 1rem 0;
+  border-left: 4px solid #1976d2;
+  background-color: #e3f2fd;
+  border-radius: 0 4px 4px 0;
+  padding: 0.75rem 1rem;
+}
+
+.section-body :deep(.admonitionblock.warning) {
+  border-left-color: #f57c00;
+  background-color: #fff3e0;
+}
+
+.section-body :deep(.admonitionblock.caution) {
+  border-left-color: #d32f2f;
+  background-color: #ffebee;
+}
+
+.section-body :deep(.admonitionblock.important) {
+  border-left-color: #7b1fa2;
+  background-color: #f3e5f5;
+}
+
+.section-body :deep(.admonitionblock.tip) {
+  border-left-color: #388e3c;
+  background-color: #e8f5e9;
+}
+
+.section-body :deep(blockquote) {
+  border-left: 3px solid #bbb;
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+  color: #555;
+  font-style: italic;
 }
 
 .section-actions {

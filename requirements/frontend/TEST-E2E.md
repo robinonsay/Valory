@@ -78,8 +78,10 @@ added in the sprint shown; no code for those specs exists yet.
 | Agent chat messages render LaTeX math (inline and display) via KaTeX | REQ-FECOURSE-613 | `content-rendering.spec.ts` — `ChatLaTeX_RendersTypesetMath` (DELIVERED Sprint 14) |
 | Agent chat messages render images with loading="lazy" | REQ-FECOURSE-614 | `content-rendering.spec.ts` — `ChatImage_RendersImgTag` (DELIVERED Sprint 14) |
 | XSS payloads (script, onerror, javascript: href) in agent messages are neutralised | REQ-FECOURSE-615 | `content-rendering.spec.ts` — `ChatXSS_ScriptAndEventHandlersInert` (DELIVERED Sprint 14) |
-| Student messages render as plain text — HTML and LaTeX are inert | REQ-FECOURSE-616 | `content-rendering.spec.ts` — `ChatStudentMessage_PlainTextNoHTML` (DELIVERED Sprint 14) |
-| AsciiDoc / Markdown rendering in syllabus body displays formatted content | REQ-FECONTENT-013 | **PLANNED-Sprint15** `content-rendering.spec.ts` (section reader surface) |
+| Student messages render Markdown and LaTeX; raw HTML typed by student is escaped (not executed) | REQ-FECOURSE-616 (AMENDED Sprint 17) | `content-rendering.spec.ts` — `ChatStudentMessage_MarkdownRendersRawHtmlInert` (updated Sprint 17) |
+| Chat input is a `<textarea>`; Enter sends, Shift+Enter inserts newline | REQ-FECOURSE-627, REQ-FECOURSE-628 | `journey/intake-to-syllabus.spec.ts` — `.chat-input` selector targets `<textarea>`; `page.fill()` + `.send-button` click (works unchanged) |
+| Syllabus body renders AsciiDoc as HTML (h1/h2/ul elements, not raw text) | REQ-FECOURSE-629, REQ-FECONTENT-225 | `processing-indicators.spec.ts` — `SyllabusDrafting_IndicatorThenAutoRender` (updated Sprint 17); `journey/intake-to-syllabus.spec.ts` (updated Sprint 17) |
+| AsciiDoc / Markdown rendering in section content body displays formatted content | REQ-FECONTENT-013 | **PLANNED-Sprint15** `content-rendering.spec.ts` (section reader surface) |
 
 ---
 
@@ -239,6 +241,25 @@ survives the hook.
 | `frontend/e2e/image-upload.spec.ts` | Sprint 15 | **DELIVERED Sprint 15** | Image upload (chat preview, validation, owner-only access, homework attach) |
 
 ---
+
+---
+
+## Sprint 17 — Specs Updated (fast-follow)
+
+| File | Change | Tests |
+|---|---|---|
+| `frontend/e2e/content-rendering.spec.ts` | **Updated** | Renamed `ChatStudentMessage_PlainTextNoHTML` → `ChatStudentMessage_MarkdownRendersRawHtmlInert`; rewrote Suite B to reflect REQ-FECOURSE-616 AMENDED contract: student messages now render through the sanitized markdown→KaTeX→DOMPurify pipeline. New fixture `**bold** $x^2$ <b>raw</b>` asserts `<strong>` and `.katex` render inside the user bubble, AND literal `<b>raw</b>` text is present with no `<b>` DOM element (html:false escape proof). Suite A agent-bubble selectors unchanged — they scope to `.message--agent`, which remains distinct from `.message--user` even though both now carry `message-bubble--markdown`. |
+| `frontend/e2e/processing-indicators.spec.ts` | **Updated** | `SyllabusDrafting_IndicatorThenAutoRender`: seed fixture changed to real AsciiDoc (`= [SEED]...`, `== Week 1`, `== Week 2`); post-seed assertions updated from `.syllabus-content` ContainText (raw text match) to assert `.syllabus-rendered` is visible and `.syllabus-rendered h2` exists (proves AsciiDoc→HTML pipeline ran). Raw `== Week 1` text absence also asserted. Verifies REQ-FECOURSE-629, REQ-FECONTENT-225. |
+| `frontend/e2e/journey/intake-to-syllabus.spec.ts` | **Updated** | Syllabus assertion: replaced `.syllabus-text pre` locators with `.syllabus-rendered`; added structural assertion (at least one h1/h2/h3 in rendered output). Chat input: `.chat-input` now targets a `<textarea>` — `page.fill()` works unchanged; spec uses `.send-button` click (not Enter keypress) so the textarea keyboard handler is not exercised here. Added REQ-FECOURSE-627/628/629 to `@verifies`. |
+
+### Selector mapping (old → new) — Sprint 17
+
+| Spec | Old selector | New selector | Reason |
+|---|---|---|---|
+| `content-rendering.spec.ts` (Suite B) | `.message.message--user .message-bubble` | `.message.message--user .message-bubble--markdown` | User bubble gains `message-bubble--markdown` class; old `.message-bubble` class still present but `--markdown` is more specific |
+| `processing-indicators.spec.ts` | `.syllabus-content` `ContainText('[SEED] Test Syllabus')` | `.syllabus-rendered` visible + `.syllabus-rendered h2` | Raw-text match replaced with structural DOM assertion; syllabus now rendered via Asciidoctor |
+| `journey/intake-to-syllabus.spec.ts` | `.syllabus-text pre` | `.syllabus-rendered` | Old pre block removed; new v-html AsciiDoc container |
+| `journey/intake-to-syllabus.spec.ts` | `.syllabus-text pre` in `or()` guard | `.syllabus-rendered` | Same — Step 7 guard for drafting-or-content |
 
 ---
 

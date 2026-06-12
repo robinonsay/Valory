@@ -48,7 +48,7 @@
 //   afterEach archives the course via API regardless of pass/fail so the
 //   single-active-course constraint never blocks subsequent runs.
 
-// @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057"]}
+// @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-627", "REQ-FECOURSE-628", "REQ-FECOURSE-629"]}
 
 import { test, expect, type Page } from '@playwright/test'
 import { login, STUDENT_USER, STUDENT_PASS } from '../helpers'
@@ -90,7 +90,7 @@ let activeCourseId: string | null = null
 // Test: full intake-to-syllabus journey
 // ---------------------------------------------------------------------------
 
-// @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057"]}
+// @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-627", "REQ-FECOURSE-628", "REQ-FECOURSE-629"]}
 test('IntakeToSyllabus_FullJourney_PreparingThenChatThenSyllabusRendered', async ({ page }) => {
   // -------------------------------------------------------------------------
   // Step 0: set up event listeners BEFORE any navigation so we capture
@@ -264,7 +264,10 @@ test('IntakeToSyllabus_FullJourney_PreparingThenChatThenSyllabusRendered', async
     const answer = cannedAnswers[turn % cannedAnswers.length]
     transcript.push(`[student turn ${turn + 1}] ${answer}`)
 
-    // Fill and submit
+    // Fill and submit.
+    // .chat-input is a <textarea> (Sprint 17: Enter sends, Shift+Enter newlines).
+    // page.fill() works on <textarea> elements.  We click the send button
+    // rather than pressing Enter so the test is agnostic to keyboard bindings.
     const chatInput = page.locator('.chat-input')
     // 30 s: the input re-enables when the previous turn's POST resolves; chat
     // replies routinely take >5 s, so a short timeout here races the API.
@@ -366,38 +369,54 @@ test('IntakeToSyllabus_FullJourney_PreparingThenChatThenSyllabusRendered', async
   // text "Your professor is drafting your syllabus…"
   // The syllabus may arrive quickly; we allow it to be absent if content
   // is already present, but we must assert one or the other.
+  //
+  // DOM note (Sprint 17): the rendered syllabus lives in
+  //   .syllabus-content > .syllabus-rendered.adoc-content (v-html AsciiDoc)
+  // The old .syllabus-text pre (raw plain-text block) is removed.
   // -------------------------------------------------------------------------
-  const syllabusContent = page.locator('.syllabus-text pre')
+  const syllabusRendered = page.locator('.syllabus-rendered')
   const draftingIndicator = page.locator('.drafting-indicator')
 
-  // Either the drafting indicator is visible, or the syllabus content is
-  // already rendered.  Assert within a generous window.
+  // Either the drafting indicator is visible, or the syllabus rendered
+  // container is already present.  Assert within a generous window.
   await expect(
-    draftingIndicator.or(syllabusContent),
-    'either the drafting indicator or syllabus content must be visible'
+    draftingIndicator.or(syllabusRendered),
+    'either the drafting indicator or the syllabus rendered container must be visible'
   ).toBeVisible({ timeout: 15_000 })
 
   // -------------------------------------------------------------------------
-  // Step 8: wait for syllabus content to render (REQ-FECOURSE-057)
+  // Step 8: wait for syllabus AsciiDoc content to render (REQ-FECOURSE-057,
+  //         REQ-FECOURSE-629)
   //
   // SyllabusView.vue polls GET /courses/{id}/syllabus every 4 s.  Once the
-  // backend has the syllabus row, the poll succeeds and syllabusContent is
-  // populated.  The Chair generates the syllabus asynchronously via the
-  // syllabus-draft transition triggered at end of intake (REQ-AGENT-020).
+  // backend has the syllabus row, the poll succeeds, renderAsciidoc() runs,
+  // and syllabusHtml is set, revealing .syllabus-rendered.
+  //
+  // REQ-FECOURSE-629: the syllabus renders as HTML (Asciidoctor output), not
+  // raw AsciiDoc text.  We assert that .syllabus-rendered is non-empty and
+  // contains at least one heading element.
   //
   // 180 s is the view's own BOUNDED_WAIT_MS; we use it as the timeout so
   // the test mirrors the production guarantee exactly.
   // -------------------------------------------------------------------------
-  await expect(syllabusContent, 'syllabus content must render within 180 s').toBeVisible({
+  await expect(syllabusRendered, 'syllabus rendered container must appear within 180 s').toBeVisible({
     timeout: 180_000
   })
 
-  // Syllabus must have non-trivial content (not just whitespace)
-  const syllabusText = await syllabusContent.textContent()
+  // Syllabus must have non-trivial text content (not just whitespace).
+  const syllabusText = await syllabusRendered.textContent()
   expect(
     syllabusText?.trim().length ?? 0,
-    'syllabus content must be non-empty'
+    'syllabus rendered content must be non-empty'
   ).toBeGreaterThan(50)
+
+  // REQ-FECOURSE-629: Asciidoctor must have converted the AsciiDoc to HTML —
+  // at least one heading element (h1/h2/h3) must exist in the rendered output.
+  const headingCount = await syllabusRendered.locator('h1, h2, h3').count()
+  expect(
+    headingCount,
+    'syllabus rendered content must contain at least one heading element (h1/h2/h3) from AsciiDoc rendering'
+  ).toBeGreaterThan(0)
 
   // -------------------------------------------------------------------------
   // Step 9: assert Approve button is visible (scoped stop per cost rule)

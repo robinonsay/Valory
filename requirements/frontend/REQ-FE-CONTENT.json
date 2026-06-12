@@ -1782,5 +1782,15 @@
     "uses": [
       "REQ-FECONTENT-028"
     ]
+  },
+  {
+    "id": "REQ-FECONTENT-225",
+    "title": "Section Content Rendered as Formatted Document",
+    "description": "The content frontend module shall render lesson section content as a formatted document rather than raw markup text.",
+    "rationale": "Lesson content is the core learning surface; raw markup is unreadable for students.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-001"
+    ]
   }
 ]

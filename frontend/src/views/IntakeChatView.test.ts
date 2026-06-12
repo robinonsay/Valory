@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-622", "REQ-FECOURSE-623", "REQ-FECOURSE-624", "REQ-FECOURSE-625", "REQ-FECOURSE-612", "REQ-FECOURSE-616"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-622", "REQ-FECOURSE-623", "REQ-FECOURSE-624", "REQ-FECOURSE-625", "REQ-FECOURSE-612", "REQ-FECOURSE-616", "REQ-FECOURSE-627", "REQ-FECOURSE-628"]}
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -558,9 +558,9 @@ describe('IntakeChatView', () => {
     expect(listItems[0].text()).toBe('item one')
   })
 
-  // 21. Student message containing HTML markup is rendered as plain text
+  // 21. Student message containing HTML markup is escaped by renderMarkdown
   // @{"verifies": ["REQ-FECOURSE-616"]}
-  it('renders student message containing <b>x</b> as literal text, not bold', async () => {
+  it('renders student message containing <b>x</b> as literal text, not bold (REQ-FECOURSE-616 amended)', async () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue({
       messages: [
         {
@@ -576,12 +576,13 @@ describe('IntakeChatView', () => {
     await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
-    // User bubble must NOT use v-html — the .message-bubble--markdown class should be absent
+    // User bubble now uses markdown rendering pipeline (html:false escapes raw HTML).
+    // The sanitized pipeline prevents the <b> from rendering as an element.
     const userBubble = wrapper.find('.message--user .message-bubble')
     expect(userBubble.exists()).toBe(true)
-    // No bold element should exist inside the user bubble
+    // No bold element should exist; markdown-it with html:false escapes the raw HTML
     expect(userBubble.find('b').exists()).toBe(false)
-    // The raw angle-bracket text should appear as visible text (escaped)
+    // The escaped angle-bracket text should appear as visible text
     expect(userBubble.text()).toContain('<b>x</b>')
   })
 
@@ -630,12 +631,131 @@ describe('IntakeChatView', () => {
 
     const userBubble = wrapper.find('.message--user .message-bubble')
     expect(userBubble.exists()).toBe(true)
-    // Text content should be present as plain text (not HTML)
+    // Text content should be present as rendered markdown (not HTML)
     expect(userBubble.text()).toContain('Check out this image!')
     // Images should be rendered with bound src
     const imgs = userBubble.findAll('img')
     expect(imgs.length).toBe(2)
     expect(imgs[0].attributes('src')).toBe('/api/v1/images/uuid-1')
     expect(imgs[1].attributes('src')).toBe('/api/v1/images/uuid-2')
+  })
+
+  // 25. Student message with markdown bold renders <strong> inside user bubble
+  // @{"verifies": ["REQ-FECOURSE-616"]}
+  it('renders student message with **bold** as a <strong> element inside the user bubble', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'student',
+          content: 'This is **bold text** in the message.',
+          created_at: '2026-06-12T10:00:00Z'
+        }
+      ]
+    })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    const userBubble = wrapper.find('.message--user .message-bubble')
+    expect(userBubble.exists()).toBe(true)
+    // Markdown **bold** should render as <strong>
+    const strongElements = userBubble.findAll('strong')
+    expect(strongElements.length).toBeGreaterThan(0)
+    expect(strongElements[0].text()).toBe('bold text')
+  })
+
+  // 26. Student message with LaTeX renders .katex element inside user bubble
+  // @{"verifies": ["REQ-FECOURSE-616"]}
+  it('renders student message with $x^2$ LaTeX as a .katex element inside the user bubble', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'student',
+          content: 'The formula is $x^2 + y^2 = z^2$.',
+          created_at: '2026-06-12T10:00:00Z'
+        }
+      ]
+    })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    const userBubble = wrapper.find('.message--user .message-bubble')
+    expect(userBubble.exists()).toBe(true)
+    // LaTeX $...$ should render via KaTeX into a .katex span
+    const katexElements = userBubble.findAll('.katex')
+    expect(katexElements.length).toBeGreaterThan(0)
+  })
+
+  // 27. Textarea exists; Enter sends; Shift+Enter does not send
+  // @{"verifies": ["REQ-FECOURSE-627", "REQ-FECOURSE-628"]}
+  it('renders textarea (not input); Enter sends message; Shift+Enter does not', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({
+      reply: 'Got it!',
+      course_status: 'intake'
+    })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    // Verify textarea exists (not input)
+    const textarea = wrapper.find('textarea.chat-input')
+    expect(textarea.exists()).toBe(true)
+    const input = wrapper.find('input.chat-input')
+    expect(input.exists()).toBe(false)
+
+    // Enter without modifier should trigger send
+    await textarea.setValue('Hello professor')
+    await textarea.trigger('keydown', { key: 'Enter', code: 'Enter', shiftKey: false })
+    await wrapper.vm.$nextTick()
+
+    // Verify the message was sent
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/v1/courses/course-42/chat',
+      { message: 'Hello professor' }
+    )
+
+    // Shift+Enter must NOT send (the .exact modifier suppresses the handler
+    // when any modifier key is held; the newline insertion is native).
+    mockPost.mockClear()
+    await textarea.setValue('line one')
+    await textarea.trigger('keydown', { key: 'Enter', code: 'Enter', shiftKey: true })
+    await wrapper.vm.$nextTick()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  // 28. Multi-line content in textarea survives into rendered bubble
+  // @{"verifies": ["REQ-FECOURSE-627"]}
+  it('preserves multi-line content in student message bubble', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    vi.spyOn(clientModule, 'post').mockResolvedValue({
+      reply: 'Great!',
+      course_status: 'intake'
+    })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    // Multi-line message (separated by newlines)
+    const multilineContent = 'Line one\nLine two\nLine three'
+    await wrapper.find('textarea.chat-input').setValue(multilineContent)
+    await wrapper.find('.send-button').trigger('click')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    // The user message should be in the chat history
+    const userBubble = wrapper.find('.message--user .message-bubble')
+    expect(userBubble.exists()).toBe(true)
+    // Markdown rendering converts newlines into line breaks or paragraphs
+    expect(userBubble.text()).toContain('Line one')
+    expect(userBubble.text()).toContain('Line two')
+    expect(userBubble.text()).toContain('Line three')
   })
 })

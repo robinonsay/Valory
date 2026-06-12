@@ -1,7 +1,15 @@
 // @{"verifies": ["REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615", "REQ-FECOURSE-616"]}
 //
-// content-rendering.spec.ts — Sprint 14 AI-free spec proving the
-// markdown→KaTeX→DOMPurify rendering pipeline in IntakeChatView.
+// content-rendering.spec.ts — Sprint 14 (updated Sprint 17 fast-follow)
+// AI-free spec proving the markdown→KaTeX→DOMPurify rendering pipeline in
+// IntakeChatView.
+//
+// REQ-FECOURSE-616 AMENDED (Sprint 17 fast-follow):
+//   Student (user) messages are now rendered through the same sanitized
+//   markdown→KaTeX→DOMPurify pipeline as agent messages.  The chat input is
+//   now a <textarea> (Enter sends; Shift+Enter inserts newline).  Raw HTML
+//   typed by a student is escaped to literal text by markdown-it html:false —
+//   no <b> or other injected elements appear inside the user bubble.
 //
 // ARCHITECTURE (2 courses, 0 AI calls):
 //
@@ -339,21 +347,39 @@ test.describe('AgentBubble rendering — shared Course A', () => {
 })
 
 // ===========================================================================
-// Suite B — student-bubble plain-text rendering
+// Suite B — student-bubble Markdown+LaTeX rendering (REQ-FECOURSE-616 AMENDED)
+//
+// REQ-FECOURSE-616 was amended: student messages are now rendered through the
+// same sanitized markdown→KaTeX→DOMPurify pipeline as agent messages.  The
+// key contract differences from the old plain-text behaviour are:
+//
+//   • **bold** → <strong> DOM element (Markdown rendered)
+//   • $x^2$   → .katex DOM element (LaTeX typeset)
+//   • <b>raw</b> typed literally by the student → rendered as literal text
+//     "&lt;b&gt;raw&lt;/b&gt;" because markdown-it is configured with
+//     html:false, so raw HTML is escaped before DOMPurify ever sees it.
+//     No <b> DOM element must exist inside the user bubble.
 //
 // A separate course is required because the single-active-course constraint
 // prevents creating Course B while Course A exists.  Suite A's afterAll runs
 // before Suite B's beforeAll (Playwright runs describe blocks sequentially
 // when workers=1), and Suite B's beforeAll also calls archiveOpenCourses() as
 // a belt-and-suspenders guard.
+//
+// SELECTOR NOTE: user bubbles now carry class="message-bubble message-bubble--markdown"
+// (same as agent bubbles).  Suite A tests are already scoped to .message--agent,
+// so they are unaffected by the user bubble gaining the --markdown class.
 // ===========================================================================
-test.describe('StudentBubble plain-text rendering — Course B', () => {
+test.describe('StudentBubble Markdown+LaTeX rendering — Course B', () => {
   let courseId: string
   let topicB: string
 
-  // STUDENT_MSG: contains an HTML tag (<b>) and a LaTeX expression ($x^2$).
-  // Neither must be interpreted by the student bubble's plain-text renderer.
-  const STUDENT_MSG = '<b>not bold</b> $x^2$'
+  // STUDENT_MSG: exercises three distinct rendering paths for the amended contract:
+  //   **bold**   → must render a <strong> element (Markdown processed)
+  //   $x^2$      → must render a .katex element (LaTeX processed)
+  //   <b>raw</b> → must appear as literal text with NO <b> element
+  //                (html:false in markdown-it escapes the angle brackets)
+  const STUDENT_MSG = '**bold** $x^2$ <b>raw</b>'
 
   test.beforeAll(async ({ browser }) => {
     const setupPage = await browser.newPage()
@@ -389,10 +415,14 @@ test.describe('StudentBubble plain-text rendering — Course B', () => {
   })
 
   // -------------------------------------------------------------------------
-  // Test 5 — Student plain text
+  // Test 5 — Student Markdown+LaTeX rendering with raw-HTML escape proof
+  //
+  // REQ-FECOURSE-616 AMENDED: student messages now pass through the sanitized
+  // markdown→KaTeX→DOMPurify pipeline.  html:false in markdown-it means raw
+  // HTML tags typed by the student are escaped to literals, not executed.
   // -------------------------------------------------------------------------
   // @{"verifies": ["REQ-FECOURSE-616"]}
-  test('ChatStudentMessage_PlainTextNoHTML', async ({ page }) => {
+  test('ChatStudentMessage_MarkdownRendersRawHtmlInert', async ({ page }) => {
     await login(page, STUDENT_USER, STUDENT_PASS)
     await expect(page).toHaveURL(/\/courses/)
 
@@ -402,34 +432,41 @@ test.describe('StudentBubble plain-text rendering — Course B', () => {
     await page.locator('.course-card', { hasText: topicB }).click()
     await expect(page).toHaveURL(/\/courses\/[0-9a-f-]+\/intake/, { timeout: 10_000 })
 
-    // The student bubble uses {{ message.content }} interpolation (NOT v-html).
-    // CSS selector for student bubbles: .message.message--user .message-bubble
-    const studentBubble = page.locator('.message.message--user .message-bubble')
-    await expect(studentBubble).toBeVisible({ timeout: 10_000 })
+    // User bubbles have class="message-bubble message-bubble--markdown".
+    // We scope to .message--user so we never accidentally match an agent bubble
+    // (both roles now use the --markdown class).
+    const userBubble = page.locator('.message.message--user .message-bubble--markdown')
+    await expect(userBubble).toBeVisible({ timeout: 10_000 })
 
-    // REQ-FECOURSE-616: raw HTML must appear as literal text.
-    // toContainText() checks the element's textContent, which for a plain-text
-    // Vue interpolation includes the literal tag characters.
-    await expect(studentBubble).toContainText('<b>not bold</b>')
+    // REQ-FECOURSE-616 (AMENDED): **bold** must be rendered as <strong>.
+    // markdown-it converts **text** to <strong> even for student input.
+    await expect(
+      userBubble.locator('strong'),
+      'User bubble must contain a <strong> element from **bold** Markdown'
+    ).toBeVisible()
 
-    // No <b> or <strong> DOM element must exist in the student bubble.
+    // REQ-FECOURSE-616 (AMENDED): $x^2$ must be typeset by KaTeX.
+    // The renderMarkdown pipeline processes LaTeX delimiters for student input.
+    const katexElements = userBubble.locator('.katex')
+    await expect(
+      katexElements.first(),
+      'User bubble must contain at least one .katex element from $x^2$ LaTeX'
+    ).toBeVisible({ timeout: 5_000 })
+
+    // REQ-FECOURSE-616 (AMENDED): raw HTML typed by the student (<b>raw</b>)
+    // must appear as escaped literal text, NOT as a rendered <b> DOM element.
+    // markdown-it html:false escapes < and > before DOMPurify is applied, so
+    // the angle brackets survive as text content, not as markup.
+    await expect(
+      userBubble,
+      'User bubble textContent must include the literal string <b>raw</b>'
+    ).toContainText('<b>raw</b>')
+
+    // No <b> DOM element must exist inside the user bubble.
+    // html:false escapes the tag — it must not be parsed into the DOM.
     expect(
-      await studentBubble.locator('b').count(),
-      'No <b> element must exist in student bubble — HTML must not be interpreted'
-    ).toBe(0)
-    expect(
-      await studentBubble.locator('strong').count(),
-      'No <strong> element must exist in student bubble'
-    ).toBe(0)
-
-    // The $x^2$ must also appear as literal text in the student bubble.
-    // Student bubbles do NOT pass through renderMarkdown so LaTeX is never typeset.
-    await expect(studentBubble).toContainText('$x^2$')
-
-    // No .katex element must exist in the student bubble.
-    expect(
-      await studentBubble.locator('.katex').count(),
-      'No .katex element must exist in student bubble — LaTeX must not be typeset'
+      await userBubble.locator('b').count(),
+      'No <b> element must exist in user bubble — raw HTML must be escaped, not executed'
     ).toBe(0)
   })
 })

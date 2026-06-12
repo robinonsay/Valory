@@ -1,11 +1,11 @@
-// @{"req": ["REQ-FECONTENT-001", "REQ-FECONTENT-002", "REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017"]}
+// @{"req": ["REQ-FECONTENT-001", "REQ-FECONTENT-002", "REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017", "REQ-FECOURSE-629", "REQ-FECONTENT-225"]}
 
 import DOMPurify from 'dompurify'
 
 // SECTION_SANITIZER_CONFIG is a strict DOMPurify profile for AI-generated AsciiDoc
-// content displayed in SectionReaderView.  It is intentionally more restrictive
-// than the renderMarkdown profile because section content never contains KaTeX
-// math, so there is no need to allow span/style for font layout.
+// content displayed in SectionReaderView and SyllabusView. It is intentionally more
+// restrictive than the renderMarkdown profile because section/syllabus content never
+// contains KaTeX math, so there is no need to allow span/style for font layout.
 //
 // Key differences from renderMarkdown's DOMPURIFY_CONFIG:
 //   - FORBID_TAGS explicitly drops form, input, textarea, select, button,
@@ -13,10 +13,19 @@ import DOMPurify from 'dompurify'
 //     exact tags used in the probe-confirmed phishing overlay attack.
 //   - The style attribute is forbidden entirely (FORBID_ATTR: ['style']).
 //     Section content has no KaTeX output, so position:fixed / expression() /
-//     url() overlays cannot be constructed at all.
+//     url() overlays cannot be constructed at all.  The col/colgroup style
+//     attribute (Asciidoctor table column widths) is also stripped — tables
+//     still render with default equal-width columns, which is acceptable.
 //   - No MathML tags in ALLOWED_TAGS (section content does not use KaTeX).
 //
-// @{"req": ["REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017"]}
+// Extensions for Asciidoctor HTML output (REQ-FECOURSE-629, REQ-FECONTENT-225):
+//   - 'data-lang' added to ALLOWED_ATTR: Asciidoctor emits this on <code>
+//     elements to carry the source language name (e.g. data-lang="javascript").
+//     It is purely informational; no executable behaviour is attached.
+//   - All structural tags Asciidoctor uses (div, section, h1-h6, ul, li, table,
+//     pre, code, i, span, etc.) are already present in ALLOWED_TAGS.
+//
+// @{"req": ["REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017", "REQ-FECOURSE-629", "REQ-FECONTENT-225"]}
 const SECTION_SANITIZER_CONFIG: DOMPurify.Config = {
   ALLOWED_TAGS: [
     // Block content
@@ -59,6 +68,9 @@ const SECTION_SANITIZER_CONFIG: DOMPurify.Config = {
     'colspan', 'rowspan', 'scope',
     // code / pre
     'lang',
+    // Asciidoctor emits data-lang on <code> elements for source language labels.
+    // It is informational only; no executable behaviour is attached.
+    'data-lang',
     // accessibility
     'aria-hidden', 'aria-label', 'role',
     // details/summary
@@ -117,14 +129,18 @@ function ensureSectionHookInstalled(): void {
 }
 
 // sanitizeHtml sanitizes AI-generated AsciiDoc HTML for display in
-// SectionReaderView.  It uses a strict allowlist that:
+// SectionReaderView and SyllabusView.  It uses a strict allowlist that:
 //   - forbids form, input, and all other active-content elements
 //   - forbids the style attribute entirely (no KaTeX needed here)
 //   - strips U+E000/U+E001 PUA characters before DOMPurify runs, preventing
 //     any interaction with the renderMarkdown placeholder scheme
 //   - applies the afterSanitizeAttributes hook for img src and a href safety
 //
-// @{"req": ["REQ-FECONTENT-001", "REQ-FECONTENT-002", "REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017"]}
+// This is also the security boundary for renderAsciidoc: AsciiDoc passthrough
+// blocks (pass:[] / +++) can emit raw HTML from the converter; this function
+// ensures that executable content is stripped before the string reaches v-html.
+//
+// @{"req": ["REQ-FECONTENT-001", "REQ-FECONTENT-002", "REQ-FECONTENT-011", "REQ-FECONTENT-015", "REQ-FECONTENT-016", "REQ-FECONTENT-017", "REQ-FECOURSE-629", "REQ-FECONTENT-225"]}
 export function sanitizeHtml(raw: string): string {
   ensureSectionHookInstalled()
 

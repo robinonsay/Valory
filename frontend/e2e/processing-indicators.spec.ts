@@ -1,8 +1,9 @@
 // @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-056", "REQ-FECOURSE-057",
 //                "REQ-FECOURSE-221", "REQ-FECOURSE-223", "REQ-FECOURSE-225",
-//                "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-590"]}
+//                "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-590",
+//                "REQ-FECOURSE-629", "REQ-FECONTENT-225"]}
 //
-// processing-indicators.spec.ts — Sprint 12 task 12.3
+// processing-indicators.spec.ts — Sprint 12 task 12.3 (updated Sprint 17 fast-follow)
 //
 // AI-free tier specs for processing indicators and error paths shipped in
 // Sprint 11 and the Sprint 11 fast-follow.  Every spec in this file incurs
@@ -289,13 +290,17 @@ test('IntakeSendFailure_ErrorBannerShownAndDismissible', async ({ page }) => {
 // ---------------------------------------------------------------------------
 //
 // @{"verifies": ["REQ-FECOURSE-056", "REQ-FECOURSE-057",
-//                "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
+//                "REQ-FECOURSE-490", "REQ-FECOURSE-491",
+//                "REQ-FECOURSE-629", "REQ-FECONTENT-225"]}
 //
 // Verifies:
 //   REQ-FECOURSE-056 / REQ-FECOURSE-490: drafting indicator shown while
 //     syllabus is not yet available (404 from GET /syllabus).
 //   REQ-FECOURSE-057 / REQ-FECOURSE-491: frontend polls and auto-renders
 //     the syllabus once it becomes available (no manual reload needed).
+//   REQ-FECOURSE-629 / REQ-FECONTENT-225: syllabus AsciiDoc content is
+//     rendered as HTML (via renderAsciidoc) — DOM shows real heading
+//     elements (h1/h2), not raw AsciiDoc markup in a <pre> block.
 //
 // Strategy:
 //   1. Create course → markKickoffSent → setCourseStatus('syllabus_draft').
@@ -306,17 +311,28 @@ test('IntakeSendFailure_ErrorBannerShownAndDismissible', async ({ page }) => {
 //   3. Wait for dashboard to show the course card with "syllabus_draft" badge
 //      before clicking, to ensure the fresh fetch has completed.
 //   4. Assert .drafting-indicator is visible and .error-message is NOT.
-//   5. Seed a small AsciiDoc syllabus via seedSyllabus().
+//   5. Seed a real AsciiDoc syllabus via seedSyllabus().
 //   6. Wait up to 12 s for .syllabus-content to appear automatically (4 s
 //      poll interval; allow 3 intervals to absorb jitter).  No manual reload.
+//   7. Assert that the AsciiDoc heading (== Week 1) rendered as an <h2>
+//      element inside .syllabus-rendered — NOT as raw "== Week 1" text.
 //
-// SyllabusView polls every 4000 ms.  On 404, isDrafting=true and the
-// polling starts.  Once the syllabus row exists (seeded via psql), the next
-// poll returns 200 and syllabusContent is set, hiding the indicator.
+// SyllabusView polls every 4000 ms.  On 404, isDrafting=true and polling
+// starts.  Once the syllabus row exists (seeded via psql), the next poll
+// returns 200 and syllabusHtml is set via renderAsciidoc(), revealing
+// .syllabus-content > .syllabus-rendered.
+//
+// DOM structure (post Sprint 17):
+//   .syllabus-content
+//     .syllabus-rendered.adoc-content   ← v-html="syllabusHtml"
+//       h1                              ← from "= [SEED] ..." AsciiDoc title
+//       div.sect1
+//         h2                            ← from "== Week 1" section heading
+//         ...
 //
 // AI cost: 1 kickoff call from course creation (accepted).
 
-// @{"verifies": ["REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
+// @{"verifies": ["REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-629", "REQ-FECONTENT-225"]}
 test('SyllabusDrafting_IndicatorThenAutoRender', async ({ page }) => {
   const bearerToken = await loginAndClean(page)
   let courseId: string | null = null
@@ -383,14 +399,21 @@ test('SyllabusDrafting_IndicatorThenAutoRender', async ({ page }) => {
 
     // ---- Seed the syllabus row -----------------------------------------------
     //
-    // Small AsciiDoc fixture with an identifiable marker string.
+    // Real AsciiDoc fixture.  Asciidoctor converts:
+    //   "= [SEED] Test Syllabus"  → <h1> document title
+    //   "== Week 1"               → <h2> section heading (inside div.sect1)
+    //   "== Week 2"               → second <h2> section heading
+    // The fixture uses AsciiDoc section syntax so that the h2 assertion below
+    // proves the AsciiDoc-to-HTML pipeline fired (REQ-FECOURSE-629).
     const SYLLABUS_FIXTURE = [
       '= [SEED] Test Syllabus',
       '',
-      '== Module 1: Foundations',
+      '== Week 1',
+      '',
       'Introduction to the subject matter.',
       '',
-      '== Module 2: Advanced Topics',
+      '== Week 2',
+      '',
       'Deep dive into the core concepts.'
     ].join('\n')
 
@@ -399,19 +422,38 @@ test('SyllabusDrafting_IndicatorThenAutoRender', async ({ page }) => {
     // ---- Wait for auto-render (no manual reload) ----------------------------
     //
     // SyllabusView polls every 4000 ms.  The syllabus row now exists, so the
-    // next GET /syllabus returns 200 and sets syllabusContent, which renders
-    // .syllabus-content.  Allow 12 s (3 poll intervals) to absorb jitter.
+    // next GET /syllabus returns 200 and calls renderAsciidoc() which sets
+    // syllabusHtml, revealing .syllabus-content > .syllabus-rendered.
+    // Allow 12 s (3 poll intervals) to absorb jitter.
+    //
+    // REQ-FECOURSE-629 / REQ-FECONTENT-225: the rendered container is
+    // .syllabus-rendered (v-html="syllabusHtml"), NOT the old .syllabus-text
+    // pre (which was a raw-text block).
 
     await expect(
       page.locator('.syllabus-content'),
-      '.syllabus-content must appear automatically after seedSyllabus (polling)'
+      '.syllabus-content wrapper must appear automatically after seedSyllabus (polling)'
     ).toBeVisible({ timeout: 12_000 })
 
-    // Verify the seeded content is rendered inside the syllabus content area.
     await expect(
-      page.locator('.syllabus-content'),
-      'syllabus-content must contain the seeded AsciiDoc text'
-    ).toContainText('[SEED] Test Syllabus', { timeout: 5_000 })
+      page.locator('.syllabus-rendered'),
+      '.syllabus-rendered container must be visible once AsciiDoc is rendered'
+    ).toBeVisible({ timeout: 5_000 })
+
+    // REQ-FECOURSE-629 / REQ-FECONTENT-225: AsciiDoc "== Week 1" must produce
+    // an <h2> DOM element inside .syllabus-rendered — not the raw text "== Week 1".
+    // Asciidoctor wraps sections in <div class="sect1"><h2>...</h2>...</div>.
+    await expect(
+      page.locator('.syllabus-rendered h2').first(),
+      '.syllabus-rendered must contain at least one h2 element from the == section heading'
+    ).toBeVisible({ timeout: 5_000 })
+
+    // The raw AsciiDoc markup must NOT appear as visible text.
+    // If Asciidoctor ran, "== Week 1" is in an h2, not as literal "==" text.
+    await expect(
+      page.locator('.syllabus-rendered'),
+      'raw "== Week 1" AsciiDoc markup must not be visible as text (must be rendered to h2)'
+    ).not.toContainText('== Week 1')
 
     // Assert the drafting indicator is gone once content is available.
     await expect(

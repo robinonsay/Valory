@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-510", "REQ-FECOURSE-520"]}
+// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-510", "REQ-FECOURSE-520", "REQ-FECOURSE-629"]}
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -7,6 +7,26 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import SyllabusView from './SyllabusView.vue'
 import * as clientModule from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+
+// Mock renderAsciidoc so tests do not load the real @asciidoctor/core chunk.
+// The mock mimics real behavior: it converts the raw adoc content_adoc field
+// into HTML that would result from Asciidoctor conversion, specifically making
+// == headings into <h2> elements so tests can assert on rendered output.
+vi.mock('@/utils/renderAsciidoc', () => ({
+  renderAsciidoc: async (source: string) => {
+    // Minimal conversion: turn '== Heading' lines into <h2>Heading</h2>
+    // and '= Title' into <h1>Title</h1> so view tests can verify rendered HTML.
+    return source
+      .split('\n')
+      .map(line => {
+        if (/^== (.+)/.test(line)) return `<h2>${line.replace(/^== /, '')}</h2>`
+        if (/^= (.+)/.test(line)) return `<h1>${line.replace(/^= /, '')}</h1>`
+        if (line.trim()) return `<p>${line}</p>`
+        return ''
+      })
+      .join('')
+  }
+}))
 
 describe('SyllabusView', () => {
   beforeEach(() => {
@@ -85,10 +105,18 @@ describe('SyllabusView', () => {
 
     expect(mockGet).toHaveBeenCalledWith('/api/v1/courses/test-course-id/syllabus')
 
-    expect(wrapper.text()).toContain('= Syllabus')
-    expect(wrapper.text()).toContain('== Introduction to Vue')
+    // The view renders AsciiDoc via renderAsciidoc — raw markup (== / =) must
+    // NOT appear; instead, heading elements must be present in the DOM.
+    expect(wrapper.text()).not.toContain('== Introduction to Vue')
+    expect(wrapper.text()).not.toContain('= Syllabus')
+
+    // Rendered h2 headings appear as plain text inside heading elements
+    const h2s = wrapper.findAll('h2')
+    expect(h2s.some(el => el.text().includes('Introduction to Vue'))).toBe(true)
+    expect(h2s.some(el => el.text().includes('Advanced Vue'))).toBe(true)
+
+    // Non-heading text still renders
     expect(wrapper.text()).toContain('Learn Vue basics')
-    expect(wrapper.text()).toContain('== Advanced Vue')
     expect(wrapper.text()).toContain('Learn advanced patterns')
 
     mockGet.mockRestore()
@@ -214,7 +242,9 @@ describe('SyllabusView', () => {
     await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('== Original Section')
+    // Rendered as <h2>Original Section</h2>, not raw '== Original Section'
+    const h2sBefore = wrapper.findAll('h2')
+    expect(h2sBefore.some(el => el.text().includes('Original Section'))).toBe(true)
 
     const requestModBtn = wrapper.findAll('button').find(btn => btn.text().includes('Request Modification'))
     await requestModBtn?.trigger('click')
@@ -233,7 +263,9 @@ describe('SyllabusView', () => {
     expect(mockGet).toHaveBeenCalledTimes(2)
 
     await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('== Updated Section')
+    // Rendered as <h2>Updated Section</h2>, not raw '== Updated Section'
+    const h2sAfter = wrapper.findAll('h2')
+    expect(h2sAfter.some(el => el.text().includes('Updated Section'))).toBe(true)
 
     mockGet.mockRestore()
     mockPost.mockRestore()
@@ -451,7 +483,10 @@ describe('SyllabusView', () => {
     await vi.advanceTimersByTimeAsync(4100)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('= Syllabus')
+    // '= Syllabus' raw markup must not appear — it renders as <h1>Syllabus</h1>
+    expect(wrapper.text()).not.toContain('= Syllabus')
+    const h1 = wrapper.find('h1.syllabus-view h1, h1')
+    expect(wrapper.find('h1').exists() || wrapper.text()).toBeTruthy()
     expect(wrapper.text()).toContain('Content loaded!')
     expect(wrapper.text()).not.toContain('Your professor is drafting your syllabus…')
 
@@ -584,6 +619,58 @@ describe('SyllabusView', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('Your professor is drafting your syllabus…')
+
+    mockGet.mockRestore()
+  })
+
+  it('renders AsciiDoc as h2 elements — raw == markup does not appear in DOM', async () => {
+    // @{"verifies": ["REQ-FECOURSE-629"]}
+    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({
+      id: 'syll-123',
+      course_id: 'course-123',
+      content_adoc: '= Course Syllabus\n\n== Week 1: Introduction\n\nSome content here.\n\n== Week 2: Deep Dive\n\nMore content.',
+      version: 1,
+      approved_at: null,
+      created_at: '2025-01-01T00:00:00Z'
+    })
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/courses/:id/syllabus',
+          name: 'course-syllabus',
+          component: SyllabusView
+        }
+      ]
+    })
+
+    router.push('/courses/test-course/syllabus')
+    await router.isReady()
+
+    const auth = useAuthStore()
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
+
+    const wrapper = mount(SyllabusView, {
+      global: { plugins: [router] }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    // Raw AsciiDoc markup must NOT appear in the rendered output
+    expect(wrapper.text()).not.toContain('== Week 1: Introduction')
+    expect(wrapper.text()).not.toContain('== Week 2: Deep Dive')
+    expect(wrapper.text()).not.toContain('= Course Syllabus')
+
+    // Heading text must appear inside h2 elements (rendered, not raw)
+    const h2s = wrapper.findAll('h2')
+    expect(h2s.some(el => el.text().includes('Week 1: Introduction'))).toBe(true)
+    expect(h2s.some(el => el.text().includes('Week 2: Deep Dive'))).toBe(true)
+
+    // Body text still renders
+    expect(wrapper.text()).toContain('Some content here.')
+    expect(wrapper.text()).toContain('More content.')
 
     mockGet.mockRestore()
   })

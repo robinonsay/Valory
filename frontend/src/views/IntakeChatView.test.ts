@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-040", "REQ-FECOURSE-041", "REQ-FECOURSE-042", "REQ-FECOURSE-043", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-400", "REQ-FECOURSE-410", "REQ-FECOURSE-420"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-270"]}
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -35,6 +35,16 @@ function makeRouter(courseId = 'course-42') {
         path: '/courses/:id/syllabus',
         name: 'course-syllabus',
         component: { template: '<div></div>' }
+      },
+      {
+        path: '/courses/:id',
+        name: 'course-hub',
+        component: { template: '<div></div>' }
+      },
+      {
+        path: '/courses',
+        name: 'courses',
+        component: { template: '<div></div>' }
       }
     ]
   })
@@ -68,67 +78,105 @@ describe('IntakeChatView', () => {
     vi.restoreAllMocks()
   })
 
-  // 1. Connects to SSE on mount with correct URL including course ID
-  it('connects to SSE on mount with URL containing the course ID', async () => {
+  // 1. Loads chat history on mount
+  // @{"verifies": ["REQ-FECOURSE-026", "REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
+  it('loads and renders chat history on mount', async () => {
+    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'assistant',
+          content: 'Welcome to the intake!',
+          created_at: '2026-06-12T10:00:00Z'
+        },
+        {
+          id: 'msg-2',
+          role: 'student',
+          content: 'I want to learn about AI.',
+          created_at: '2026-06-12T10:00:05Z'
+        }
+      ]
+    })
+
+    const { wrapper } = await mountView('course-42')
+    // Wait for the onMounted hook to complete and for history to load
+    await new Promise(resolve => setTimeout(resolve, 10))
+    await wrapper.vm.$nextTick()
+
+    expect(mockGet).toHaveBeenCalledWith(
+      '/api/v1/courses/course-42/chat/history',
+      'test-token'
+    )
+    expect(wrapper.text()).toContain('Welcome to the intake!')
+    expect(wrapper.text()).toContain('I want to learn about AI.')
+  })
+
+  // 2. Handles empty history gracefully
+  // @{"verifies": ["REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
+  it('handles empty history response without error', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+
+    const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.chat-container').exists()).toBe(true)
+  })
+
+  // 3. Continues on history fetch failure
+  // @{"verifies": ["REQ-FECOURSE-260"]}
+  it('continues rendering even if history fetch fails', async () => {
+    vi.spyOn(clientModule, 'get').mockRejectedValue(
+      new clientModule.ApiError(500, { error: 'server error' })
+    )
+
+    const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.chat-container').exists()).toBe(true)
+  })
+
+  // 4. Connects to SSE on mount
+  // @{"verifies": ["REQ-FECOURSE-020", "REQ-FECOURSE-200"]}
+  it('connects to SSE on mount with correct URL and token', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     await mountView('course-42')
 
-    expect(capturedSSEUrl).toContain('course-42')
     expect(capturedSSEUrl).toBe('/api/v1/courses/course-42/events')
     expect(capturedSSEOptions?.token).toBe('test-token')
   })
 
-  // 2. SSE message event appends to messages array
-  it('appends a message to the list when SSE message event arrives', async () => {
+  // 5. Send button POSTs to correct endpoint and appends reply
+  // @{"verifies": ["REQ-FECOURSE-022", "REQ-FECOURSE-220", "REQ-FECOURSE-224"]}
+  it('POSTs message and appends reply from response body', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({
+      reply: "Great choice! What's your experience level?",
+      course_status: 'intake'
+    })
+
     const { wrapper } = await mountView('course-42')
-
-    capturedSSEOptions!.onEvent(
-      'message',
-      JSON.stringify({ role: 'agent', content: 'Hello student!' }),
-      ''
-    )
-
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('Hello student!')
-  })
-
-  // 3. SSE status_change event with syllabus_draft navigates to syllabus route
-  it('navigates to /courses/:id/syllabus on status_change syllabus_draft event', async () => {
-    const { wrapper, router } = await mountView('course-42')
-    const pushSpy = vi.spyOn(router, 'push')
-
-    capturedSSEOptions!.onEvent(
-      'status_change',
-      JSON.stringify({ status: 'syllabus_draft' }),
-      ''
-    )
-
-    await wrapper.vm.$nextTick()
-
-    expect(pushSpy).toHaveBeenCalledWith('/courses/course-42/syllabus')
-  })
-
-  // 4. Send button POSTs to correct endpoint
-  it('POSTs to /api/v1/courses/:id/chat when Send is clicked', async () => {
-    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({})
-    const { wrapper } = await mountView('course-42')
-
-    await wrapper.find('.chat-input').setValue('What is this course about?')
+    await wrapper.find('.chat-input').setValue('I want to learn Python.')
     await wrapper.find('.send-button').trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/courses/course-42/chat',
-      { message: 'What is this course about?' },
+      { message: 'I want to learn Python.' },
       'test-token'
     )
+    expect(wrapper.text()).toContain("Great choice! What's your experience level?")
   })
 
-  // 5. User message added optimistically to messages before response
-  it('optimistically adds the user message before the POST resolves', async () => {
-    // Keep the POST pending so we can inspect the DOM before it resolves.
+  // 6. User message added optimistically
+  // @{"verifies": ["REQ-FECOURSE-223"]}
+  it('optimistically adds the user message before POST resolves', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     vi.spyOn(clientModule, 'post').mockImplementation(() => new Promise(() => {}))
+
     const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
 
     await wrapper.find('.chat-input').setValue('My optimistic message')
     await wrapper.find('.send-button').trigger('click')
@@ -137,8 +185,154 @@ describe('IntakeChatView', () => {
     expect(wrapper.text()).toContain('My optimistic message')
   })
 
-  // 6. SSE close() called on unmount
+  // 7. Shows typing indicator while sending
+  // @{"verifies": ["REQ-FECOURSE-222"]}
+  it('displays typing indicator while POST is in flight', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    vi.spyOn(clientModule, 'post').mockImplementation(() => new Promise(() => {}))
+
+    const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.chat-input').setValue('Pending message')
+    await wrapper.find('.send-button').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const typingIndicators = wrapper.findAll('.typing-indicator')
+    expect(typingIndicators.length).toBeGreaterThan(0)
+  })
+
+  // 8. Disables input while sending
+  // @{"verifies": ["REQ-FECOURSE-221"]}
+  it('disables input while POST is in flight', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    vi.spyOn(clientModule, 'post').mockImplementation(() => new Promise(() => {}))
+
+    const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('.chat-input')
+    const button = wrapper.find('.send-button')
+
+    expect(input.attributes('disabled')).toBeUndefined()
+    expect(button.attributes('disabled')).toBeUndefined()
+
+    await input.setValue('Message')
+    await button.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(input.attributes('disabled')).toBeDefined()
+    expect(button.attributes('disabled')).toBeDefined()
+  })
+
+  // 9. Shows error message on POST failure
+  // @{"verifies": ["REQ-FECOURSE-225"]}
+  it('displays error message when POST fails and does not remove optimistic message', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    vi.spyOn(clientModule, 'post').mockRejectedValue(
+      new clientModule.ApiError(500, { error: 'server error' })
+    )
+
+    const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.chat-input').setValue('Failed message')
+    await wrapper.find('.send-button').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Failed to send message')
+    expect(wrapper.text()).toContain('Failed message')
+  })
+
+  // 10. Clears error message on dismiss
+  // @{"verifies": ["REQ-FECOURSE-225"]}
+  it('dismisses error message when dismiss button is clicked', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    vi.spyOn(clientModule, 'post').mockRejectedValue(
+      new clientModule.ApiError(500, { error: 'server error' })
+    )
+
+    const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.chat-input').setValue('Failed message')
+    await wrapper.find('.send-button').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Failed to send message')
+
+    await wrapper.find('.error-dismiss').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).not.toContain('Failed to send message')
+  })
+
+  // 11. Redirects on POST course_status change
+  // @{"verifies": ["REQ-FECOURSE-024"]}
+  it('redirects to syllabus when POST returns course_status syllabus_draft', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    vi.spyOn(clientModule, 'post').mockResolvedValue({
+      reply: 'INTAKE_COMPLETE',
+      course_status: 'syllabus_draft'
+    })
+
+    const { wrapper, router } = await mountView('course-42')
+    const replaceSpy = vi.spyOn(router, 'replace')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.chat-input').setValue('Final answer')
+    await wrapper.find('.send-button').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(replaceSpy).toHaveBeenCalledWith('/courses/course-42/syllabus')
+  })
+
+  // 12. Parses SSE envelope correctly and redirects on status_change
+  // @{"verifies": ["REQ-FECOURSE-024"]}
+  it('parses SSE envelope and redirects on status_change event', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const { wrapper, router } = await mountView('course-42')
+    const replaceSpy = vi.spyOn(router, 'replace')
+
+    const envelope = {
+      id: 'evt-1',
+      agent_run_id: 'run-1',
+      event_type: 'status_change',
+      payload: { status: 'syllabus_draft' },
+      emitted_at: '2026-06-12T10:00:10Z'
+    }
+
+    capturedSSEOptions!.onEvent('status_change', JSON.stringify(envelope), '')
+    await wrapper.vm.$nextTick()
+
+    expect(replaceSpy).toHaveBeenCalledWith('/courses/course-42/syllabus')
+  })
+
+  // 13. Redirects to correct route per status_change status
+  // @{"verifies": ["REQ-FECOURSE-024"]}
+  it('redirects to appropriate route based on status_change payload', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const { wrapper, router } = await mountView('course-42')
+    const replaceSpy = vi.spyOn(router, 'replace')
+
+    const envelope = {
+      id: 'evt-1',
+      agent_run_id: 'run-1',
+      event_type: 'status_change',
+      payload: { status: 'active' },
+      emitted_at: '2026-06-12T10:00:10Z'
+    }
+
+    capturedSSEOptions!.onEvent('status_change', JSON.stringify(envelope), '')
+    await wrapper.vm.$nextTick()
+
+    expect(replaceSpy).toHaveBeenCalledWith('/courses/course-42')
+  })
+
+  // 14. SSE close() called on unmount
+  // @{"verifies": ["REQ-FECOURSE-073", "REQ-FECOURSE-730"]}
   it('calls sse.close() when the component is unmounted', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     const { wrapper } = await mountView('course-42')
 
     wrapper.unmount()
@@ -146,12 +340,14 @@ describe('IntakeChatView', () => {
     expect(mockSSEClose).toHaveBeenCalledOnce()
   })
 
-  // 7. SSE error shows "Connection lost" message
+  // 15. SSE error shows "Connection lost" message
+  // @{"verifies": ["REQ-FECOURSE-025"]}
   it('shows "Connection lost. Please refresh the page." when SSE onError fires', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     const { wrapper } = await mountView('course-42')
+    await wrapper.vm.$nextTick()
 
     capturedSSEOptions!.onError!(new Error('network failure'))
-
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('Connection lost. Please refresh the page.')

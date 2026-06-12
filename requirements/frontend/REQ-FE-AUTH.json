@@ -73,7 +73,9 @@
       "REQ-FEAUTH-036",
       "REQ-FEAUTH-037",
       "REQ-FEAUTH-038",
-      "REQ-FEAUTH-039"
+      "REQ-FEAUTH-039",
+      "REQ-FEAUTH-056",
+      "REQ-FEAUTH-057"
     ]
   },
   {
@@ -132,7 +134,9 @@
     "description": "The auth frontend module shall render a login form with username field, password field, and submit button.",
     "rationale": "The backend login endpoint requires both username and password; the form must expose both inputs to the user.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-100",
       "REQ-FEAUTH-101",
@@ -145,7 +149,9 @@
     "description": "The auth frontend module shall submit the user's credentials when the login form is submitted.",
     "rationale": "Submitting credentials to the correct endpoint is the entry point for the authentication flow.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-103",
       "REQ-FEAUTH-104",
@@ -158,7 +164,9 @@
     "description": "The auth frontend module shall store the session credentials received after a successful login.",
     "rationale": "Storing the token in memory rather than localStorage reduces XSS token-theft risk while keeping the session usable.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-106",
       "REQ-FEAUTH-107"
@@ -170,7 +178,9 @@
     "description": "The auth frontend module shall redirect students to /dashboard and admins to /admin after successful login.",
     "rationale": "Each role has a distinct landing page; routing users to the wrong page wastes time and exposes unintended UI.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-109",
       "REQ-FEAUTH-110"
@@ -182,7 +192,9 @@
     "description": "The auth frontend module shall display an inline error and preserve the username field on a 401 login response.",
     "rationale": "Users who mistype a password should not have to retype their username; the inline error targets the credential mistake precisely.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-111",
       "REQ-FEAUTH-112"
@@ -194,7 +206,9 @@
     "description": "The auth frontend module shall display a server-unreachable error message when the login request fails due to a network error.",
     "rationale": "A blank or frozen form gives users no actionable information; a clear error message prompts them to retry.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-113"
     ]
@@ -205,7 +219,9 @@
     "description": "The auth frontend module shall disable the submit button while a login request is pending.",
     "rationale": "Disabling the button prevents duplicate submissions that would generate redundant sessions.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-114"
     ]
@@ -216,7 +232,9 @@
     "description": "The auth frontend module shall prevent login form submission when either the username or password field is empty.",
     "rationale": "Submitting empty credentials would produce a 400 from the server; client-side validation avoids a needless round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-116"
     ]
@@ -227,7 +245,9 @@
     "description": "The auth frontend module shall display a generic error message on a 500 login response.",
     "rationale": "Server errors should surface to the user so they know the failure is not due to their input and can retry later.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-117"
     ]
@@ -238,7 +258,9 @@
     "description": "The auth frontend module shall render a logout button in the navigation bar for authenticated users.",
     "rationale": "The logout action must be consistently reachable from any page so users can end sessions without navigating away.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-002"],
+    "uses": [
+      "REQ-FEAUTH-002"
+    ],
     "implements": [
       "REQ-FEAUTH-118"
     ]
@@ -249,7 +271,9 @@
     "description": "The auth frontend module shall send a logout request to the server when the user logs out.",
     "rationale": "The server must invalidate the session token; a client-side-only logout leaves the token valid and reusable.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-002"],
+    "uses": [
+      "REQ-FEAUTH-002"
+    ],
     "implements": [
       "REQ-FEAUTH-119",
       "REQ-FEAUTH-120"
@@ -261,7 +285,9 @@
     "description": "The auth frontend module shall clear the stored authorization credentials and anti-CSRF state after a successful logout response.",
     "rationale": "Residual auth state after logout would allow subsequent requests to succeed under the former session.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-002"],
+    "uses": [
+      "REQ-FEAUTH-002"
+    ],
     "implements": [
       "REQ-FEAUTH-121",
       "REQ-FEAUTH-122"
@@ -273,7 +299,9 @@
     "description": "The auth frontend module shall redirect to /login after clearing auth state on successful logout.",
     "rationale": "After logout the user is unauthenticated; remaining on a protected page would trigger a redirect anyway, so redirecting immediately gives a clean experience.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-002"],
+    "uses": [
+      "REQ-FEAUTH-002"
+    ],
     "implements": [
       "REQ-FEAUTH-123"
     ]
@@ -284,7 +312,9 @@
     "description": "The auth frontend module shall render a password reset request form with a username field and submit button.",
     "rationale": "Users who cannot log in need a dedicated form to initiate a reset; it must require only their username.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-003"],
+    "uses": [
+      "REQ-FEAUTH-003"
+    ],
     "implements": [
       "REQ-FEAUTH-124",
       "REQ-FEAUTH-125"
@@ -296,7 +326,9 @@
     "description": "The auth frontend module shall submit the username to initiate a password reset on form submission.",
     "rationale": "The backend requires a POST to the request endpoint with the username to initiate the reset flow.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-003"],
+    "uses": [
+      "REQ-FEAUTH-003"
+    ],
     "implements": [
       "REQ-FEAUTH-126",
       "REQ-FEAUTH-127"
@@ -308,7 +340,9 @@
     "description": "The auth frontend module shall display a neutral confirmation message on any 2xx reset request response.",
     "rationale": "Revealing whether an account exists would allow username enumeration; the same message must appear regardless of account existence.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-003"],
+    "uses": [
+      "REQ-FEAUTH-003"
+    ],
     "implements": [
       "REQ-FEAUTH-128",
       "REQ-FEAUTH-129"
@@ -320,7 +354,9 @@
     "description": "The auth frontend module shall display a rate-limit error message on a 429 reset request response.",
     "rationale": "Users need to know they must wait before retrying, preventing them from submitting the form repeatedly.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-003"],
+    "uses": [
+      "REQ-FEAUTH-003"
+    ],
     "implements": [
       "REQ-FEAUTH-130"
     ]
@@ -331,7 +367,9 @@
     "description": "The auth frontend module shall prevent reset request submission when the username field is empty.",
     "rationale": "Submitting an empty username produces a 400 from the server; client-side validation avoids a needless round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-003"],
+    "uses": [
+      "REQ-FEAUTH-003"
+    ],
     "implements": [
       "REQ-FEAUTH-131"
     ]
@@ -342,7 +380,9 @@
     "description": "The auth frontend module shall render a reset confirm form with a token field and a new password field.",
     "rationale": "The confirm endpoint requires both a token and a new password; the form must expose both inputs.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-004"],
+    "uses": [
+      "REQ-FEAUTH-004"
+    ],
     "implements": [
       "REQ-FEAUTH-132",
       "REQ-FEAUTH-133",
@@ -355,7 +395,9 @@
     "description": "The auth frontend module shall pre-fill the token field from the token query parameter on page load.",
     "rationale": "Users clicking a reset link expect the token to be applied automatically; requiring manual entry creates friction and errors.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-004"],
+    "uses": [
+      "REQ-FEAUTH-004"
+    ],
     "implements": [
       "REQ-FEAUTH-135"
     ]
@@ -366,7 +408,9 @@
     "description": "The auth frontend module shall submit the reset token and new password on confirm form submission.",
     "rationale": "The backend confirm endpoint requires both fields; sending the correct payload is necessary for the reset to succeed.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-004"],
+    "uses": [
+      "REQ-FEAUTH-004"
+    ],
     "implements": [
       "REQ-FEAUTH-136",
       "REQ-FEAUTH-137"
@@ -378,7 +422,9 @@
     "description": "The auth frontend module shall redirect to /login with a success banner on a 204 confirm response.",
     "rationale": "After a successful reset the user must log in with their new password; a success banner confirms the change was applied.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-004"],
+    "uses": [
+      "REQ-FEAUTH-004"
+    ],
     "implements": [
       "REQ-FEAUTH-138",
       "REQ-FEAUTH-139"
@@ -390,7 +436,9 @@
     "description": "The auth frontend module shall display an invalid-or-expired error on a 400 confirm response.",
     "rationale": "A 400 from the confirm endpoint means the token is invalid or expired; the user needs a specific message to initiate a new reset.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-004"],
+    "uses": [
+      "REQ-FEAUTH-004"
+    ],
     "implements": [
       "REQ-FEAUTH-140"
     ]
@@ -401,7 +449,9 @@
     "description": "The auth frontend module shall prevent confirm form submission when the token or new password field is empty.",
     "rationale": "Submitting empty fields produces a 400 from the server; client-side validation avoids a needless round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-004"],
+    "uses": [
+      "REQ-FEAUTH-004"
+    ],
     "implements": [
       "REQ-FEAUTH-141"
     ]
@@ -412,7 +462,9 @@
     "description": "The auth frontend module shall display AI processing consent text and an accept button on the consent screen.",
     "rationale": "Students must be presented with the consent text before accepting; an accept button without text would not constitute informed consent.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-005"],
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
     "implements": [
       "REQ-FEAUTH-142",
       "REQ-FEAUTH-143"
@@ -424,7 +476,9 @@
     "description": "The auth frontend module shall send a consent acceptance request when the accept button is activated.",
     "rationale": "The consent endpoint is authenticated and CSRF-protected; omitting either header results in a 401 or 403 rejection.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-005"],
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
     "implements": [
       "REQ-FEAUTH-144",
       "REQ-FEAUTH-145",
@@ -434,10 +488,12 @@
   {
     "id": "REQ-FEAUTH-036",
     "title": "Consent Success Redirect",
-    "description": "The auth frontend module shall redirect to /dashboard after a 204 consent response.",
-    "rationale": "Once consent is recorded the student is cleared to use the platform and should land on their dashboard.",
+    "description": "The auth frontend module shall redirect to /courses after a 204 consent response.",
+    "rationale": "Once consent is recorded the student is cleared to use the platform and the student landing is the courses list.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-005"],
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
     "implements": [
       "REQ-FEAUTH-147"
     ]
@@ -448,7 +504,9 @@
     "description": "The auth frontend module shall redirect students without recorded consent to /consent on protected routes.",
     "rationale": "Allowing unconsented students to access other routes would bypass the legal and ethical consent requirement.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-005"],
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
     "implements": [
       "REQ-FEAUTH-148"
     ]
@@ -459,7 +517,9 @@
     "description": "The auth frontend module shall include a non-empty version identifier in the consent acceptance request.",
     "rationale": "The backend requires a version field; omitting it produces a 400 and the consent is not recorded.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-005"],
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
     "implements": [
       "REQ-FEAUTH-149"
     ]
@@ -470,7 +530,9 @@
     "description": "The auth frontend module shall display a generic error when the consent acceptance request fails.",
     "rationale": "A server error during consent recording means the student has not been cleared; they must not be silently redirected to the dashboard.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-005"],
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
     "implements": [
       "REQ-FEAUTH-150"
     ]
@@ -481,7 +543,9 @@
     "description": "The auth frontend module shall redirect unauthenticated users to /login when accessing any protected route.",
     "rationale": "Unauthenticated users have no valid session; allowing them to reach protected pages exposes content they are not authorized to see.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-006"],
+    "uses": [
+      "REQ-FEAUTH-006"
+    ],
     "implements": [
       "REQ-FEAUTH-151",
       "REQ-FEAUTH-152"
@@ -493,7 +557,9 @@
     "description": "The auth frontend module shall redirect students accessing admin routes to /dashboard.",
     "rationale": "Admin routes expose user management controls that students must not access.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-006"],
+    "uses": [
+      "REQ-FEAUTH-006"
+    ],
     "implements": [
       "REQ-FEAUTH-153"
     ]
@@ -504,7 +570,9 @@
     "description": "The auth frontend module shall redirect admins accessing student routes to /admin.",
     "rationale": "Student routes are scoped to individual learner data; admins should use the admin interface instead.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-006"],
+    "uses": [
+      "REQ-FEAUTH-006"
+    ],
     "implements": [
       "REQ-FEAUTH-154"
     ]
@@ -515,7 +583,9 @@
     "description": "The auth frontend module shall clear stored auth credentials on any expired-session API response.",
     "rationale": "A 401 on a protected route means the session has expired or been revoked; retaining stale auth state would cause further failures.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-006"],
+    "uses": [
+      "REQ-FEAUTH-006"
+    ],
     "implements": [
       "REQ-FEAUTH-155"
     ]
@@ -526,7 +596,9 @@
     "description": "The auth frontend module shall attach an authorization credential to every outgoing API request.",
     "rationale": "The backend rejects protected requests without a valid Authorization header; every request must carry the token.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-007"],
+    "uses": [
+      "REQ-FEAUTH-007"
+    ],
     "implements": [
       "REQ-FEAUTH-157"
     ]
@@ -537,7 +609,9 @@
     "description": "The auth frontend module shall store the session token exclusively in memory, not in browser storage.",
     "rationale": "Storing tokens in Web Storage exposes them to XSS attacks; memory storage limits the token's accessibility to the current page context.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-007"],
+    "uses": [
+      "REQ-FEAUTH-007"
+    ],
     "implements": [
       "REQ-FEAUTH-158"
     ]
@@ -548,7 +622,9 @@
     "description": "The auth frontend module shall remove the in-memory session token when the user logs out.",
     "rationale": "Residual in-memory token after logout would allow subsequent API calls to succeed under a terminated session.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-007"],
+    "uses": [
+      "REQ-FEAUTH-007"
+    ],
     "implements": [
       "REQ-FEAUTH-159"
     ]
@@ -559,7 +635,9 @@
     "description": "The auth frontend module shall read the CSRF value from the designated cookie after login.",
     "rationale": "The backend sets the CSRF token in the __Host-csrf cookie; reading the wrong cookie name yields an empty or incorrect value.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-008"],
+    "uses": [
+      "REQ-FEAUTH-008"
+    ],
     "implements": [
       "REQ-FEAUTH-160"
     ]
@@ -570,7 +648,9 @@
     "description": "The auth frontend module shall include the anti-CSRF credential on every state-changing request.",
     "rationale": "The backend CSRF middleware rejects any state-changing request that lacks a matching X-CSRF-Token header with a 403.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-008"],
+    "uses": [
+      "REQ-FEAUTH-008"
+    ],
     "implements": [
       "REQ-FEAUTH-161",
       "REQ-FEAUTH-162"
@@ -582,7 +662,9 @@
     "description": "The auth frontend module shall set the anti-CSRF credential to match the stored anti-CSRF value exactly.",
     "rationale": "The backend performs a byte-for-byte comparison of the cookie value and the header; any discrepancy returns a 403.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-008"],
+    "uses": [
+      "REQ-FEAUTH-008"
+    ],
     "implements": [
       "REQ-FEAUTH-163"
     ]
@@ -593,7 +675,9 @@
     "description": "The auth frontend module shall clear the stored anti-CSRF credential when the user logs out.",
     "rationale": "Retaining the CSRF token after logout could allow it to be submitted on subsequent unauthenticated requests.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-008"],
+    "uses": [
+      "REQ-FEAUTH-008"
+    ],
     "implements": [
       "REQ-FEAUTH-164"
     ]
@@ -604,7 +688,9 @@
     "description": "The auth frontend module shall display a visible loading indicator when any async API call is pending.",
     "rationale": "Users need visual feedback that the system is processing their action so they do not interpret a delay as inactivity.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-009"],
+    "uses": [
+      "REQ-FEAUTH-009"
+    ],
     "implements": [
       "REQ-FEAUTH-165"
     ]
@@ -615,7 +701,9 @@
     "description": "The auth frontend module shall hide the loading indicator once an API call resolves or rejects.",
     "rationale": "A persistent loading indicator after a completed request misleads the user into thinking the operation is still running.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-009"],
+    "uses": [
+      "REQ-FEAUTH-009"
+    ],
     "implements": [
       "REQ-FEAUTH-166"
     ]
@@ -626,7 +714,9 @@
     "description": "The auth frontend module shall capture the anti-CSRF value received after a successful login.",
     "rationale": "The server sets the CSRF token on login; the client must capture it before issuing any subsequent state-changing request.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-108"
     ]
@@ -637,7 +727,9 @@
     "description": "The auth frontend module shall display a loading indicator while a login request is pending.",
     "rationale": "Visual feedback reassures the user the submission was accepted and the system is responding.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-001"],
+    "uses": [
+      "REQ-FEAUTH-001"
+    ],
     "implements": [
       "REQ-FEAUTH-115"
     ]
@@ -648,7 +740,9 @@
     "description": "The auth frontend module shall redirect to the login page after clearing expired-session credentials.",
     "rationale": "After clearing an expired session the user must re-authenticate; the login page is the correct destination.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-006"],
+    "uses": [
+      "REQ-FEAUTH-006"
+    ],
     "implements": [
       "REQ-FEAUTH-156"
     ]
@@ -659,7 +753,9 @@
     "description": "The auth frontend module shall render a text input for username on the login page.",
     "rationale": "The login endpoint requires a username; the form must expose this input for the user to enter their credentials.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-010"]
+    "uses": [
+      "REQ-FEAUTH-010"
+    ]
   },
   {
     "id": "REQ-FEAUTH-101",
@@ -667,7 +763,9 @@
     "description": "The auth frontend module shall render a password-type input for password on the login page.",
     "rationale": "Displaying the password as plain text would allow shoulder-surfing; a password-type input masks the value.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-010"]
+    "uses": [
+      "REQ-FEAUTH-010"
+    ]
   },
   {
     "id": "REQ-FEAUTH-102",
@@ -675,7 +773,9 @@
     "description": "The auth frontend module shall render a submit button on the login form.",
     "rationale": "Users need a clearly labelled action trigger to submit the login form.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-010"]
+    "uses": [
+      "REQ-FEAUTH-010"
+    ]
   },
   {
     "id": "REQ-FEAUTH-103",
@@ -683,7 +783,9 @@
     "description": "The auth frontend module shall send a POST request to /api/v1/auth/login on form submission.",
     "rationale": "The backend login handler is registered on POST /api/v1/auth/login; any other method or path returns 404 or 405.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-011"]
+    "uses": [
+      "REQ-FEAUTH-011"
+    ]
   },
   {
     "id": "REQ-FEAUTH-104",
@@ -691,7 +793,9 @@
     "description": "The auth frontend module shall send JSON body {\"username\": string, \"password\": string} in the login POST.",
     "rationale": "The backend decodes exactly those two fields; extra or missing fields cause a 400 bad request response.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-011"]
+    "uses": [
+      "REQ-FEAUTH-011"
+    ]
   },
   {
     "id": "REQ-FEAUTH-105",
@@ -699,7 +803,9 @@
     "description": "The auth frontend module shall set Content-Type: application/json on the login POST request.",
     "rationale": "The backend uses json.NewDecoder which requires the body to be valid JSON; an incorrect Content-Type can cause parsing failures.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-011"]
+    "uses": [
+      "REQ-FEAUTH-011"
+    ]
   },
   {
     "id": "REQ-FEAUTH-106",
@@ -707,7 +813,9 @@
     "description": "The auth frontend module shall extract the token field from the 200 login response body and store it in memory.",
     "rationale": "The response body contains the Bearer token under the key \"token\"; it must be stored for use on subsequent requests.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-012"]
+    "uses": [
+      "REQ-FEAUTH-012"
+    ]
   },
   {
     "id": "REQ-FEAUTH-107",
@@ -715,7 +823,9 @@
     "description": "The auth frontend module shall extract the role field from the 200 login response body and store it in memory.",
     "rationale": "The role value determines which route the user is redirected to and which UI elements are shown.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-012"]
+    "uses": [
+      "REQ-FEAUTH-012"
+    ]
   },
   {
     "id": "REQ-FEAUTH-108",
@@ -723,7 +833,9 @@
     "description": "The auth frontend module shall read the __Host-csrf cookie value and store it in memory after a 200 login response.",
     "rationale": "The server sets the CSRF cookie on login; the client must capture it before issuing any subsequent state-changing request.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-053"]
+    "uses": [
+      "REQ-FEAUTH-053"
+    ]
   },
   {
     "id": "REQ-FEAUTH-109",
@@ -731,7 +843,9 @@
     "description": "The auth frontend module shall navigate to /dashboard when the login response role equals \"student\".",
     "rationale": "Students land on their course dashboard after login; redirecting elsewhere would confuse the expected post-login flow.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-013"]
+    "uses": [
+      "REQ-FEAUTH-013"
+    ]
   },
   {
     "id": "REQ-FEAUTH-110",
@@ -739,7 +853,9 @@
     "description": "The auth frontend module shall navigate to /admin when the login response role equals \"admin\".",
     "rationale": "Admins land on the admin panel after login; redirecting to /dashboard would present a student-scoped UI to an admin.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-013"]
+    "uses": [
+      "REQ-FEAUTH-013"
+    ]
   },
   {
     "id": "REQ-FEAUTH-111",
@@ -747,7 +863,9 @@
     "description": "The auth frontend module shall display \"Invalid username or password.\" inline in the login form on a 401 response.",
     "rationale": "The exact error string must match the design specification so QA automation can assert the element text precisely.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-014"]
+    "uses": [
+      "REQ-FEAUTH-014"
+    ]
   },
   {
     "id": "REQ-FEAUTH-112",
@@ -755,7 +873,9 @@
     "description": "The auth frontend module shall retain the username field value after a 401 login response.",
     "rationale": "Clearing the username on a password error forces the user to retype information they entered correctly, creating unnecessary friction.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-014"]
+    "uses": [
+      "REQ-FEAUTH-014"
+    ]
   },
   {
     "id": "REQ-FEAUTH-113",
@@ -763,7 +883,9 @@
     "description": "The auth frontend module shall display \"Unable to reach server. Please try again.\" on a network error.",
     "rationale": "The exact string must be specified so tests can assert it; a vague message does not help users understand the failure.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-015"]
+    "uses": [
+      "REQ-FEAUTH-015"
+    ]
   },
   {
     "id": "REQ-FEAUTH-114",
@@ -771,7 +893,9 @@
     "description": "The auth frontend module shall disable the login submit button while a login request is in flight.",
     "rationale": "Allowing re-submission while a request is pending could create duplicate sessions or confuse the user with multiple error states.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-016"]
+    "uses": [
+      "REQ-FEAUTH-016"
+    ]
   },
   {
     "id": "REQ-FEAUTH-115",
@@ -779,7 +903,9 @@
     "description": "The auth frontend module shall show a loading indicator adjacent to the login form while the login request is pending.",
     "rationale": "Visual feedback reassures the user the submission was accepted and the system is responding.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-054"]
+    "uses": [
+      "REQ-FEAUTH-054"
+    ]
   },
   {
     "id": "REQ-FEAUTH-116",
@@ -787,7 +913,9 @@
     "description": "The auth frontend module shall not submit the login form when either the username or password field is empty.",
     "rationale": "An empty-field submission always fails with a 400; preventing it client-side avoids a wasted network round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-017"]
+    "uses": [
+      "REQ-FEAUTH-017"
+    ]
   },
   {
     "id": "REQ-FEAUTH-117",
@@ -795,7 +923,9 @@
     "description": "The auth frontend module shall display \"Something went wrong. Please try again later.\" on a 500 login response.",
     "rationale": "A server-error message distinct from the credential-error message prevents user confusion about whether their password is wrong.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-018"]
+    "uses": [
+      "REQ-FEAUTH-018"
+    ]
   },
   {
     "id": "REQ-FEAUTH-118",
@@ -803,7 +933,9 @@
     "description": "The auth frontend module shall render a logout button in the navigation bar when the user is authenticated.",
     "rationale": "The logout action must be visible from every authenticated page; placing it in the nav bar provides consistent access.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-019"]
+    "uses": [
+      "REQ-FEAUTH-019"
+    ]
   },
   {
     "id": "REQ-FEAUTH-119",
@@ -811,7 +943,9 @@
     "description": "The auth frontend module shall send a POST request to /api/v1/auth/logout when the logout button is activated.",
     "rationale": "The backend logout handler is registered on POST /api/v1/auth/logout; a GET or DELETE would return 405.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-020"]
+    "uses": [
+      "REQ-FEAUTH-020"
+    ]
   },
   {
     "id": "REQ-FEAUTH-120",
@@ -819,7 +953,9 @@
     "description": "The auth frontend module shall include the Authorization: Bearer <token> header in the logout POST request.",
     "rationale": "The backend extracts the token from the Authorization header to identify and invalidate the session; a missing header returns 401.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-020"]
+    "uses": [
+      "REQ-FEAUTH-020"
+    ]
   },
   {
     "id": "REQ-FEAUTH-121",
@@ -827,7 +963,9 @@
     "description": "The auth frontend module shall set the in-memory Bearer token to null after a 204 logout response.",
     "rationale": "Retaining the token after logout allows the now-invalid token to be sent on subsequent requests, which would return 401 errors.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-021"]
+    "uses": [
+      "REQ-FEAUTH-021"
+    ]
   },
   {
     "id": "REQ-FEAUTH-122",
@@ -835,7 +973,9 @@
     "description": "The auth frontend module shall set the in-memory CSRF token value to null after a 204 logout response.",
     "rationale": "The CSRF token is tied to the authenticated session; retaining it after logout could permit unintended state-changing requests.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-021"]
+    "uses": [
+      "REQ-FEAUTH-021"
+    ]
   },
   {
     "id": "REQ-FEAUTH-123",
@@ -843,7 +983,9 @@
     "description": "The auth frontend module shall navigate to /login after clearing auth state following a successful logout.",
     "rationale": "After logout the user is unauthenticated; /login is the only appropriate destination.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-022"]
+    "uses": [
+      "REQ-FEAUTH-022"
+    ]
   },
   {
     "id": "REQ-FEAUTH-124",
@@ -851,7 +993,9 @@
     "description": "The auth frontend module shall render a text input for username on the password reset request page.",
     "rationale": "The reset request endpoint requires the username field; the form must expose this input.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-023"]
+    "uses": [
+      "REQ-FEAUTH-023"
+    ]
   },
   {
     "id": "REQ-FEAUTH-125",
@@ -859,7 +1003,9 @@
     "description": "The auth frontend module shall render a submit button on the password reset request form.",
     "rationale": "Users need an explicit action trigger to submit the reset request.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-023"]
+    "uses": [
+      "REQ-FEAUTH-023"
+    ]
   },
   {
     "id": "REQ-FEAUTH-126",
@@ -867,7 +1013,9 @@
     "description": "The auth frontend module shall send a POST to /api/v1/password-reset/request on reset request form submission.",
     "rationale": "The backend password reset handler is registered on POST /api/v1/password-reset/request; any other path or method fails.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-024"]
+    "uses": [
+      "REQ-FEAUTH-024"
+    ]
   },
   {
     "id": "REQ-FEAUTH-127",
@@ -875,7 +1023,9 @@
     "description": "The auth frontend module shall send JSON body {\"username\": string} in the password reset request POST.",
     "rationale": "The backend decodes only the username field; omitting it or sending extra fields causes a 400 response.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-024"]
+    "uses": [
+      "REQ-FEAUTH-024"
+    ]
   },
   {
     "id": "REQ-FEAUTH-128",
@@ -883,7 +1033,9 @@
     "description": "The auth frontend module shall display \"If that account exists, a reset link has been sent.\" on a 204 response.",
     "rationale": "The exact neutral string must be specified to allow QA automation to assert the message without confirming account existence.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-025"]
+    "uses": [
+      "REQ-FEAUTH-025"
+    ]
   },
   {
     "id": "REQ-FEAUTH-129",
@@ -891,7 +1043,9 @@
     "description": "The auth frontend module shall display the neutral confirmation message for any 2xx reset request response.",
     "rationale": "Future server changes may return 200 with a body; the client must treat any 2xx as success to stay compatible.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-025"]
+    "uses": [
+      "REQ-FEAUTH-025"
+    ]
   },
   {
     "id": "REQ-FEAUTH-130",
@@ -899,7 +1053,9 @@
     "description": "The auth frontend module shall display \"Too many requests. Please wait before trying again.\" on a 429 response.",
     "rationale": "Users must be told explicitly to wait; a generic error would not communicate the need to delay before retrying.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-026"]
+    "uses": [
+      "REQ-FEAUTH-026"
+    ]
   },
   {
     "id": "REQ-FEAUTH-131",
@@ -907,7 +1063,9 @@
     "description": "The auth frontend module shall not submit the reset request form when the username field is empty.",
     "rationale": "An empty username always produces a 400; blocking submission client-side avoids a wasted round-trip.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-027"]
+    "uses": [
+      "REQ-FEAUTH-027"
+    ]
   },
   {
     "id": "REQ-FEAUTH-132",
@@ -915,7 +1073,9 @@
     "description": "The auth frontend module shall render a text input for the reset token on the password reset confirm page.",
     "rationale": "The confirm endpoint requires the token field; the form must expose it so users can verify or edit it.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-028"]
+    "uses": [
+      "REQ-FEAUTH-028"
+    ]
   },
   {
     "id": "REQ-FEAUTH-133",
@@ -923,7 +1083,9 @@
     "description": "The auth frontend module shall render a password-type input for the new password on the reset confirm page.",
     "rationale": "The confirm endpoint requires new_password; the input must mask the value to prevent shoulder-surfing.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-028"]
+    "uses": [
+      "REQ-FEAUTH-028"
+    ]
   },
   {
     "id": "REQ-FEAUTH-134",
@@ -931,7 +1093,9 @@
     "description": "The auth frontend module shall render a submit button on the password reset confirm form.",
     "rationale": "Users need an explicit action trigger to submit the new password.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-028"]
+    "uses": [
+      "REQ-FEAUTH-028"
+    ]
   },
   {
     "id": "REQ-FEAUTH-135",
@@ -939,7 +1103,9 @@
     "description": "The auth frontend module shall populate the token field with the token URL query parameter on page load.",
     "rationale": "Reset links include ?token=<value>; pre-filling avoids copy-paste errors and reduces friction for the user.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-029"]
+    "uses": [
+      "REQ-FEAUTH-029"
+    ]
   },
   {
     "id": "REQ-FEAUTH-136",
@@ -947,7 +1113,9 @@
     "description": "The auth frontend module shall send a POST to /api/v1/password-reset/confirm on confirm form submission.",
     "rationale": "The backend confirm handler is registered on POST /api/v1/password-reset/confirm; any other method or path fails.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-030"]
+    "uses": [
+      "REQ-FEAUTH-030"
+    ]
   },
   {
     "id": "REQ-FEAUTH-137",
@@ -955,7 +1123,9 @@
     "description": "The auth frontend module shall send JSON body {\"token\": string, \"new_password\": string} in the confirm POST.",
     "rationale": "The backend decodes exactly token and new_password; omitting or misnaming either field causes a 400 response.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-030"]
+    "uses": [
+      "REQ-FEAUTH-030"
+    ]
   },
   {
     "id": "REQ-FEAUTH-138",
@@ -963,7 +1133,9 @@
     "description": "The auth frontend module shall navigate to /login after a 204 confirm password reset response.",
     "rationale": "After a successful reset the user must log in with their new credentials; /login is the correct destination.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-031"]
+    "uses": [
+      "REQ-FEAUTH-031"
+    ]
   },
   {
     "id": "REQ-FEAUTH-139",
@@ -971,7 +1143,9 @@
     "description": "The auth frontend module shall display \"Password updated. Please log in.\" banner on the /login page after a successful reset.",
     "rationale": "The exact banner text confirms the reset completed and prompts the user to authenticate with their new password.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-031"]
+    "uses": [
+      "REQ-FEAUTH-031"
+    ]
   },
   {
     "id": "REQ-FEAUTH-140",
@@ -979,7 +1153,9 @@
     "description": "The auth frontend module shall display \"Reset link is invalid or expired.\" on a 400 confirm response.",
     "rationale": "A 400 means the token was not found or has expired; the message must direct the user to request a new link.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-032"]
+    "uses": [
+      "REQ-FEAUTH-032"
+    ]
   },
   {
     "id": "REQ-FEAUTH-141",
@@ -987,7 +1163,9 @@
     "description": "The auth frontend module shall not submit the confirm form when the token or new password field is empty.",
     "rationale": "Submitting empty fields causes a 400; blocking client-side prevents unnecessary round-trips.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-033"]
+    "uses": [
+      "REQ-FEAUTH-033"
+    ]
   },
   {
     "id": "REQ-FEAUTH-142",
@@ -995,7 +1173,9 @@
     "description": "The auth frontend module shall display AI processing consent text before the accept button on the consent screen.",
     "rationale": "Informed consent requires the user to read the terms before acting; the text must precede the accept action.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-034"]
+    "uses": [
+      "REQ-FEAUTH-034"
+    ]
   },
   {
     "id": "REQ-FEAUTH-143",
@@ -1003,7 +1183,9 @@
     "description": "The auth frontend module shall render an accept button on the consent screen.",
     "rationale": "The accept button is the user's explicit signal of consent; the system must provide a clear, single action to record it.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-034"]
+    "uses": [
+      "REQ-FEAUTH-034"
+    ]
   },
   {
     "id": "REQ-FEAUTH-144",
@@ -1011,7 +1193,9 @@
     "description": "The auth frontend module shall send a POST to /api/v1/consent when the accept button is activated.",
     "rationale": "The backend consent handler is registered on POST /api/v1/consent; any other method or path returns 404 or 405.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-035"]
+    "uses": [
+      "REQ-FEAUTH-035"
+    ]
   },
   {
     "id": "REQ-FEAUTH-145",
@@ -1019,7 +1203,9 @@
     "description": "The auth frontend module shall include Authorization: Bearer <token> in the consent POST request.",
     "rationale": "The consent endpoint is authenticated; omitting the Authorization header returns a 401 and the consent is not recorded.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-035"]
+    "uses": [
+      "REQ-FEAUTH-035"
+    ]
   },
   {
     "id": "REQ-FEAUTH-146",
@@ -1027,15 +1213,19 @@
     "description": "The auth frontend module shall include X-CSRF-Token in the consent POST request.",
     "rationale": "The consent endpoint is protected by the CSRF middleware; omitting the header causes a 403 and the consent is not recorded.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-035"]
+    "uses": [
+      "REQ-FEAUTH-035"
+    ]
   },
   {
     "id": "REQ-FEAUTH-147",
-    "title": "Consent 204 Redirect to Dashboard",
-    "description": "The auth frontend module shall navigate to /dashboard after a 204 consent response.",
-    "rationale": "A 204 confirms the consent was recorded; the student is cleared to use the platform and should land on their dashboard.",
+    "title": "Consent 204 Redirect to Courses",
+    "description": "The auth frontend module shall navigate to /courses after a 204 consent response.",
+    "rationale": "A 204 confirms the consent was recorded; the student is cleared to use the platform and the correct student landing is the courses list.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-036"]
+    "uses": [
+      "REQ-FEAUTH-036"
+    ]
   },
   {
     "id": "REQ-FEAUTH-148",
@@ -1043,7 +1233,9 @@
     "description": "The auth frontend module shall redirect a student with no recorded consent to /consent on any non-consent protected route.",
     "rationale": "The consent gate must be enforced before the student can reach any platform content requiring AI processing consent.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-037"]
+    "uses": [
+      "REQ-FEAUTH-037"
+    ]
   },
   {
     "id": "REQ-FEAUTH-149",
@@ -1051,7 +1243,9 @@
     "description": "The auth frontend module shall send JSON body {\"version\": string} with a non-empty version in the consent POST.",
     "rationale": "The backend rejects a consent POST with an empty or absent version field with a 400, leaving the student blocked at the consent gate.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-038"]
+    "uses": [
+      "REQ-FEAUTH-038"
+    ]
   },
   {
     "id": "REQ-FEAUTH-150",
@@ -1059,7 +1253,9 @@
     "description": "The auth frontend module shall display \"Something went wrong. Please try again.\" on a 500 consent response.",
     "rationale": "A server error means consent was not recorded; the student must not be silently redirected as if consent had succeeded.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-039"]
+    "uses": [
+      "REQ-FEAUTH-039"
+    ]
   },
   {
     "id": "REQ-FEAUTH-151",
@@ -1067,7 +1263,9 @@
     "description": "The auth frontend module shall evaluate whether a Bearer token is present before rendering any protected route.",
     "rationale": "Without checking for a token the router cannot distinguish authenticated from unauthenticated users.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-040"]
+    "uses": [
+      "REQ-FEAUTH-040"
+    ]
   },
   {
     "id": "REQ-FEAUTH-152",
@@ -1075,7 +1273,9 @@
     "description": "The auth frontend module shall redirect to /login when no Bearer token is present and a protected route is requested.",
     "rationale": "/login is the only publicly accessible authentication entry point; all unauthenticated users must be directed there.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-040"]
+    "uses": [
+      "REQ-FEAUTH-040"
+    ]
   },
   {
     "id": "REQ-FEAUTH-153",
@@ -1083,7 +1283,9 @@
     "description": "The auth frontend module shall redirect to /dashboard when a user with role student requests an admin route.",
     "rationale": "Admin routes expose controls that students are not authorized to see; redirecting to /dashboard keeps them in their permitted area.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-041"]
+    "uses": [
+      "REQ-FEAUTH-041"
+    ]
   },
   {
     "id": "REQ-FEAUTH-154",
@@ -1091,7 +1293,9 @@
     "description": "The auth frontend module shall redirect to /admin when a user with role admin requests a student route.",
     "rationale": "Student routes are scoped to learner data; admins operating there would interact with the wrong interface.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-042"]
+    "uses": [
+      "REQ-FEAUTH-042"
+    ]
   },
   {
     "id": "REQ-FEAUTH-155",
@@ -1099,7 +1303,9 @@
     "description": "The auth frontend module shall clear the in-memory Bearer token and CSRF token on any 401 API response.",
     "rationale": "A 401 means the session is no longer valid; retaining stale credentials would cause every subsequent request to fail with 401.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-043"]
+    "uses": [
+      "REQ-FEAUTH-043"
+    ]
   },
   {
     "id": "REQ-FEAUTH-156",
@@ -1107,7 +1313,9 @@
     "description": "The auth frontend module shall navigate to /login after clearing auth state on a 401 API response.",
     "rationale": "After clearing an expired session the user must re-authenticate; /login is the correct destination.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-055"]
+    "uses": [
+      "REQ-FEAUTH-055"
+    ]
   },
   {
     "id": "REQ-FEAUTH-157",
@@ -1115,7 +1323,9 @@
     "description": "The auth frontend module shall set Authorization: Bearer <token> on every HTTP request made by the API client.",
     "rationale": "The backend requires a valid Authorization header on all protected endpoints; failing to include it on any request returns 401.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-044"]
+    "uses": [
+      "REQ-FEAUTH-044"
+    ]
   },
   {
     "id": "REQ-FEAUTH-158",
@@ -1123,7 +1333,9 @@
     "description": "The auth frontend module shall not write the Bearer token to localStorage or sessionStorage at any point.",
     "rationale": "Tokens in Web Storage are accessible to any same-origin script, making them vulnerable to XSS exfiltration.",
     "verification_method": "Inspection",
-    "uses": ["REQ-FEAUTH-045"]
+    "uses": [
+      "REQ-FEAUTH-045"
+    ]
   },
   {
     "id": "REQ-FEAUTH-159",
@@ -1131,7 +1343,9 @@
     "description": "The auth frontend module shall nullify the in-memory token variable upon a successful logout response.",
     "rationale": "A non-null token after logout would be sent on any subsequent request, returning 401 until the page is refreshed.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-046"]
+    "uses": [
+      "REQ-FEAUTH-046"
+    ]
   },
   {
     "id": "REQ-FEAUTH-160",
@@ -1139,7 +1353,9 @@
     "description": "The auth frontend module shall read the CSRF token from the cookie named __Host-csrf after a successful login.",
     "rationale": "The backend sets the cookie with the exact name __Host-csrf; reading any other name yields an undefined or wrong value.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-047"]
+    "uses": [
+      "REQ-FEAUTH-047"
+    ]
   },
   {
     "id": "REQ-FEAUTH-161",
@@ -1147,7 +1363,9 @@
     "description": "The auth frontend module shall include the X-CSRF-Token header on every POST request.",
     "rationale": "The backend CSRF middleware validates this header on all non-safe HTTP methods; omitting it on POST returns 403.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-048"]
+    "uses": [
+      "REQ-FEAUTH-048"
+    ]
   },
   {
     "id": "REQ-FEAUTH-162",
@@ -1155,7 +1373,9 @@
     "description": "The auth frontend module shall include the X-CSRF-Token header on every PATCH, DELETE, and PUT request.",
     "rationale": "The CSRF middleware applies to all state-changing methods; PATCH, DELETE, and PUT must carry the header or receive a 403.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-048"]
+    "uses": [
+      "REQ-FEAUTH-048"
+    ]
   },
   {
     "id": "REQ-FEAUTH-163",
@@ -1163,7 +1383,9 @@
     "description": "The auth frontend module shall set X-CSRF-Token to the exact string value read from the __Host-csrf cookie.",
     "rationale": "The backend performs a constant-time byte comparison of the header and cookie; any deviation results in a 403.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-049"]
+    "uses": [
+      "REQ-FEAUTH-049"
+    ]
   },
   {
     "id": "REQ-FEAUTH-164",
@@ -1171,7 +1393,9 @@
     "description": "The auth frontend module shall set the in-memory CSRF token variable to null on a successful logout.",
     "rationale": "The CSRF token is bound to the authenticated session; clearing it prevents stale values from being sent after logout.",
     "verification_method": "Test",
-    "uses": ["REQ-FEAUTH-050"]
+    "uses": [
+      "REQ-FEAUTH-050"
+    ]
   },
   {
     "id": "REQ-FEAUTH-165",
@@ -1179,7 +1403,9 @@
     "description": "The auth frontend module shall make a loading indicator visible before an API response is received.",
     "rationale": "Users must see feedback immediately after triggering an action; a delay before showing the indicator is indistinguishable from no feedback.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-051"]
+    "uses": [
+      "REQ-FEAUTH-051"
+    ]
   },
   {
     "id": "REQ-FEAUTH-166",
@@ -1187,6 +1413,54 @@
     "description": "The auth frontend module shall hide the loading indicator immediately after an API call resolves or rejects.",
     "rationale": "A loading indicator that persists after the operation ends misleads the user and blocks interaction with the form.",
     "verification_method": "Demonstration",
-    "uses": ["REQ-FEAUTH-052"]
+    "uses": [
+      "REQ-FEAUTH-052"
+    ]
+  },
+  {
+    "id": "REQ-FEAUTH-056",
+    "title": "Consent Statement Full Text or Link",
+    "description": "The auth frontend module shall show the full AI-processing consent statement before the accept button.",
+    "rationale": "A single generic sentence is not an informed consent statement. The student must be able to read the complete terms governing AI data processing before accepting; a summary does not satisfy the informed-consent requirement.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
+    "implements": [
+      "REQ-FEAUTH-167"
+    ]
+  },
+  {
+    "id": "REQ-FEAUTH-057",
+    "title": "Consent Statement Version Display",
+    "description": "The auth frontend module shall display the version identifier of the AI-processing consent statement.",
+    "rationale": "Without a visible version identifier, the student cannot confirm which statement they are accepting, and the backend's version-based audit trail cannot be corroborated by the student after the fact.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEAUTH-005"
+    ],
+    "implements": [
+      "REQ-FEAUTH-168"
+    ]
+  },
+  {
+    "id": "REQ-FEAUTH-167",
+    "title": "Consent Statement Accessible Before Accept",
+    "description": "The auth frontend module shall make the full consent statement text readable without activating the accept button.",
+    "rationale": "The accept button must follow the statement, not precede it; a student must be able to read the terms before the accept action is available.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEAUTH-056"
+    ]
+  },
+  {
+    "id": "REQ-FEAUTH-168",
+    "title": "Consent Version Label Matches Submitted Version",
+    "description": "The auth frontend module shall submit the consent version displayed to the user when recording consent acceptance.",
+    "rationale": "The backend records the version string at acceptance time. If the submitted version differs from the version the student viewed, the recorded consent does not correspond to the document reviewed, making the audit trail unreliable.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEAUTH-057"
+    ]
   }
 ]

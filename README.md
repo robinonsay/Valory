@@ -135,6 +135,23 @@ docker compose up
 # generated automatically, so accept the browser's certificate warning.
 ```
 
+### Demo Accounts
+
+The local demo environment uses the following accounts. They are also the
+defaults the Playwright e2e suite logs in with (overridable via
+`E2E_ADMIN_USER`/`E2E_ADMIN_PASS` and `E2E_STUDENT_USER`/`E2E_STUDENT_PASS`).
+
+| Role | Username | Password |
+|---|---|---|
+| Admin | `admin` | `ValoryDemo!2026` |
+| Student | `demo_student` | `StudentDemo!2026` |
+
+On a fresh install these accounts do not exist yet — create the admin account
+first, then use the admin UI (**Users → Create**) to add student accounts.
+
+> **Note:** These are local demo credentials only. Change them before exposing
+> the application anywhere beyond your own machine.
+
 ---
 
 ## Content Library

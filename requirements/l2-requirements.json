@@ -548,5 +548,45 @@
     "description": "The agent module shall mark all in-progress agent runs as failed upon service startup.",
     "rationale": "A server crash leaves runs in an active state permanently; without recovery the student's course generation stalls indefinitely.",
     "verification_method": "Test"
+  },
+  {
+    "id": "REQ-AGENT-017",
+    "title": "Chat History Endpoint Owner Restriction",
+    "description": "The agent module shall reject chat history requests for a course not owned by the authenticated student.",
+    "rationale": "Chat messages contain the student's personal intake responses and learning dialogue; any student must be able to retrieve only their own history, never another student's.",
+    "verification_method": "Test",
+    "uses": ["REQ-SECURITY-002", "REQ-AGENT-015"]
+  },
+  {
+    "id": "REQ-AGENT-018",
+    "title": "Opening Intake Message on Course Creation",
+    "description": "The agent module shall send the first intake question to the student when a course enters intake status.",
+    "rationale": "Without a proactive opening message the student sees an empty chat on first load and has no prompt to begin the intake conversation, blocking the entire course-creation flow.",
+    "verification_method": "Test",
+    "uses": ["REQ-AGENT-001"]
+  },
+  {
+    "id": "REQ-AGENT-019",
+    "title": "Intake Completion Triggers Syllabus Draft Status",
+    "description": "The agent module shall transition a course to syllabus_draft status when the agent determines intake is complete.",
+    "rationale": "When the Chair agent has gathered sufficient intake information, the course must advance to syllabus_draft so syllabus generation can begin. Without this transition, the course remains in intake indefinitely.",
+    "verification_method": "Test",
+    "uses": ["REQ-AGENT-001", "REQ-AGENT-006"]
+  },
+  {
+    "id": "REQ-AGENT-020",
+    "title": "Syllabus Generation Triggered on Intake Completion",
+    "description": "The agent module shall begin syllabus generation immediately after the course status transitions from intake to syllabus_draft.",
+    "rationale": "Intake completion and syllabus generation are disconnected steps with no wiring between them; without this trigger, intake completion produces no course artefact and the student's workflow stalls at intake permanently.",
+    "verification_method": "Test",
+    "uses": ["REQ-AGENT-001", "REQ-AGENT-003", "REQ-AGENT-019"]
+  },
+  {
+    "id": "REQ-AGENT-021",
+    "title": "Status Transition Emitted as Pipeline Event",
+    "description": "The agent module shall emit a pipeline event with the new course status whenever a course status changes.",
+    "rationale": "The frontend relies on SSE status_change events to navigate the student to the correct view after each lifecycle transition; without this emission the frontend cannot detect that intake has completed.",
+    "verification_method": "Test",
+    "uses": ["REQ-AGENT-006", "REQ-AGENT-019"]
   }
 ]

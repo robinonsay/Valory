@@ -1,8 +1,10 @@
 package course
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,15 +15,37 @@ import (
 	"github.com/valory/valory/internal/auth"
 )
 
+// IntakeStarter is a narrow interface for triggering the opening intake question
+// after a course is created. Defined here (consumer side) so the course package
+// does not import the agent package — cmd/server/main.go satisfies it with
+// *agent.Chair.
+//
+// @{"req": ["REQ-AGENT-018"]}
+type IntakeStarter interface {
+	// StartIntake fires the opening intake question for a newly created course
+	// asynchronously. The implementation must be safe to call from a goroutine.
+	StartIntake(ctx context.Context, courseID, studentID uuid.UUID)
+}
+
 // @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
 type CourseHandler struct {
-	svc  *CourseService
-	repo *CourseRepository
+	svc           *CourseService
+	repo          *CourseRepository
+	intakeStarter IntakeStarter // nil when not wired (tests, admin paths)
 }
 
 // @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
 func NewHandler(svc *CourseService) *CourseHandler {
 	return &CourseHandler{svc: svc, repo: svc.repo}
+}
+
+// SetIntakeStarter injects the kickoff trigger after the handler is constructed.
+// Called from cmd/server/main.go after both course and agent modules are wired
+// so that neither package imports the other.
+//
+// @{"req": ["REQ-AGENT-018"]}
+func (h *CourseHandler) SetIntakeStarter(s IntakeStarter) {
+	h.intakeStarter = s
 }
 
 // @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
@@ -38,7 +62,7 @@ func (h *CourseHandler) Routes(r chi.Router) {
 	r.Post("/{id}/schedule/agree", h.agreeToSchedule)
 }
 
-// @{"req": ["REQ-COURSE-001"]}
+// @{"req": ["REQ-COURSE-001", "REQ-AGENT-018"]}
 func (h *CourseHandler) createCourse(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 
@@ -71,6 +95,21 @@ func (h *CourseHandler) createCourse(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
+	}
+
+	// Trigger the opening intake question asynchronously so the POST /courses
+	// response remains fast (REQ-AGENT-018). A background context is used so
+	// the goroutine is not cancelled when the HTTP response is sent. Failure
+	// here is non-fatal: the lazy-retry in GET /chat/history will re-trigger
+	// the kickoff when the student first loads the chat view.
+	if h.intakeStarter != nil {
+		cID := course.ID
+		sID := userID
+		go func() {
+			h.intakeStarter.StartIntake(context.Background(), cID, sID)
+		}()
+	} else {
+		log.Printf("course: createCourse: intakeStarter not wired for course %s", course.ID)
 	}
 
 	resp := courseToResponse(course)

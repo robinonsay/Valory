@@ -1,0 +1,457 @@
+= Intake Chat Wiring Design
+:revdate: 2026-06-12
+:toc:
+:toclevels: 3
+
+== Overview
+
+This document specifies the contracts that wire the Chair agent's intake flow
+into the HTTP layer, the SSE event stream, and the Vue.js frontend. It was
+written to resolve four root causes found during Sprint 10 live-demo triage:
+
+. `handler.go chat()` calls `chair.Chat()` (the generic post-intake path)
+  instead of the intake-aware `RunIntakeStep()`. The INTAKE_COMPLETE sentinel
+  is therefore never detected, the course status never transitions, and the
+  frontend never redirects.
+. There is no `GET /api/v1/courses/{id}/chat/history` endpoint; the frontend
+  has no way to restore conversation state on page load or refresh.
+. The SSE envelope written by `streamEvents` wraps the full row as the `data`
+  field, but the frontend expects to read `event_type`-specific fields directly
+  from `data`. The actual shape must be documented precisely so the frontend
+  can be corrected.
+. The opening intake question is never sent before the student types; the
+  student sees a blank chat pane.
+
+PM-approved decisions in scope:
+
+* The `POST /chat` endpoint remains synchronous (one HTTP round-trip per
+  student turn, reply in the response body). No streaming response.
+* Course creation triggers one asynchronous Claude call to generate the
+  opening intake question so that the `POST /api/v1/courses` response remains
+  fast.
+
+== Requirements in Scope
+
+REQ-AGENT-001, REQ-AGENT-006, REQ-AGENT-015, REQ-COURSE-001, REQ-USER-007
+
+== Course Status Values
+
+The following status values exist on the `courses.status` column, established
+by the Go source (`internal/course/service.go`, `internal/course/repository.go`)
+and the migration schema:
+
+`intake`::
+  Course has been created. Intake questionnaire is in progress.
+
+`syllabus_draft`::
+  Intake is complete. A syllabus has been generated and is awaiting student
+  review or modification.
+
+`syllabus_approved`::
+  Student has approved the syllabus. Content generation has not yet started or
+  is in progress.
+
+`generating`::
+  Content generation is actively running. (This value appears in the allowed-
+  from list for the Withdraw transition but is not explicitly set by runner.go
+  before calling `generateAllSections`. See Open Questions.)
+
+`active`::
+  All sections have been generated and reviewed. The course is fully active.
+
+`archived`::
+  Student withdrew from the course. Can be resumed.
+
+The frontend redirect decision during intake is driven by departure from
+`intake` status. Any status value that is not `intake` means the intake phase
+is complete; the exact target route per post-intake status is specified in the
+Frontend Behavior Contract section.
+
+== Data Model
+
+No new tables are introduced. All data required by this design exists in the
+current schema:
+
+`chat_messages (id, course_id, role, content, created_at)`::
+  Written by `chair.go` via `chatRepo.InsertMessage`. Used by the history
+  endpoint. The `role` column is a PostgreSQL enum with values `student` and
+  `assistant`.
+
+`courses (id, student_id, topic, status, ...)`::
+  Status transitions driven by the intake sentinel detection. The server-role
+  pool connection pattern from `runner.go` is reused.
+
+`pipeline_events (id, agent_run_id, event_type, payload, emitted_at)`::
+  The `status_change` event will be emitted into this table after a sentinel-
+  driven status transition. The `event_type` column is the existing
+  `pipeline_event_type` enum; `status_change` must be added as a new enum
+  value in a migration (see Migration Plan).
+
+`agent_runs (id, course_id, run_type, status, ...)`::
+  An agent run of type `intake` must be created to hold the `status_change`
+  event, because `pipeline_events` references `agent_runs(id)`.
+
+=== Migration Plan
+
+One additive migration is required:
+
+[source,sql]
+----
+-- Add status_change to the pipeline_event_type enum.
+-- ALTER TYPE ... ADD VALUE is safe: it does not lock existing rows and
+-- does not require a rollback path because ENUM values cannot be removed
+-- without a multi-step migration.
+ALTER TYPE pipeline_event_type ADD VALUE IF NOT EXISTS 'status_change';
+
+-- Add intake_question_sent flag to courses to support idempotent kickoff.
+ALTER TABLE courses
+    ADD COLUMN IF NOT EXISTS intake_kickoff_sent BOOLEAN NOT NULL DEFAULT FALSE;
+----
+
+Rollback: the `intake_kickoff_sent` column can be dropped with
+`ALTER TABLE courses DROP COLUMN intake_kickoff_sent` if the migration needs
+to be reversed. The enum value cannot be removed without a full enum rebuild;
+if rollback of the enum value is required, coordinate with the DBA.
+
+== API Contract
+
+=== GET /api/v1/courses/{id}/chat/history
+
+Returns the full chat history for the course, ordered ascending by
+`created_at`. The endpoint is owner-only: the same ownership check used by
+`handler.go courseOwnedBy()` applies.
+
+Mount point: same router group as the existing `POST /chat` and `GET /events`,
+i.e. `r.Get("/chat/history", h.chatHistory)` inside `AgentHandler.Routes`.
+
+==== Request
+
+No body. Authentication via `Authorization: Bearer <token>` header.
+
+==== Response 200
+
+[source,json]
+----
+{
+  "messages": [
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "role": "assistant",
+      "content": "Welcome! I am the University Chair at Valory...",
+      "created_at": "2026-06-12T10:00:00.000000Z"
+    },
+    {
+      "id": "7b1d1c2e-3f4a-4b5c-9d0e-1f2a3b4c5d6e",
+      "role": "student",
+      "content": "I want to learn about distributed systems.",
+      "created_at": "2026-06-12T10:00:05.123456Z"
+    }
+  ]
+}
+----
+
+IMPORTANT: The `messages` field MUST be serialised as an empty JSON array
+(`[]`) when there are no rows, not as JSON `null`. This matches the JSON
+marshalling convention for slices in Go: the handler must initialise the slice
+as `messages := make([]ChatMessageResponse, 0)` before scanning rows so that
+`json.Marshal` produces `[]` rather than `null`. This was a Sprint 10
+production bug class.
+
+Field definitions:
+
+`id`:: UUID string. Primary key of the `chat_messages` row.
+`role`:: String. Either `"student"` or `"assistant"`.
+`content`:: String. Raw text content of the message.
+`created_at`:: RFC 3339 timestamp with microsecond precision, UTC.
+
+The `role` value `"assistant"` is used in the API response regardless of the
+`chat_role` enum value stored in the database (`assistant`). The database enum
+value `student` maps to `"student"` in the API response.
+
+==== Response 401
+
+[source,json]
+----
+{ "error": "UNAUTHORIZED", "message": "unauthorized" }
+----
+
+==== Response 403
+
+[source,json]
+----
+{ "error": "FORBIDDEN", "message": "course not found" }
+----
+
+==== Response 400
+
+[source,json]
+----
+{ "error": "BAD_REQUEST", "message": "invalid course id" }
+----
+
+=== POST /api/v1/courses/{id}/chat
+
+Appends a student message and returns the assistant reply. This endpoint is
+SYNCHRONOUS: the Claude API call is made within the request handler and the
+reply is returned in the HTTP response body. No streaming.
+
+This endpoint must route through the intake-aware code path when the course
+status is `intake`, and through the generic `chair.Chat()` path when the
+status is anything else.
+
+==== Request
+
+[source,json]
+----
+{ "message": "Intermediate level. My goal is to understand consensus algorithms." }
+----
+
+`message`:: Required. Non-empty string. Rejected with 400 if absent or
+whitespace-only.
+
+Maximum body size: 8 KiB (already enforced by `http.MaxBytesReader`).
+
+==== Response 200
+
+[source,json]
+----
+{
+  "reply": "Great, thank you. How many hours per week can you dedicate to study?",
+  "course_status": "intake"
+}
+----
+
+`reply`:: String. The assistant's reply text. The INTAKE_COMPLETE sentinel
+string (`"INTAKE_COMPLETE"`) MUST be stripped from the reply before it is
+returned. Students must never see the sentinel.
+
+`course_status`:: String. The `courses.status` value after this turn. During
+intake turns that do not trigger completion this will be `"intake"`. On the
+turn that triggers completion it will be `"syllabus_draft"` (because the
+handler transitions the course status synchronously before returning). The
+frontend uses this field to decide whether to redirect.
+
+==== Intake-Aware Handler Logic
+
+The handler must:
+
+. Resolve course status using the server-role connection (same pattern as
+  `chair.courseTopic`): `SELECT status FROM courses WHERE id = $1`.
+. If status is `intake`: call `chair.RunIntakeStep(ctx, courseID, studentID)`.
+  The student message has already been appended to `chat_messages` inside
+  `RunIntakeStep` (as `"student"` role) before the Claude call, consistent
+  with the existing `chat.Chat()` flow.
+. If status is not `intake`: call `chair.Chat(ctx, courseID, studentID,
+  message)` as today.
+. After `RunIntakeStep` returns `done = true`:
+.. Strip the sentinel from the reply text using `strings.ReplaceAll(reply,
+   "INTAKE_COMPLETE", "")` followed by `strings.TrimSpace`.
+.. Transition `courses.status` from `intake` to `syllabus_draft` via a server-
+   role connection (`UPDATE courses SET status = 'syllabus_draft', updated_at =
+   now() WHERE id = $1 AND status = 'intake'`).
+.. Create an `agent_runs` row of type `intake` (or reuse the run created for
+   the kickoff — see Kickoff section) to hold the event.
+.. Emit a `status_change` pipeline event via `agentRepo.EmitEvent` with the
+   payload `{"status": "syllabus_draft"}`.
+.. Trigger `chair.GenerateSyllabus` asynchronously in a goroutine with a
+   background context (not the request context, which will be cancelled when
+   the HTTP response is sent). Use a server-role connection acquired before
+   launching the goroutine, consistent with `runner.go pollAndGenerate`.
+.. Return `{"reply": "<stripped reply>", "course_status": "syllabus_draft"}`.
+. On any error from `RunIntakeStep` or `chat.Chat`: return 500.
+
+==== Response 400
+
+[source,json]
+----
+{ "error": "BAD_REQUEST", "message": "message is required" }
+----
+
+==== Response 401 / 403
+
+Same shapes as the history endpoint.
+
+==== Response 500
+
+[source,json]
+----
+{ "error": "INTERNAL_ERROR", "message": "internal server error" }
+----
+
+=== POST /api/v1/courses (course creation kickoff — no new endpoint)
+
+No new HTTP endpoint is added for the opening question. When `course.Service
+CreateCourse` returns successfully, the course handler dispatches a goroutine
+that calls `chair.RunIntakeStep` for the new course. The goroutine uses a
+server-role connection.
+
+The course handler already exists in `internal/course/handler.go`. It must
+be given a reference to `*agent.Chair` (or a narrow interface exposing
+`RunIntakeStep`) so it can trigger the kickoff. This creates a dependency from
+the course handler on the agent package; see the Cross-Module Dependencies
+section.
+
+Kickoff idempotency is enforced by the `intake_kickoff_sent` boolean column
+added in the migration above. The goroutine sets
+`intake_kickoff_sent = true` in the same atomic operation as inserting the
+opening message, using an UPDATE with `WHERE intake_kickoff_sent = false`.
+If the row was already set (e.g. a server restart replayed the goroutine),
+the UPDATE affects zero rows and the goroutine exits without a duplicate
+message.
+
+Failure mode: if the kickoff goroutine fails (Claude API error, DB error),
+the course remains in `intake` status and `intake_kickoff_sent` stays `false`.
+On the student's first `GET /chat/history` call, the handler checks whether
+`intake_kickoff_sent` is false and, if so, retries the kickoff synchronously
+before returning the history. This guarantees that by the time the student
+sees the history endpoint response, at least one opening message is present —
+or an error is returned and the frontend displays a retry prompt.
+
+Justification for this approach over alternatives: retrying on history fetch
+is preferable to a polling loop because the history endpoint is the first thing
+the frontend calls on mount. Checking the flag there is a single DB read with
+no extra roundtrip in the happy path.
+
+== SSE Contract
+
+=== Actual Envelope Shape
+
+The `streamEvents` handler in `handler.go` writes each pipeline event as:
+
+----
+event: <event_type>
+data: <JSON object>
+
+----
+
+The JSON object in `data` is:
+
+[source,json]
+----
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "agent_run_id": "9b1d1c2e-3f4a-4b5c-9d0e-1f2a3b4c5d6e",
+  "event_type": "status_change",
+  "payload": { "status": "syllabus_draft" },
+  "emitted_at": "2026-06-12T10:00:06.000000Z"
+}
+----
+
+The `event:` line carries the event type string (used by the frontend `onEvent`
+handler as the `eventType` argument). The `data:` line is the full envelope
+object. Event-specific information is inside `data.payload`, not at the top
+level of `data`.
+
+The current frontend code parses `data` directly for `status` and `content`
+fields, which will never be found because those fields are inside `payload`.
+The frontend must be corrected to read `parsed.payload.status` and
+`parsed.payload.content` respectively.
+
+=== status_change Event
+
+Emitted after a course status transition driven by intake completion or any
+other server-initiated status change in scope for this sprint.
+
+SSE line format:
+----
+event: status_change
+data: {"id":"<uuid>","agent_run_id":"<uuid>","event_type":"status_change","payload":{"status":"syllabus_draft"},"emitted_at":"<rfc3339>"}
+
+----
+
+Payload fields:
+
+`status`:: String. The new `courses.status` value after the transition. For
+intake completion this will be `"syllabus_draft"`.
+
+=== Existing Event Types Emitted by runner.go
+
+The following event type strings are emitted by `agentRepo.EmitEvent` in the
+current codebase. The frontend may receive any of these on the SSE stream for
+a course; it should handle unknown event types gracefully (ignore them).
+
+`generation_started`:: Content generation pipeline has begun for the course.
+`section_generating`:: A section is being generated. Payload: `{section_index, title}`.
+`section_review_passed`:: A section passed reviewer checks. Payload: `{section_index, content_id}`.
+`section_review_failed`:: A section failed reviewer checks. Payload: `{section_index, feedback}`.
+`correction_escalated`:: Correction loop hit max iterations. Payload: `{content_id, iterations, feedback}`.
+`generation_complete`:: All sections generated successfully. Payload: `{course_id}`.
+`generation_timeout`:: Content generation exceeded the configured timeout. Payload: `{course_id}`.
+`api_failure`:: Anthropic API call failed with a non-retryable error. Payload: `{course_id, error}`.
+`section_regen_started`:: A section regeneration job has begun. Payload: `{section_index, feedback_id}`.
+`section_regen_complete`:: A section regeneration job completed. Payload: `{section_index}`.
+
+New in this sprint:
+
+`status_change`:: A course status transition occurred. Payload: `{"status": "<new_status>"}`.
+
+include::15-intake-chat-frontend.adoc[]
+
+== Cross-Module Dependencies
+
+This design introduces one new dependency:
+
+`internal/course` -> `internal/agent`::
+  RESOLVED IN IMPLEMENTATION: to avoid a circular import, the course module
+  defines a consumer-side `IntakeStarter` interface (no import of the agent
+  package); `Chair.StartIntake` satisfies it and is injected post-construction
+  via `courseHandler.SetIntakeStarter(chair)` in `cmd/server/main.go`. The
+  handler is nil-safe so course-module tests run without the agent wiring.
+
+`internal/agent/handler.go` needs access to course status::
+  The intake-aware chat handler must read `courses.status`. It can use the
+  existing server-pool pattern from `chair.courseTopic` (same file, same
+  connection pattern) without adding a new dependency on the course package.
+
+== Alternatives Considered
+
+Streaming (SSE) chat reply::
+  PM decision: synchronous POST. Avoids the complexity of half-duplex SSE
+  state management in the frontend and is sufficient for intake turn latency.
+
+Polling for opening message::
+  Rejected in favour of the "retry on first history fetch" approach. Polling
+  would require the frontend to implement a retry loop with a backoff, adding
+  complexity for a one-time operation.
+
+Separate `intake_run_id` column on courses::
+  Rejected. The existing agent_runs table with run_type `intake` is sufficient
+  to hold the `status_change` event. Adding a column would be a schema change
+  with no additional value.
+
+== Resolved Questions (Lead Decisions, Sprint 11)
+
+The four questions raised in the first draft of this document were resolved
+during implementation as follows.
+
+. *`generating` status gap:* DEFERRED. `runner.go RunContentGeneration` never
+  sets `generating` on the courses table even though Withdraw() allows
+  withdrawing from it. This predates Sprint 11 and is logged in the sprint
+  record for the PM backlog. The frontend redirect logic treats any unknown
+  non-intake status via its safe fallback route, so the gap does not affect
+  the intake flow shipped this sprint.
+
+. *agent_run row for kickoff:* RESOLVED. `kickoffIntake` idempotently creates
+  a dedicated `intake`-type `agent_runs` row when the opening question is
+  generated; `ensureIntakeRun` reuses it (or creates it on the lazy path).
+  Both the `status_change` event at intake completion and any `api_failure`
+  event from the background `GenerateSyllabus` goroutine attach to this run,
+  so intake activity is discoverable by run ID.
+
+. *Chat history endpoint RLS:* RESOLVED. The HTTP handler enforces ownership
+  on the request-scoped connection (student GUCs, `courses_student_policy`),
+  then reads history on the server pool under
+  `chat_messages_server_select_policy` (added in migration 011 — migration
+  004 only granted the server role INSERT). Reading on the server conn after
+  the ownership gate avoids GUC-lifetime races on released connections and
+  leaves no isolation gap: the read is scoped to the course already verified
+  to belong to the caller.
+
+. *Kickoff goroutine cancellation:* ACCEPTED RISK, BOUNDED. The kickoff
+  goroutine runs on a background context outside the runner registry; if the
+  student deletes their account mid-kickoff the trailing DB write fails
+  harmlessly against the deleted course row. Cost amplification from lazy
+  retries is bounded by `courses.intake_kickoff_attempts` (cap 3, claimed
+  atomically with the kickoff flag); after the cap the flag stays set and the
+  student can still initiate intake themselves via POST `/chat`, so a failed
+  kickoff never strands a course.

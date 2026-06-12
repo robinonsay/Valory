@@ -155,7 +155,7 @@ func main() {
 	// server role without needing per-call AcquireServerConn wrappers.
 	// @{"req": ["REQ-AGENT-003", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-SECURITY-002"]}
 	agentRunner := agent.NewAgentRunner(serverPool, agentRepo, chair, professor, reviewer, submissionRepo, gradeSvc, throttledClient, configSvc)
-	agentHandler := agent.NewAgentHandler(agentRunner, chair, chatRepo)
+	agentHandler := agent.NewAgentHandler(agentRunner, chair, chatRepo, agentRepo)
 
 	// Start background polling goroutines (30s gen poll, 60s feedback poll, 30s grade poll).
 	go agentRunner.Start(ctx)
@@ -175,6 +175,11 @@ func main() {
 	courseRepo := course.NewRepository(pool)
 	courseSvc := course.NewService(courseRepo)
 	courseHandler := course.NewHandler(courseSvc)
+	// Inject the intake kickoff trigger. chair satisfies course.IntakeStarter via
+	// Chair.StartIntake. SetIntakeStarter is called after both modules are wired
+	// so that neither package imports the other (no circular dependency).
+	// @{"req": ["REQ-AGENT-018"]}
+	courseHandler.SetIntakeStarter(chair)
 
 	// --- Submission handler wiring (depends on courseRepo for ownership checks) ---
 	submissionHandler := submission.NewHandler(submissionRepo, courseRepo, uploadsDir, configSvc)

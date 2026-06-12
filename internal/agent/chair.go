@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valory/valory/internal/db"
 )
@@ -234,6 +236,169 @@ func (c *Chair) courseTopic(ctx context.Context, courseID uuid.UUID) (string, er
 		return "", err
 	}
 	return topic, nil
+}
+
+// courseStatus fetches status and intake_kickoff_sent from courses using a
+// server-role connection. Used by the intake-aware chat handler to branch on
+// the current lifecycle phase without depending on the request-scoped conn.
+//
+// @{"req": ["REQ-AGENT-019"]}
+func (c *Chair) courseStatus(ctx context.Context, courseID uuid.UUID) (string, error) {
+	conn, err := db.AcquireServerConn(ctx, c.pool)
+	if err != nil {
+		return "", fmt.Errorf("chair: course status: %w", err)
+	}
+	defer conn.Release()
+	var status string
+	if err := conn.QueryRow(ctx, `SELECT status FROM courses WHERE id = $1`, courseID).Scan(&status); err != nil {
+		return "", fmt.Errorf("chair: course status: %w", err)
+	}
+	return status, nil
+}
+
+// transitionToSyllabusDraft transitions the course from intake to
+// syllabus_draft using a server-role connection. The WHERE clause guards
+// against double-transition: if the status has already moved on (e.g. a
+// concurrent request), the UPDATE affects zero rows, which is safe.
+//
+// @{"req": ["REQ-AGENT-019"]}
+func (c *Chair) transitionToSyllabusDraft(ctx context.Context, courseID uuid.UUID) error {
+	conn, err := db.AcquireServerConn(ctx, c.pool)
+	if err != nil {
+		return fmt.Errorf("chair: transition syllabus_draft: %w", err)
+	}
+	defer conn.Release()
+	_, err = conn.Exec(ctx,
+		`UPDATE courses SET status = 'syllabus_draft', updated_at = now() WHERE id = $1 AND status = 'intake'`,
+		courseID,
+	)
+	return err
+}
+
+// updateLastAssistantMessage overwrites the content of the most recently
+// inserted assistant message for the course. This is called after sentinel
+// stripping so the history stored in chat_messages never contains the raw
+// INTAKE_COMPLETE marker.
+//
+// @{"req": ["REQ-AGENT-019"]}
+func (c *Chair) updateLastAssistantMessage(ctx context.Context, courseID uuid.UUID, newContent string) error {
+	conn, err := db.AcquireServerConn(ctx, c.pool)
+	if err != nil {
+		return fmt.Errorf("chair: update last assistant message: %w", err)
+	}
+	defer conn.Release()
+	// ORDER BY created_at DESC, id DESC: the secondary id sort is the tiebreaker
+	// for concurrent inserts that land in the same timestamp bucket. Without it,
+	// two rows with identical created_at could produce non-deterministic selection
+	// and overwrite the wrong message.
+	_, err = conn.Exec(ctx,
+		`UPDATE chat_messages SET content = $1
+		 WHERE id = (
+		     SELECT id FROM chat_messages
+		     WHERE course_id = $2 AND role = 'assistant'
+		     ORDER BY created_at DESC, id DESC LIMIT 1
+		 )`,
+		newContent, courseID,
+	)
+	return err
+}
+
+// StartIntake satisfies the course.IntakeStarter interface. It calls
+// kickoffIntake (the idempotent atomic gate) and logs any error so the course
+// creation path remains fast. The goroutine is launched by the caller
+// (CourseHandler.createCourse); this method executes synchronously within it.
+//
+// @{"req": ["REQ-AGENT-018"]}
+func (c *Chair) StartIntake(ctx context.Context, courseID, studentID uuid.UUID) {
+	if err := c.kickoffIntake(ctx, courseID, studentID); err != nil {
+		log.Printf("chair: StartIntake for course %s: %v", courseID, err)
+	}
+}
+
+// kickoffIntake sends the opening intake question for a newly created course.
+// It is idempotent: the UPDATE ... WHERE intake_kickoff_sent = false acts as
+// an atomic gate — if two goroutines race here only one will see rowsAffected=1
+// and proceed to call RunIntakeStep. The other will see 0 rows and exit
+// cleanly.
+//
+// Attempt cap: the UPDATE atomically increments intake_kickoff_attempts so
+// that N concurrent lazy-retries from the history endpoint cannot each fire
+// their own Claude call. On RunIntakeStep failure the gate is reset
+// (intake_kickoff_sent = false) only when attempts < 3. At attempts >= 3,
+// intake_kickoff_sent is left true permanently so no further retries fire.
+// This is safe because the student can still type in the chat box, triggering
+// POST /chat which calls RunIntakeStep directly — a failed kickoff never
+// bricks the course.
+//
+// @{"req": ["REQ-AGENT-018"]}
+func (c *Chair) kickoffIntake(ctx context.Context, courseID, studentID uuid.UUID) error {
+	// Atomically claim the right to send the opening question AND increment the
+	// attempt counter. The single UPDATE prevents TOCTOU between the attempt read
+	// and the flag set — both happen in one statement that only fires when
+	// intake_kickoff_sent = false.
+	conn, err := db.AcquireServerConn(ctx, c.pool)
+	if err != nil {
+		return fmt.Errorf("chair: kickoff intake: acquire conn: %w", err)
+	}
+	var attempts int
+	err = conn.QueryRow(ctx,
+		`UPDATE courses
+		    SET intake_kickoff_sent = true,
+		        intake_kickoff_attempts = intake_kickoff_attempts + 1
+		  WHERE id = $1 AND intake_kickoff_sent = false
+		  RETURNING intake_kickoff_attempts`,
+		courseID,
+	).Scan(&attempts)
+	conn.Release()
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Another goroutine or a previous boot already sent the opening question.
+			return nil
+		}
+		return fmt.Errorf("chair: kickoff intake: mark sent: %w", err)
+	}
+
+	// Create an intake agent_run to anchor pipeline events for this lifecycle.
+	run, err := c.agentRepo.CreateRun(ctx, courseID, "intake")
+	if err != nil {
+		// Non-fatal for the kickoff itself, but log so operators can diagnose
+		// missing pipeline events if the event emission below also fails.
+		log.Printf("chair: kickoff intake: create agent run: %v", err)
+	}
+
+	_, _, err = c.RunIntakeStep(ctx, courseID, studentID)
+	if err != nil {
+		// The kickoff failed. Reset intake_kickoff_sent only when attempts < 3
+		// so the lazy-retry in the history endpoint can try again next load.
+		// At attempts >= 3 we leave intake_kickoff_sent=true: the student can
+		// still initiate intake via POST /chat, so the course is not bricked.
+		const maxKickoffAttempts = 3
+		if attempts < maxKickoffAttempts {
+			resetConn, resetErr := db.AcquireServerConn(ctx, c.pool)
+			if resetErr == nil {
+				if _, execErr := resetConn.Exec(ctx,
+					`UPDATE courses SET intake_kickoff_sent = false WHERE id = $1`,
+					courseID,
+				); execErr != nil {
+					log.Printf("chair: kickoff intake: reset kickoff_sent flag: %v", execErr)
+				}
+				resetConn.Release()
+			}
+		} else {
+			log.Printf("chair: kickoff intake: giving up after %d attempts for course %s — student can still initiate via POST /chat", attempts, courseID)
+		}
+		return fmt.Errorf("chair: kickoff intake: %w", err)
+	}
+
+	// Mark the intake run completed; it remains as the anchor for future
+	// status_change events emitted when the sentinel is detected.
+	if run.ID != (uuid.UUID{}) {
+		if err := c.agentRepo.SetRunStatus(ctx, run.ID, "completed", nil); err != nil {
+			log.Printf("chair: kickoff intake: set run status completed: %v", err)
+		}
+	}
+
+	return nil
 }
 
 // buildMessages converts ChatMessageRow history to Anthropic MessageParam slice.

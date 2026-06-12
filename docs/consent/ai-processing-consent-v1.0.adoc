@@ -1,0 +1,141 @@
+= Valory — AI Processing Consent Statement
+:version: 1.0
+:revdate: 2026-06-12
+:toc:
+:toclevels: 2
+
+== About This Document
+
+This statement explains what personal data the Valory AI professor system
+collects, how that data is processed by an external AI service, how activity
+is recorded, and what rights you have over your data. By clicking "I agree"
+in the Valory application, you record your consent to the practices described
+here. Your consent is stored with this document version (1.0) and a UTC
+timestamp.
+
+== What Data Valory Holds About You
+
+Valory stores the following categories of data linked to your account:
+
+Account data::
+  Your username, hashed password, and role (student or admin).
+
+Course information::
+  The topic you chose to study, the current status of your course, and
+  timestamps showing when the course was created and last updated.
+
+Intake chat messages::
+  Every message you send during the intake questionnaire, and every reply
+  the assistant sends, stored in the `chat_messages` table with your course
+  identifier and a creation timestamp.
+
+Active-course chat messages::
+  Messages you send and assistant replies received while your course is in
+  the active phase, stored in the same `chat_messages` table.
+
+Homework submissions::
+  Files you upload as homework answers, stored on the server filesystem
+  under a path recorded in the `submissions` table, together with the
+  submission timestamp and grading status.
+
+Grades and feedback::
+  Numeric scores and computed grades derived from your submissions, stored
+  in the `grades` table. Section-level feedback you provide on generated
+  content is stored in `section_feedback`.
+
+Syllabus drafts::
+  Each version of your course syllabus, including any that were modified at
+  your request, stored in the `syllabi` table.
+
+Notifications::
+  System notifications sent to you (for example, timeout or grading alerts),
+  stored in the `notifications` table.
+
+Consent record::
+  The fact that you agreed to this statement, the version number (1.0), and
+  the UTC timestamp of agreement, stored in the `consents` table.
+
+== How Your Data Is Sent to Anthropic's Claude API
+
+Valory generates course content, conducts the intake questionnaire, and grades
+homework by sending data to the Claude API, which is operated by Anthropic PBC.
+The following data categories are included in those API calls:
+
+* Your course topic.
+* Your intake chat messages and the assistant's replies, used to build a
+  personalised course syllabus.
+* Your active-course chat messages and the assistant's replies, used to answer
+  questions during the course.
+* The text of your homework submissions, together with the homework rubric,
+  used to produce a numeric score.
+* AsciiDoc syllabus content, used when regenerating individual course sections
+  at your request.
+
+Anthropic processes these inputs under its own terms of service and privacy
+policy. Valory does not control Anthropic's data handling practices beyond
+what is specified in the API agreement in force at the time of processing.
+You should consult Anthropic's current documentation if you need information
+about how Anthropic handles API request data.
+
+== Audit Log
+
+All pipeline activity — course creation, intake completion, syllabus
+generation steps, content generation events, grading events — is recorded in
+the `pipeline_events` table. These records are associated with your course
+identifier and are not deleted when you delete your account (see the section
+below on data retention). The audit log exists to support operational
+monitoring and is not used for purposes other than system administration.
+
+== Data Retention and Your Right to Deletion
+
+You may request permanent deletion of your personal data at any time through
+the account deletion function available to administrators. Upon an authorized
+deletion request, Valory will permanently delete:
+
+* Your user account record.
+* All courses, syllabi, and homework records linked to your account.
+* All chat messages linked to your courses.
+* All homework submissions and associated files on disk.
+* All grades and feedback records linked to your account.
+* All notifications addressed to you.
+* Your consent record.
+
+This satisfies REQ-USER-007: permanent deletion of all personal data on
+authorized request.
+
+The audit log rows in `pipeline_events` and `agent_runs` are associated with
+course identifiers, not directly with your user UUID. When your courses are
+deleted, those rows are cascade-deleted because `agent_runs` references
+`courses(id) ON DELETE RESTRICT` and `pipeline_events` references
+`agent_runs(id) ON DELETE CASCADE`. In practice this means pipeline event
+rows are removed as part of course deletion. If the delete operation encounters
+a restrict violation — for example because an agent run is still in the
+`running` state — the deletion will be blocked until in-flight operations are
+terminated.
+
+In-flight agent operations are terminated before deletion proceeds, consistent
+with the safe-termination requirement (REQ-AGENT-013).
+
+== What This Statement Does Not Cover
+
+This statement describes the practices that can be verified in the Valory
+source code as of the version in which this document was introduced. It does
+not:
+
+* Claim compliance with any specific legal framework (for example GDPR or
+  CCPA), because legal compliance determinations require qualified legal
+  review that has not been performed.
+* Claim that Anthropic holds any certification (for example SOC 2 or ISO
+  27001), because Valory cannot represent the certification status of a
+  third-party service.
+* Describe data flows introduced after this document version was written.
+  If the system is materially changed, a new consent version will be issued
+  and a fresh consent prompt will be displayed.
+
+== Consent Version and Recording
+
+When you click "I agree," the Valory application sends a POST request to
+`/api/v1/consent` with the payload `{"version": "1.0"}`. The server records
+your user identifier, the version string `1.0`, and the UTC timestamp of
+agreement. You will not be prompted again for the same version unless your
+consent record is deleted.

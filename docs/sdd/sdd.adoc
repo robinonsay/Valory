@@ -35,3 +35,5 @@ include::12-notify.adoc[leveloffset=+1]
 include::13-security.adoc[leveloffset=+1]
 
 include::14-infra.adoc[leveloffset=+1]
+
+include::15-intake-chat.adoc[leveloffset=+1]

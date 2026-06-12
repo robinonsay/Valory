@@ -1,0 +1,84 @@
+// Frontend behavior contract for the intake chat flow.
+// Included from 15-intake-chat.adoc — heading levels match the parent document.
+
+== Frontend Behavior Contract
+
+The following behaviors are required of `IntakeChatView.vue`. Where the
+current implementation already satisfies an item it is noted.
+
+=== On Mount
+
+. Call `GET /api/v1/courses/{id}/chat/history` and render all returned messages
+  in order. Initialize the messages array from the response, not from SSE.
+. SSE connection is already started at composable init time (correct as-is).
+
+=== Sending a Message
+
+. Add the user message to the local messages array optimistically (already done).
+. POST `{ "message": content }` to `/api/v1/courses/{id}/chat`.
+. On success: append `response.reply` to the messages array as an agent
+  message. The current implementation ignores the POST response body entirely;
+  this must be corrected.
+. Set `isSending = false` and clear the input (already done in the `finally`
+  block).
+. Check `response.course_status`: if it is not `"intake"`, trigger redirect
+  (see Redirect Logic below).
+
+=== Pending Indicator
+
+While `isSending` is `true`, the send button must be disabled (already done)
+and a visual indicator must be shown in the chat container (for example a
+"typing..." bubble). This is not currently implemented and is required so the
+student knows the request is in flight.
+
+=== Visible Error on Failure
+
+If the POST to `/chat` fails (non-2xx response or network error), display an
+error message inline in the chat container. The current implementation sets
+`connectionError` only on SSE errors; POST errors must also surface to the
+user. The error must not be silent.
+
+=== SSE Event Handling
+
+The `onEvent` callback receives `(eventType, data, lastEventId)`. The `data`
+argument is the raw JSON string of the envelope object. Parsing steps:
+
+[source,typescript]
+----
+// Correct parsing of the actual envelope:
+const envelope = JSON.parse(data) as {
+  id: string
+  agent_run_id: string
+  event_type: string
+  payload: Record<string, unknown>
+  emitted_at: string
+}
+
+if (envelope.event_type === 'status_change') {
+  const status = envelope.payload['status'] as string
+  redirectIfPostIntake(status)
+}
+----
+
+The current code parses `data` as `{ status: string }` directly, which will
+always fail because `status` is inside `payload`.
+
+=== Redirect Logic
+
+Redirect is triggered by either of two signals:
+
+. The `course_status` field in a successful POST `/chat` response is not
+  `"intake"`.
+. A `status_change` SSE event whose `payload.status` is not `"intake"`.
+
+Target routes:
+
+`syllabus_draft`:: `/courses/{id}/syllabus`
+`syllabus_approved`:: `/courses/{id}/syllabus` (student is waiting for generation)
+`active`:: `/courses/{id}` (the main course view)
+`archived`:: `/courses` (course list; student withdrew)
+Any other non-intake status:: `/courses/{id}` as a safe fallback
+
+The redirect replaces the current history entry (`router.replace`) so the back
+button does not return the student to the intake chat after the course has
+moved on.

@@ -38,6 +38,7 @@ const approveError = ref('')
 
 let draftingPollInterval: NodeJS.Timeout | null = null
 let draftingBoundedWaitTimer: NodeJS.Timeout | null = null
+let draftingPollInFlight = false
 
 // @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
 async function fetchSyllabus() {
@@ -86,6 +87,12 @@ function startDraftingPolling(): void {
       return
     }
 
+    // Skip if a fetch is already in-flight
+    if (draftingPollInFlight) {
+      return
+    }
+
+    draftingPollInFlight = true
     try {
       const response = await get<SyllabusResponse>(
         `/api/v1/courses/${courseId}/syllabus`,
@@ -106,6 +113,8 @@ function startDraftingPolling(): void {
           fetchError.value = 'An error occurred. Please try again.'
         }
       }
+    } finally {
+      draftingPollInFlight = false
     }
   }, POLL_INTERVAL)
 

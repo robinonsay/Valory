@@ -1616,9 +1616,9 @@
   },
   {
     "id": "REQ-FECOURSE-263",
-    "title": "Intake View: Preparation Wait Bounded",
-    "description": "The course frontend module shall stop refreshing after a bounded wait and invite the student to begin typing.",
-    "rationale": "Opening-question generation can fail permanently; the student must be told they can start the conversation themselves rather than waiting forever.",
+    "title": "Intake View: Preparation Refresh Bounded",
+    "description": "The course frontend module shall stop refreshing the empty conversation after a bounded wait.",
+    "rationale": "Opening-question generation can fail permanently; refreshing forever would waste resources and imply progress that is not happening.",
     "verification_method": "Test",
     "uses": [
       "REQ-FECOURSE-028"
@@ -1643,6 +1643,16 @@
     "uses": [
       "REQ-FECOURSE-490",
       "REQ-FECOURSE-300"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-264",
+    "title": "Intake View: Invite Typing After Bounded Wait",
+    "description": "The course frontend module shall invite the student to begin typing when the bounded preparation wait elapses.",
+    "rationale": "The student can start the intake conversation themselves; without an invitation they would be stuck waiting on a failed opening question.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-263"
     ]
   }
 ]

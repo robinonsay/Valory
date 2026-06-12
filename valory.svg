@@ -1,0 +1,39 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="valoryGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"></stop>
+      <stop offset="100%" stop-color="#7C3AED"></stop>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#0F172A"></rect>
+
+  <!-- Outer knowledge ring -->
+  <circle cx="256" cy="220" r="140" fill="none" stroke="#334155" stroke-width="12"></circle>
+
+  <!-- Agent nodes -->
+  <circle cx="256" cy="80" r="14" fill="#60A5FA"></circle>
+  <circle cx="377" cy="150" r="14" fill="#60A5FA"></circle>
+  <circle cx="377" cy="290" r="14" fill="#60A5FA"></circle>
+  <circle cx="135" cy="290" r="14" fill="#60A5FA"></circle>
+  <circle cx="135" cy="150" r="14" fill="#60A5FA"></circle>
+
+  <!-- Connections -->
+  <line x1="256" y1="80" x2="256" y2="220" stroke="#475569" stroke-width="6"></line>
+  <line x1="377" y1="150" x2="256" y2="220" stroke="#475569" stroke-width="6"></line>
+  <line x1="377" y1="290" x2="256" y2="220" stroke="#475569" stroke-width="6"></line>
+  <line x1="135" y1="290" x2="256" y2="220" stroke="#475569" stroke-width="6"></line>
+  <line x1="135" y1="150" x2="256" y2="220" stroke="#475569" stroke-width="6"></line>
+
+  <!-- Central orchestrator -->
+  <circle cx="256" cy="220" r="34" fill="url(#valoryGradient)"></circle>
+
+  <!-- V Mark -->
+  <path d="M170 170
+       L256 360
+       L342 170" fill="none" stroke="url(#valoryGradient)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"></path>
+
+  <!-- Foundation bar (education/platform) -->
+  <rect x="160" y="390" width="192" height="24" rx="12" fill="url(#valoryGradient)"></rect>
+</svg>

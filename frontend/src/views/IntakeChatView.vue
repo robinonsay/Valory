@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-270"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-270"]}
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -50,9 +50,11 @@ const isHistoryPolling = ref(false)
 const boundedWaitExceeded = ref(false)
 let historyPollInterval: NodeJS.Timeout | null = null
 let boundedWaitTimer: NodeJS.Timeout | null = null
+let pollingGeneration = 0
+let pollInFlight = false
 
 // @{"req": ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262"]}
-async function loadChatHistory(): Promise<void> {
+async function loadChatHistory(isInitialLoad = false): Promise<void> {
   try {
     const courseId = route.params.id as string
     const response = await get<ChatHistoryResponse>(
@@ -61,14 +63,19 @@ async function loadChatHistory(): Promise<void> {
     )
 
     if (response.messages && Array.isArray(response.messages)) {
-      messages.value = []
-      response.messages.forEach((msg) => {
-        messages.value.push({
-          role: msg.role === 'assistant' ? 'agent' : 'user',
-          content: msg.content
+      // Only apply the response if this is the initial load or if polling is still active
+      // for this generation. Discard responses from polling ticks that arrived after
+      // polling was stopped (e.g., by an in-flight send).
+      if (isInitialLoad || pollingGeneration > 0) {
+        messages.value = []
+        response.messages.forEach((msg) => {
+          messages.value.push({
+            role: msg.role === 'assistant' ? 'agent' : 'user',
+            content: msg.content
+          })
         })
-      })
-      scrollToBottom()
+        scrollToBottom()
+      }
     }
   } catch (error) {
     // If history fetch fails, proceed with empty history so student can still
@@ -85,6 +92,8 @@ function startHistoryPolling(): void {
 
   isHistoryPolling.value = true
   boundedWaitExceeded.value = false
+  pollingGeneration++
+  const currentGeneration = pollingGeneration
   const startTime = Date.now()
   const POLL_INTERVAL = 2500
   const BOUNDED_WAIT_MS = 120000
@@ -102,7 +111,21 @@ function startHistoryPolling(): void {
       return
     }
 
-    await loadChatHistory()
+    // Skip if a fetch is already in-flight
+    if (pollInFlight) {
+      return
+    }
+
+    pollInFlight = true
+    try {
+      await loadChatHistory(false)
+      // Only process the response if polling is still active for this generation
+      if (currentGeneration === pollingGeneration && messages.value.length > 0) {
+        stopHistoryPolling()
+      }
+    } finally {
+      pollInFlight = false
+    }
   }, POLL_INTERVAL)
 
   boundedWaitTimer = setTimeout(() => {
@@ -115,6 +138,7 @@ function startHistoryPolling(): void {
 
 function stopHistoryPolling(): void {
   isHistoryPolling.value = false
+  pollingGeneration = 0
   if (historyPollInterval !== null) {
     clearInterval(historyPollInterval)
     historyPollInterval = null
@@ -237,7 +261,7 @@ const sse = useSSE(`/api/v1/courses/${route.params.id}/events`, {
 
 // @{"req": ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263"]}
 onMounted(async () => {
-  await loadChatHistory()
+  await loadChatHistory(true)
   if (messages.value.length === 0) {
     startHistoryPolling()
   }

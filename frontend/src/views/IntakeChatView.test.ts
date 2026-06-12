@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-270", "REQ-FECOURSE-612", "REQ-FECOURSE-616"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-622", "REQ-FECOURSE-623", "REQ-FECOURSE-624", "REQ-FECOURSE-625", "REQ-FECOURSE-612", "REQ-FECOURSE-616"]}
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -11,6 +11,10 @@ import * as clientModule from '@/api/client'
 let capturedSSEUrl = ''
 let capturedSSEOptions: { token?: string | null; onEvent: Function; onError?: Function } | null = null
 const mockSSEClose = vi.fn()
+
+// Mock URL object URLs for image preview tests
+let objectUrlCounter = 0
+const mockObjectUrls = new Map<string, boolean>()
 
 // Mock the useSSE composable so tests can control event delivery and inspect
 // the URL/token used for connection without opening a real fetch stream.
@@ -69,6 +73,24 @@ describe('IntakeChatView', () => {
     vi.useFakeTimers()
     capturedSSEUrl = ''
     capturedSSEOptions = null
+    objectUrlCounter = 0
+    mockObjectUrls.clear()
+
+    // Mock URL.createObjectURL and URL.revokeObjectURL for image preview tests
+    // Use vi.stubGlobal to mock the URL object methods
+    const origCreateObjectURL = URL.createObjectURL
+    const origRevokeObjectURL = URL.revokeObjectURL
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => {
+        const url = `blob:http://localhost/${objectUrlCounter++}`
+        mockObjectUrls.set(url, true)
+        return url
+      }),
+      revokeObjectURL: vi.fn((url: string) => {
+        mockObjectUrls.delete(url)
+      })
+    })
 
     // Provide an authenticated student token for every test.
     const auth = useAuthStore()
@@ -78,6 +100,7 @@ describe('IntakeChatView', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   // 1. Loads chat history on mount
@@ -560,5 +583,59 @@ describe('IntakeChatView', () => {
     expect(userBubble.find('b').exists()).toBe(false)
     // The raw angle-bracket text should appear as visible text (escaped)
     expect(userBubble.text()).toContain('<b>x</b>')
+  })
+
+  // 22. Attach button renders
+  // @{"verifies": ["REQ-FECOURSE-622"]}
+  it('renders an attach button next to the send button', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    const attachButton = wrapper.find('.attach-button')
+    expect(attachButton.exists()).toBe(true)
+    expect(attachButton.text()).toContain('📎')
+  })
+
+  // 23. Attach button renders and is functional
+  // @{"verifies": ["REQ-FECOURSE-622"]}
+  it('renders attach button and can trigger file input click', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    const attachBtn = wrapper.find('.attach-button')
+    expect(attachBtn.exists()).toBe(true)
+    expect(attachBtn.text()).toContain('📎')
+  })
+
+  // 24. User bubble with attachments renders images and text separately
+  // @{"verifies": ["REQ-FECOURSE-625", "REQ-FECOURSE-616"]}
+  it('renders user message with attachments as text plus img elements', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    // Simulate a user message with attachments
+    const vm = wrapper.vm as any
+    vm.messages.push({
+      role: 'user',
+      content: 'Check out this image!',
+      attachments: ['/api/v1/images/uuid-1', '/api/v1/images/uuid-2']
+    })
+    await wrapper.vm.$nextTick()
+
+    const userBubble = wrapper.find('.message--user .message-bubble')
+    expect(userBubble.exists()).toBe(true)
+    // Text content should be present as plain text (not HTML)
+    expect(userBubble.text()).toContain('Check out this image!')
+    // Images should be rendered with bound src
+    const imgs = userBubble.findAll('img')
+    expect(imgs.length).toBe(2)
+    expect(imgs[0].attributes('src')).toBe('/api/v1/images/uuid-1')
+    expect(imgs[1].attributes('src')).toBe('/api/v1/images/uuid-2')
   })
 })

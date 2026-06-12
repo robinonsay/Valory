@@ -1732,5 +1732,55 @@
     "uses": [
       "REQ-FECONTENT-050"
     ]
+  },
+  {
+    "id": "REQ-FECONTENT-220",
+    "title": "Homework Submission: Image Attachment Control",
+    "description": "The content frontend module shall provide an image attachment control on the homework submission form.",
+    "rationale": "Students must be able to attach visual work such as diagrams alongside their text submission; without a dedicated control there is no path to submit image artefacts.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-SUBMISSION-004"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-221",
+    "title": "Homework Submission: Image Preview Before Submit",
+    "description": "The content frontend module shall display a thumbnail preview of each attached image before submission.",
+    "rationale": "A preview lets students confirm they have selected the correct images before committing the submission, preventing wasted re-submissions.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-220"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-222",
+    "title": "Homework Submission: Image Count Limit Feedback",
+    "description": "The content frontend module shall display an error when the number of attached images exceeds the allowed maximum.",
+    "rationale": "The backend enforces an image count cap per submission; client-side feedback on excess count prevents a wasted upload round-trip and gives the student a clear correction action.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-220"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-223",
+    "title": "Homework Submission: Image Upload Failure Blocks Submit",
+    "description": "The content frontend module shall display a visible error and block submission when an image upload fails.",
+    "rationale": "Allowing submission to proceed after a failed image upload would silently omit the student's attached work from the graded record.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-220"
+    ]
+  },
+  {
+    "id": "REQ-FECONTENT-224",
+    "title": "Homework Submission: Attached Image Count in Detail View",
+    "description": "The content frontend module shall display the count of images attached in the latest submission detail.",
+    "rationale": "Students must be able to confirm how many images were recorded with their submission without re-opening the form.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECONTENT-028"
+    ]
   }
 ]

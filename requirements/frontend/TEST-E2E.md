@@ -94,7 +94,7 @@ added in the sprint shown; no code for those specs exists yet.
 | Server validation error displays per-field | REQ-FEADMIN-045, REQ-FEADMIN-325 | `admin-config.spec.ts` |
 | Admin enters AI API key via config form | REQ-FEADMIN-040 | **PLANNED-Sprint14** `admin-api-key.spec.ts` |
 | Config field explanatory labels describe each setting | REQ-FEADMIN-005 | **PLANNED-Sprint14** `admin-api-key.spec.ts` |
-| Image upload for course content is accepted and stored | REQ-SUBMISSION-001 | **PLANNED-Sprint15** `image-upload.spec.ts` |
+| Image upload for course content is accepted and stored | REQ-SUBMISSION-001, REQ-AGENT-024, REQ-AGENT-025 | `image-upload.spec.ts` — DELIVERED Sprint 15 |
 
 ---
 
@@ -150,6 +150,54 @@ added in the sprint shown; no code for those specs exists yet.
 |---|---|---|
 | `frontend/e2e/content-rendering.spec.ts` | **NEW** | `ChatMarkdown_RendersFormattedAgentMessage`, `ChatLaTeX_RendersTypesetMath`, `ChatImage_RendersImgTag`, `ChatXSS_ScriptAndEventHandlersInert`, `ChatStudentMessage_PlainTextNoHTML` |
 
+---
+
+## Sprint 15 — Specs Added / Updated
+
+| File | Change | Tests |
+|---|---|---|
+| `frontend/e2e/image-upload.spec.ts` | **NEW** | `ChatImageUpload_PreviewAndUploadRoundTrip`, `ChatImageValidation_WrongTypeRejected`, `ImageAccess_OwnerOnly`, `HomeworkImageAttach_ControlAndCountFeedback` |
+| `frontend/e2e/seed.ts` | **Updated** | Added `seedHomework(courseId, title, sectionIndex?)` helper |
+
+### image-upload.spec.ts — Detail
+
+Proves the image upload, preview, access-control, and homework attachment features.
+All 4 tests are in the AI-free tier (0 Anthropic API calls).
+
+**NO-SEND / NO-SUBMIT COST RULE**: No chat message is ever sent (a chat POST
+triggers a synchronous Claude call).  No submission is ever POSTed (submission
+triggers the grading runner asynchronously on a background poller — posting even
+once burns grading tokens).  Image upload alone (`POST /api/v1/courses/{id}/images`)
+triggers no model call.
+
+| Test | Governing REQ | What is asserted | Coverage type |
+|---|---|---|---|
+| `ChatImageUpload_PreviewAndUploadRoundTrip` | REQ-FECOURSE-622, REQ-FECOURSE-624, REQ-AGENT-024 | Attach PNG via `setInputFiles` → preview thumbnail (blob: src) renders; upload via `page.request` multipart → 201 `{image_id, url}`; GET image URL → 200 + `Content-Type: image/png` + `X-Content-Type-Options: nosniff`; remove preview (✕) → row disappears | E2E |
+| `ChatImageValidation_WrongTypeRejected` | REQ-FECOURSE-623, REQ-AGENT-024 | `setInputFiles` with `text/plain` → `.image-error` visible, no upload network call fired (route interception); `page.request` POST with text payload → backend 422 `UNSUPPORTED_MIME` | E2E (client + server) |
+| `ImageAccess_OwnerOnly` | REQ-AGENT-025 | Upload image as demo_student; fresh unauthenticated context GET image URL → 401 | E2E |
+| `HomeworkImageAttach_ControlAndCountFeedback` | REQ-FECONTENT-220, REQ-FECONTENT-221, REQ-FECONTENT-222 | Seeds course + homework row; navigates to submission view; asserts homework title renders (GET /homework/{hwId} now returns 200); "Add Images" button visible and enabled; attach 2 PNGs → 2 thumbnails + "2 / 8 images attached"; attach 7 more (total would be 9) → count-limit error visible; cap is 8; button becomes disabled. No submission posted. | E2E (full) |
+
+**Homework path — endpoint added in-sprint:**
+`HomeworkSubmissionView.vue` calls `GET /api/v1/courses/{id}/homework/{hwId}` on mount.
+Sprint 15 e2e initially found this endpoint missing (returned 404).  The backend
+endpoint was implemented in-sprint (response: `{id, title, description, due_date?}`).
+The test was updated from asserting the error-state workaround to asserting the full
+working flow.
+
+REQ-FECONTENT-220/221/222 are **fully** verified end-to-end:
+- REQ-FECONTENT-220: homework title renders from GET response; Add Images button visible.
+- REQ-FECONTENT-221: 2 PNG fixtures attached → 2 preview thumbnails rendered.
+- REQ-FECONTENT-222: attaching 7 more when 2 already attached → cap error visible
+  ("Maximum 8 images per submission."); total capped at 8; button disabled at cap.
+- `src/utils/imageUpload.test.ts` unit-tests the `validateImage` function and the
+  `MAX_HOMEWORK_IMAGES` constant — 17 unit tests, all passing.
+
+**Seed helper added — `seedHomework(courseId, title, sectionIndex?)`:**
+Uses `spawnSync` with `--tuples-only --no-align` psql flags to execute a CTE
+(`WITH inserted AS (INSERT ... RETURNING id) SELECT id FROM inserted`) and parse
+the returned UUID from stdout.  The homework table has no RLS so the postgres
+superuser connection used by all seed helpers can insert directly.
+
 ### content-rendering.spec.ts — Detail
 
 Proves the markdown→KaTeX→DOMPurify rendering pipeline in `IntakeChatView`.
@@ -184,7 +232,7 @@ survives the hook.
 | `frontend/e2e/content-rendering.spec.ts` | Sprint 13/15 | **DELIVERED Sprint 14** | Markdown, LaTeX, image, XSS in agent chat bubbles; student plain-text (5 tests) |
 | `frontend/e2e/sse-reconnect.spec.ts` | Sprint 14 | PLANNED | SSE reconnect / exponential backoff |
 | `frontend/e2e/admin-api-key.spec.ts` | Sprint 14 | PLANNED | Admin API key entry, config explanations |
-| `frontend/e2e/image-upload.spec.ts` | Sprint 15 | PLANNED | Image upload for course content |
+| `frontend/e2e/image-upload.spec.ts` | Sprint 15 | **DELIVERED Sprint 15** | Image upload (chat preview, validation, owner-only access, homework attach) |
 
 ---
 

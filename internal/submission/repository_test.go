@@ -121,6 +121,7 @@ func applySubmissionMigrations(ctx context.Context, p *pgxpool.Pool) error {
 		    submitted_at     TIMESTAMPTZ       NOT NULL DEFAULT now(),
 		    raw_score        NUMERIC(5,2),
 		    grading_status   grading_status    NOT NULL DEFAULT 'pending',
+		    image_ids        UUID[]            DEFAULT NULL,
 		    CONSTRAINT uq_submission_hw_student UNIQUE (homework_id, student_id)
 		)`,
 	}
@@ -204,7 +205,7 @@ func TestInsert_Success(t *testing.T) {
 	courseID := createTestCourse(ctx, t, studentID)
 	homeworkID := createTestHomework(ctx, t, courseID)
 
-	row, err := repo.Insert(ctx, homeworkID, studentID, "latex", "/uploads/test.tex", 1024)
+	row, err := repo.Insert(ctx, homeworkID, studentID, "latex", "/uploads/test.tex", 1024, nil)
 	if err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}
@@ -242,12 +243,12 @@ func TestInsert_DuplicateReturnsErrAlreadySubmitted(t *testing.T) {
 	courseID := createTestCourse(ctx, t, studentID)
 	homeworkID := createTestHomework(ctx, t, courseID)
 
-	_, err := repo.Insert(ctx, homeworkID, studentID, "markdown", "/uploads/a.md", 512)
+	_, err := repo.Insert(ctx, homeworkID, studentID, "markdown", "/uploads/a.md", 512, nil)
 	if err != nil {
 		t.Fatalf("first Insert failed: %v", err)
 	}
 
-	_, err = repo.Insert(ctx, homeworkID, studentID, "markdown", "/uploads/b.md", 512)
+	_, err = repo.Insert(ctx, homeworkID, studentID, "markdown", "/uploads/b.md", 512, nil)
 	if !errors.Is(err, ErrAlreadySubmitted) {
 		t.Errorf("second Insert error = %v, want ErrAlreadySubmitted", err)
 	}
@@ -266,7 +267,7 @@ func TestGetLatestByHomework_ReturnsInsertedRecord(t *testing.T) {
 	courseID := createTestCourse(ctx, t, studentID)
 	homeworkID := createTestHomework(ctx, t, courseID)
 
-	inserted, err := repo.Insert(ctx, homeworkID, studentID, "asciidoc", "/uploads/doc.adoc", 2048)
+	inserted, err := repo.Insert(ctx, homeworkID, studentID, "asciidoc", "/uploads/doc.adoc", 2048, nil)
 	if err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}
@@ -312,7 +313,7 @@ func TestListPendingGrading_ReturnsPendingSubmissions(t *testing.T) {
 	courseID := createTestCourse(ctx, t, studentID)
 	homeworkID := createTestHomework(ctx, t, courseID)
 
-	inserted, err := repo.Insert(ctx, homeworkID, studentID, "latex", "/uploads/hw.tex", 999)
+	inserted, err := repo.Insert(ctx, homeworkID, studentID, "latex", "/uploads/hw.tex", 999, nil)
 	if err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}
@@ -347,7 +348,7 @@ func TestSetRawScore_TransitionsToGraded(t *testing.T) {
 	courseID := createTestCourse(ctx, t, studentID)
 	homeworkID := createTestHomework(ctx, t, courseID)
 
-	inserted, err := repo.Insert(ctx, homeworkID, studentID, "markdown", "/uploads/essay.md", 4096)
+	inserted, err := repo.Insert(ctx, homeworkID, studentID, "markdown", "/uploads/essay.md", 4096, nil)
 	if err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}
@@ -385,7 +386,7 @@ func TestMarkGradingFailed_TransitionsToFailed(t *testing.T) {
 	courseID := createTestCourse(ctx, t, studentID)
 	homeworkID := createTestHomework(ctx, t, courseID)
 
-	inserted, err := repo.Insert(ctx, homeworkID, studentID, "asciidoc", "/uploads/report.adoc", 1500)
+	inserted, err := repo.Insert(ctx, homeworkID, studentID, "asciidoc", "/uploads/report.adoc", 1500, nil)
 	if err != nil {
 		t.Fatalf("Insert failed: %v", err)
 	}

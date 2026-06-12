@@ -1,16 +1,18 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-270", "REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615", "REQ-FECOURSE-616"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-264", "REQ-FECOURSE-622", "REQ-FECOURSE-623", "REQ-FECOURSE-624", "REQ-FECOURSE-625", "REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615", "REQ-FECOURSE-616"]}
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSSE } from '@/composables/useSSE'
-import { get, post, ApiError } from '@/api/client'
+import { get, post, ApiError, uploadMultipart } from '@/api/client'
 import { renderMarkdown } from '@/utils/renderMarkdown'
+import { validateImage, MAX_CHAT_IMAGES, type ImageUploadResponse } from '@/utils/imageUpload'
 import 'katex/dist/katex.min.css'
 
 interface Message {
   role: 'agent' | 'user'
   content: string
+  attachments?: string[] // URLs of images attached to this message (user bubbles only)
 }
 
 interface ChatHistoryResponse {
@@ -25,6 +27,12 @@ interface ChatHistoryResponse {
 interface ChatReplyResponse {
   reply: string
   course_status: string
+}
+
+interface PendingImage {
+  file: File
+  objectUrl: string
+  uploadedId?: string
 }
 
 interface SSEEnvelope {
@@ -46,6 +54,11 @@ const connectionError = ref(false)
 const sendError = ref(false)
 const sendErrorMessage = ref('')
 const chatContainer = ref<HTMLElement | null>(null)
+
+const pendingImages = ref<PendingImage[]>([])
+const imageValidationError = ref('')
+const imageUploadError = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const isLoadingHistory = ref(false)
 const isHistoryPolling = ref(false)
@@ -196,26 +209,133 @@ function onError(): void {
   connectionError.value = true
 }
 
-// @{"req": ["REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-262"]}
+// @{"req": ["REQ-FECOURSE-622", "REQ-FECOURSE-623", "REQ-FECOURSE-624"]}
+function onImageFileSelect(event: Event): void {
+  const input = event.target as HTMLInputElement
+  imageValidationError.value = ''
+  imageUploadError.value = ''
+
+  if (!input.files) return
+
+  for (const file of Array.from(input.files)) {
+    // Check if already at max count
+    if (pendingImages.value.length >= MAX_CHAT_IMAGES) {
+      imageValidationError.value = `Maximum ${MAX_CHAT_IMAGES} images per message.`
+      break
+    }
+
+    // Client-side validation
+    const err = validateImage(file)
+    if (err) {
+      imageValidationError.value = err
+      break
+    }
+
+    const objectUrl = URL.createObjectURL(file)
+    pendingImages.value.push({
+      file,
+      objectUrl
+    })
+  }
+
+  // Reset the file input so the same file can be selected again
+  input.value = ''
+}
+
+// @{"req": ["REQ-FECOURSE-624"]}
+function removeImage(index: number): void {
+  const image = pendingImages.value[index]
+  if (image) {
+    URL.revokeObjectURL(image.objectUrl)
+    pendingImages.value.splice(index, 1)
+  }
+}
+
+// @{"req": ["REQ-FECOURSE-622", "REQ-FECOURSE-626"]}
+async function uploadPendingImages(): Promise<string[]> {
+  const courseId = route.params.id as string
+  const uploadedIds: string[] = []
+
+  for (const image of pendingImages.value) {
+    try {
+      const formData = new FormData()
+      formData.append('image', image.file)
+
+      const response = await uploadMultipart<ImageUploadResponse>(
+        `/api/v1/courses/${courseId}/images`,
+        formData
+      )
+
+      uploadedIds.push(response.image_id)
+      image.uploadedId = response.image_id
+    } catch (error) {
+      imageUploadError.value = 'Failed to upload one or more images. Please try again.'
+      throw error
+    }
+  }
+
+  return uploadedIds
+}
+
+// @{"req": ["REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-262", "REQ-FECOURSE-625"]}
 async function sendMessage(): Promise<void> {
   const content = userInput.value.trim()
-  if (!content || isSending.value) return
+  if (!content && pendingImages.value.length === 0) return
+  if (isSending.value) return
 
   // Stop polling when student sends their first message
   stopHistoryPolling()
 
-  // Optimistically add the user message before the POST resolves
-  messages.value.push({ role: 'user', content })
-  userInput.value = ''
+  imageValidationError.value = ''
+  imageUploadError.value = ''
   isSending.value = true
   sendError.value = false
+
+  // Upload images first if any are pending
+  let attachmentIds: string[] = []
+  let attachmentUrls: string[] = []
+  if (pendingImages.value.length > 0) {
+    try {
+      attachmentIds = await uploadPendingImages()
+      // Map image IDs to their API URLs for the optimistic message display
+      attachmentUrls = attachmentIds.map(id => `/api/v1/images/${id}`)
+    } catch {
+      // Error message already set in uploadPendingImages
+      sendError.value = true
+      sendErrorMessage.value = imageUploadError.value || 'Image upload failed.'
+      isSending.value = false
+      return
+    }
+  }
+
+  // Build the chat payload with optional attachments
+  const payload: Record<string, unknown> = {
+    message: content
+  }
+  if (attachmentIds.length > 0) {
+    payload.attachments = attachmentIds
+  }
+
+  // Optimistically add the user message with attachments field (not in content)
+  // REQ-FECOURSE-625: user message content is plain text; images rendered separately
+  messages.value.push({
+    role: 'user',
+    content: content,
+    attachments: attachmentUrls.length > 0 ? attachmentUrls : undefined
+  })
+  userInput.value = ''
+  // Revoke object URLs before clearing pending images (LOW priority cleanup)
+  for (const image of pendingImages.value) {
+    URL.revokeObjectURL(image.objectUrl)
+  }
+  pendingImages.value = []
   scrollToBottom()
 
   try {
     const courseId = route.params.id as string
     const response = await post<ChatReplyResponse>(
       `/api/v1/courses/${courseId}/chat`,
-      { message: content }
+      payload
     )
 
     // Append the agent's reply from the response body
@@ -234,7 +354,8 @@ async function sendMessage(): Promise<void> {
     } else {
       sendErrorMessage.value = 'An unexpected error occurred. Please try again.'
     }
-    // Do not remove the optimistic message; let the student retry
+    // No optimistic message exists yet on this path — upload failed before the
+      // message was pushed; the student keeps their pending previews and can retry.
   } finally {
     isSending.value = false
   }
@@ -270,6 +391,10 @@ onMounted(async () => {
 onUnmounted(() => {
   stopHistoryPolling()
   sse.close()
+  // Clean up object URLs for pending images
+  for (const image of pendingImages.value) {
+    URL.revokeObjectURL(image.objectUrl)
+  }
 })
 </script>
 
@@ -291,6 +416,8 @@ onUnmounted(() => {
           through the markdown→KaTeX→DOMPurify pipeline and injected as HTML.
           REQ-FECOURSE-616: student (user) messages are rendered as plain text
           via {{ }} interpolation so no HTML is ever interpreted.
+          REQ-FECOURSE-625: user message attachments are rendered as bound <img> elements
+          alongside the plain-text content.
         -->
         <div
           v-if="message.role === 'agent'"
@@ -300,7 +427,18 @@ onUnmounted(() => {
         <div
           v-else
           class="message-bubble"
-        >{{ message.content }}</div>
+        >
+          <div>{{ message.content }}</div>
+          <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
+            <img
+              v-for="(url, idx) in message.attachments"
+              :key="idx"
+              :src="url"
+              :alt="`Attached image ${idx + 1}`"
+              class="message-attachment-img"
+            />
+          </div>
+        </div>
       </div>
 
       <div v-if="isHistoryPolling && messages.length === 0" class="message message--agent">
@@ -329,21 +467,66 @@ onUnmounted(() => {
     </div>
 
     <div class="chat-input-area">
+      <div class="input-section">
+        <input
+          v-model="userInput"
+          type="text"
+          class="chat-input"
+          placeholder="Type a message..."
+          :disabled="isSending"
+          @keydown.enter="sendMessage"
+        />
+        <button
+          class="attach-button"
+          :disabled="isSending || pendingImages.length >= MAX_CHAT_IMAGES"
+          @click="fileInputRef?.click()"
+          title="Attach images (max 4)"
+        >
+          📎
+        </button>
+        <button
+          class="send-button"
+          :disabled="isSending"
+          @click="sendMessage"
+        >
+          Send
+        </button>
+      </div>
+
       <input
-        v-model="userInput"
-        type="text"
-        class="chat-input"
-        placeholder="Type a message..."
-        :disabled="isSending"
-        @keydown.enter="sendMessage"
+        ref="fileInputRef"
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        class="file-input"
+        style="display: none"
+        @change="onImageFileSelect"
       />
-      <button
-        class="send-button"
-        :disabled="isSending"
-        @click="sendMessage"
-      >
-        Send
-      </button>
+
+      <div v-if="imageValidationError" class="image-error">
+        {{ imageValidationError }}
+      </div>
+      <div v-if="imageUploadError" class="image-error">
+        {{ imageUploadError }}
+      </div>
+
+      <div v-if="pendingImages.length > 0" class="image-preview-row">
+        <div
+          v-for="(image, idx) in pendingImages"
+          :key="idx"
+          class="image-preview-item"
+        >
+          <img :src="image.objectUrl" :alt="image.file.name" class="preview-img" />
+          <button
+            class="remove-button"
+            @click="removeImage(idx)"
+            :disabled="isSending"
+            title="Remove image"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -407,6 +590,23 @@ onUnmounted(() => {
   background-color: #1976d2;
   color: white;
   border-bottom-right-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.message-attachment-img {
+  max-width: 150px;
+  max-height: 150px;
+  border-radius: 6px;
+  object-fit: cover;
 }
 
 .typing-indicator {
@@ -498,10 +698,16 @@ onUnmounted(() => {
 
 .chat-input-area {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   padding-top: 1rem;
   border-top: 1px solid #e0e0e0;
   flex-shrink: 0;
+}
+
+.input-section {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .chat-input {
@@ -521,6 +727,30 @@ onUnmounted(() => {
 
 .chat-input:disabled {
   background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.attach-button {
+  padding: 0.75rem 1rem;
+  background-color: white;
+  color: #666;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.attach-button:hover:not(:disabled) {
+  background-color: #f5f5f5;
+  border-color: #999;
+}
+
+.attach-button:disabled {
+  color: #ccc;
+  border-color: #e0e0e0;
   cursor: not-allowed;
 }
 
@@ -544,6 +774,63 @@ onUnmounted(() => {
 
 .send-button:disabled {
   background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.image-error {
+  color: #d32f2f;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  background-color: #ffebee;
+  border-radius: 4px;
+  border-left: 3px solid #d32f2f;
+}
+
+.image-preview-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.image-preview-item {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #ddd;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-button {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  border-radius: 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.remove-button:hover:not(:disabled) {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.remove-button:disabled {
   cursor: not-allowed;
 }
 

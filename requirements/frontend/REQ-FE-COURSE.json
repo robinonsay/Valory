@@ -1872,5 +1872,55 @@
     "uses": [
       "REQ-FECOURSE-615"
     ]
+  },
+  {
+    "id": "REQ-FECOURSE-622",
+    "title": "Chat Composer: Image Attachment Control",
+    "description": "The course frontend module shall provide an image attachment control in the chat composer.",
+    "rationale": "Students need to share visual artefacts such as diagrams with the AI professor during the intake conversation; without an attachment control there is no path to submit images.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-AGENT-023"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-623",
+    "title": "Chat Composer: Image Type and Size Validation Feedback",
+    "description": "The course frontend module shall display a validation error when an attached image fails type or size requirements.",
+    "rationale": "Early client-side validation saves the upload round-trip and gives the student immediate feedback on which constraint the file violates.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-622"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-624",
+    "title": "Chat Composer: Attached Image Thumbnail Preview",
+    "description": "The course frontend module shall display a thumbnail preview of each attached image before the message is sent.",
+    "rationale": "A preview lets students confirm they selected the correct image before sending, preventing accidental attachment of the wrong file.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FECOURSE-622"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-625",
+    "title": "Chat: Uploaded Image Shown in Sent Message",
+    "description": "The course frontend module shall display uploaded images inline in the student's sent chat message.",
+    "rationale": "Showing the image in the message bubble confirms to the student that the attachment was included and gives a coherent conversation record.",
+    "verification_method": "Demonstration",
+    "uses": [
+      "REQ-FECOURSE-622"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-626",
+    "title": "Chat Composer: Image Upload Failure Error",
+    "description": "The course frontend module shall display a visible error message and prevent send when image upload fails.",
+    "rationale": "Allowing the message to be sent after a failed image upload would silently omit the attachment the student intended to share with the professor.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-622"
+    ]
   }
 ]

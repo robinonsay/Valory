@@ -12,11 +12,13 @@ import (
 	"strings"
 	"time"
 
+	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/valory/valory/internal/auth"
 	"github.com/valory/valory/internal/db"
+	"github.com/valory/valory/internal/image"
 )
 
 // AgentHandler serves the SSE event stream, chat, and chat-history endpoints.
@@ -25,6 +27,7 @@ type AgentHandler struct {
 	chair     *Chair
 	chatRepo  *ChatRepository
 	agentRepo *AgentRepository
+	imageRepo *image.Repository // nil-safe: attachments are skipped when nil
 
 	// The following fields are narrow test seams. All default to nil in
 	// production; handleIntakeChat falls back to the real implementations when
@@ -34,9 +37,10 @@ type AgentHandler struct {
 	// (REQ-AGENT-020 seam).
 	launchSyllabus func(ctx context.Context, courseID, studentID uuid.UUID) error
 
-	// runIntakeStep replaces chair.RunIntakeStep so tests can drive
-	// handleIntakeChat through done=true without a real DB.
-	runIntakeStep func(ctx context.Context, courseID, studentID uuid.UUID) (done bool, reply string, err error)
+	// runIntakeStep replaces chair.RunIntakeStepWithImages so tests can drive
+	// handleIntakeChat through done=true without a real DB. Receives the
+	// vision blocks resolved for the current turn (may be nil).
+	runIntakeStep func(ctx context.Context, courseID, studentID uuid.UUID, visionBlocks []anthropic.ContentBlockParamUnion) (done bool, reply string, err error)
 
 	// insertStudentMsg replaces chair.chatRepo.InsertMessage so tests bypass
 	// the DB when storing the student turn.
@@ -62,6 +66,16 @@ type AgentHandler struct {
 // @{"req": ["REQ-AGENT-006", "REQ-AGENT-015", "REQ-AGENT-017", "REQ-AGENT-018", "REQ-AGENT-019", "REQ-AGENT-020", "REQ-AGENT-021"]}
 func NewAgentHandler(runner *AgentRunner, chair *Chair, chatRepo *ChatRepository, agentRepo *AgentRepository) *AgentHandler {
 	return &AgentHandler{runner: runner, chair: chair, chatRepo: chatRepo, agentRepo: agentRepo}
+}
+
+// SetImageRepository injects the image repository so the chat handler can
+// resolve attachment UUIDs into vision blocks (REQ-AGENT-023). Called from
+// main after both the agent and image packages are wired, keeping the packages
+// decoupled at construction time.
+//
+// @{"req": ["REQ-AGENT-023"]}
+func (h *AgentHandler) SetImageRepository(repo *image.Repository) {
+	h.imageRepo = repo
 }
 
 // Routes mounts agent endpoints under an already-authenticated router.
@@ -297,6 +311,10 @@ func (h *AgentHandler) streamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// maxChatAttachments is the maximum number of image IDs permitted in a single
+// chat POST (REQ-AGENT-024).
+const maxChatAttachments = 4
+
 // chat handles a single student chat turn, returning the assistant's reply
 // along with the current course status (REQ-AGENT-015, REQ-AGENT-019).
 //
@@ -311,9 +329,14 @@ func (h *AgentHandler) streamEvents(w http.ResponseWriter, r *http.Request) {
 // When the course is not in "intake" status the handler calls chair.Chat
 // (the generic post-intake path) unchanged.
 //
-// @{"req": ["REQ-AGENT-015", "REQ-AGENT-019", "REQ-AGENT-020", "REQ-AGENT-021"]}
+// Optional "attachments" field carries image UUIDs (≤4) uploaded via
+// POST /api/v1/courses/{id}/images (REQ-AGENT-023, REQ-AGENT-024).
+//
+// @{"req": ["REQ-AGENT-015", "REQ-AGENT-019", "REQ-AGENT-020", "REQ-AGENT-021", "REQ-AGENT-023", "REQ-AGENT-024"]}
 func (h *AgentHandler) chat(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	// Bump body limit to accommodate attachment UUIDs alongside the message.
+	// 4 UUIDs × 36 bytes + JSON overhead is well under 8 KB; 16 KB gives margin.
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 
 	rawUserID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
@@ -334,7 +357,8 @@ func (h *AgentHandler) chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Message string `json:"message"`
+		Message     string   `json:"message"`
+		Attachments []string `json:"attachments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeAgentError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
@@ -343,6 +367,49 @@ func (h *AgentHandler) chat(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.Message) == "" {
 		writeAgentError(w, http.StatusBadRequest, "BAD_REQUEST", "message is required")
 		return
+	}
+
+	// REQ-AGENT-024: reject if more than 4 attachments.
+	if len(req.Attachments) > maxChatAttachments {
+		writeAgentError(w, http.StatusUnprocessableEntity, "TOO_MANY_ATTACHMENTS", "attachments must not exceed 4 images")
+		return
+	}
+
+	// Resolve attachment UUIDs to vision blocks. When imageRepo is nil (tests or
+	// future environments without image support) attachments are ignored.
+	var visionBlocks []anthropic.ContentBlockParamUnion
+	if h.imageRepo != nil && len(req.Attachments) > 0 {
+		ids := make([]uuid.UUID, 0, len(req.Attachments))
+		for _, raw := range req.Attachments {
+			id, err := uuid.Parse(raw)
+			if err != nil {
+				writeAgentError(w, http.StatusUnprocessableEntity, "INVALID_ATTACHMENT_ID", "attachment id is not a valid UUID")
+				return
+			}
+			ids = append(ids, id)
+		}
+
+		// Load bytes via server-role conn and verify each image belongs to this
+		// student in this course (ownership + course-scope enforcement).
+		rows, err := h.imageRepo.GetByIDs(r.Context(), ids)
+		if err != nil {
+			log.Printf("handler: chat: load attachments: %v", err)
+			writeAgentError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+			return
+		}
+		// Validate that every requested ID was found and is owned by this student
+		// in this course. If any ID is missing or foreign-owned, reject.
+		if len(rows) != len(ids) {
+			writeAgentError(w, http.StatusUnprocessableEntity, "INVALID_ATTACHMENT_ID", "one or more attachment ids are invalid or not owned by you")
+			return
+		}
+		for _, row := range rows {
+			if row.StudentID != studentID || row.CourseID != courseID {
+				writeAgentError(w, http.StatusUnprocessableEntity, "INVALID_ATTACHMENT_ID", "one or more attachment ids are invalid or not owned by you")
+				return
+			}
+		}
+		visionBlocks = image.ImageRowsToBlocks(rows)
 	}
 
 	// Resolve course status via a server-role connection (same pattern as
@@ -355,34 +422,46 @@ func (h *AgentHandler) chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if status == "intake" {
-		h.handleIntakeChat(w, r, courseID, studentID, req.Message)
+		// Pass visionBlocks into the intake path so students can attach images
+		// during intake (REQ-AGENT-023). The attach UI is on the intake chat view,
+		// so dropping blocks here would silently ignore submitted images.
+		h.handleIntakeChat(w, r, courseID, studentID, req.Message, visionBlocks)
 	} else {
-		h.handleGenericChat(w, r, courseID, studentID, req.Message, status)
+		h.handleGenericChat(w, r, courseID, studentID, req.Message, visionBlocks, status)
 	}
 }
 
 // handleIntakeChat processes one turn of the intake questionnaire.
-// It stores the student message, calls RunIntakeStep, strips the sentinel
-// if present, transitions the course, and returns {reply, course_status}.
+// It stores the student message, calls RunIntakeStepWithImages (passing any
+// vision blocks from the current turn), strips the sentinel if present,
+// transitions the course, and returns {reply, course_status}.
+//
+// visionBlocks carries image content blocks resolved from the "attachments"
+// field in the chat POST body. The attach UI lives on the intake chat view
+// (REQ-AGENT-023), so blocks must be forwarded here rather than silently
+// dropped. History stored in chat_messages stays text-only; images are only
+// sent to Claude for the current model call.
 //
 // Injectable seams (set by tests, nil in production):
-//   - h.runIntakeStep    — replaces chair.RunIntakeStep
+//   - h.runIntakeStep    — replaces chair.RunIntakeStepWithImages
 //   - h.ensureIntakeRunFn — replaces ensureIntakeRun
 //   - h.emitEvent        — replaces agentRepo.EmitEvent
 //   - h.launchSyllabus   — replaces the chair.GenerateSyllabus goroutine body
 //
-// @{"req": ["REQ-AGENT-015", "REQ-AGENT-019", "REQ-AGENT-020", "REQ-AGENT-021"]}
-func (h *AgentHandler) handleIntakeChat(w http.ResponseWriter, r *http.Request, courseID, studentID uuid.UUID, message string) {
+// @{"req": ["REQ-AGENT-015", "REQ-AGENT-019", "REQ-AGENT-020", "REQ-AGENT-021", "REQ-AGENT-023"]}
+func (h *AgentHandler) handleIntakeChat(w http.ResponseWriter, r *http.Request, courseID, studentID uuid.UUID, message string, visionBlocks []anthropic.ContentBlockParamUnion) {
 	// insertMsg resolves to the injectable seam or the real chatRepo method.
 	insertMsg := h.insertStudentMsg
 	if insertMsg == nil {
 		insertMsg = h.chair.chatRepo.InsertMessage
 	}
 
-	// Store the student's message before calling RunIntakeStep so the history
-	// passed to the Claude call includes this turn. RunIntakeStep reads
-	// GetFullHistory before calling Claude; inserting first ensures the message
-	// is visible in that read.
+	// Store the student's message (text only) before calling RunIntakeStepWithImages
+	// so the history passed to the Claude call includes this turn.
+	// RunIntakeStepWithImages reads GetFullHistory before calling Claude; inserting
+	// first ensures the message is visible in that read. Vision blocks are NOT
+	// stored — history stays text-only to avoid re-transmitting images on every
+	// subsequent turn and to keep the stored history human-readable.
 	if _, err := insertMsg(r.Context(), courseID, "student", message); err != nil {
 		log.Printf("handler: intake chat: store student message: %v", err)
 		writeAgentError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
@@ -392,9 +471,9 @@ func (h *AgentHandler) handleIntakeChat(w http.ResponseWriter, r *http.Request, 
 	// runStep resolves to the injectable seam or the real chair method.
 	runStep := h.runIntakeStep
 	if runStep == nil {
-		runStep = h.chair.RunIntakeStep
+		runStep = h.chair.RunIntakeStepWithImages
 	}
-	done, reply, err := runStep(r.Context(), courseID, studentID)
+	done, reply, err := runStep(r.Context(), courseID, studentID, visionBlocks)
 	if err != nil {
 		log.Printf("handler: intake chat: run intake step: %v", err)
 		writeAgentError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
@@ -522,9 +601,13 @@ func (h *AgentHandler) handleIntakeChat(w http.ResponseWriter, r *http.Request, 
 // post-intake path). Returns {reply, course_status} where course_status is
 // the current status unchanged.
 //
-// @{"req": ["REQ-AGENT-015"]}
-func (h *AgentHandler) handleGenericChat(w http.ResponseWriter, r *http.Request, courseID, studentID uuid.UUID, message, currentStatus string) {
-	reply, err := h.chair.Chat(r.Context(), courseID, studentID, message)
+// visionBlocks carries image content blocks for the current turn only
+// (REQ-AGENT-023). When the slice is empty the call is text-only and behaves
+// identically to the pre-image-upload path.
+//
+// @{"req": ["REQ-AGENT-015", "REQ-AGENT-023"]}
+func (h *AgentHandler) handleGenericChat(w http.ResponseWriter, r *http.Request, courseID, studentID uuid.UUID, message string, visionBlocks []anthropic.ContentBlockParamUnion, currentStatus string) {
+	reply, err := h.chair.ChatWithImages(r.Context(), courseID, studentID, message, visionBlocks)
 	if err != nil {
 		log.Printf("handler: generic chat: %v", err)
 		writeAgentError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")

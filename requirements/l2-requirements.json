@@ -791,5 +791,62 @@
     "uses": [
       "REQ-AGENT-015"
     ]
+  },
+  {
+    "id": "REQ-AGENT-023",
+    "title": "Chat Image Attachments Passed to Model",
+    "description": "The agent module shall include attached images as vision content in the current-turn model call.",
+    "rationale": "Students submit visual artefacts such as diagrams and handwritten working that the model must see to give meaningful feedback; text-only calls cannot address image-based questions.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-AGENT-015"
+    ]
+  },
+  {
+    "id": "REQ-AGENT-024",
+    "title": "Image Upload Content Validation Before Storage",
+    "description": "The agent module shall validate an uploaded image's content type and size before storing it.",
+    "rationale": "Accepting arbitrary file content under an image endpoint creates a malware-storage and denial-of-service risk; content inspection before storage is the only reliable control.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-AGENT-025",
+    "title": "Image Access Restricted to Owner and Service Role",
+    "description": "The agent module shall restrict image retrieval to the uploading student or the system service role.",
+    "rationale": "Images may contain personal or sensitive academic work; unrestricted access would violate the per-student data isolation guarantee in REQ-SECURITY-002.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-SECURITY-002"
+    ]
+  },
+  {
+    "id": "REQ-SUBMISSION-004",
+    "title": "Homework Submission Accepts Image Attachments",
+    "description": "The submission module shall accept optional image attachments alongside a homework submission.",
+    "rationale": "Students submit visual work such as circuit diagrams and handwritten proofs that cannot be expressed in plain text; image support is required for parity with paper submissions.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-SUBMISSION-001"
+    ]
+  },
+  {
+    "id": "REQ-SUBMISSION-005",
+    "title": "Submission Images Provided to Grading Model",
+    "description": "The submission module shall provide attached images to the grading model with the submission.",
+    "rationale": "The grading model must see all submitted artefacts to produce an accurate assessment; omitting images would cause the model to grade incomplete work.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-SUBMISSION-004"
+    ]
+  },
+  {
+    "id": "REQ-SUBMISSION-006",
+    "title": "Submission Images Deleted with Student Account",
+    "description": "The submission module shall permanently delete all attached images when the student's account is deleted.",
+    "rationale": "Images contain personal academic data belonging to the student; retaining them after account deletion violates the personal data removal obligation established in REQ-USER-007.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-USER-007"
+    ]
   }
 ]

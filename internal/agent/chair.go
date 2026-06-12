@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valory/valory/internal/db"
+	"github.com/valory/valory/internal/image"
 )
 
 // intakeSentinel is included verbatim in the assistant reply when the Chair
@@ -46,6 +47,22 @@ func NewChair(client *ThrottledClient, pool *pgxpool.Pool, agentRepo *AgentRepos
 //
 // @{"req": ["REQ-AGENT-001"]}
 func (c *Chair) RunIntakeStep(ctx context.Context, courseID, studentID uuid.UUID) (done bool, reply string, err error) {
+	return c.RunIntakeStepWithImages(ctx, courseID, studentID, nil)
+}
+
+// RunIntakeStepWithImages is the vision-aware variant of RunIntakeStep.
+// When visionBlocks is non-empty the current student turn is sent to Claude
+// as [imageBlock..., textBlock] for this call only — history turns remain
+// text-only to avoid re-transmitting images on every subsequent turn.
+// When visionBlocks is nil the behaviour is identical to RunIntakeStep.
+//
+// The student message was already stored by the handler before this call;
+// this method reads the full history (including that message) and replaces
+// the last user turn with the vision-aware content for the model call.
+// History in chat_messages stays text-only.
+//
+// @{"req": ["REQ-AGENT-001", "REQ-AGENT-023"]}
+func (c *Chair) RunIntakeStepWithImages(ctx context.Context, courseID, studentID uuid.UUID, visionBlocks []anthropic.ContentBlockParamUnion) (done bool, reply string, err error) {
 	topic, err := c.courseTopic(ctx, courseID)
 	if err != nil {
 		return false, "", fmt.Errorf("chair: intake step: %w", err)
@@ -56,9 +73,26 @@ func (c *Chair) RunIntakeStep(ctx context.Context, courseID, studentID uuid.UUID
 		return false, "", fmt.Errorf("chair: intake step: load history: %w", err)
 	}
 
-	messages := buildMessagesForIntake(history, topic)
+	msgs := buildMessagesForIntake(history, topic)
 
-	replyText, err := c.callClaude(ctx, studentID, courseID, intakeSystemPrompt(topic), messages, 512)
+	// When vision blocks are present, replace the last user turn (the student
+	// message stored just before this call) with the multi-block content so
+	// Claude sees image context. History storage remains text-only.
+	if len(visionBlocks) > 0 && len(msgs) > 0 {
+		last := msgs[len(msgs)-1]
+		if last.Role == anthropic.MessageParamRoleUser {
+			var lastText string
+			if len(last.Content) > 0 && last.Content[0].OfText != nil {
+				lastText = last.Content[0].OfText.Text
+			}
+			msgs[len(msgs)-1] = anthropic.MessageParam{
+				Role:    anthropic.MessageParamRoleUser,
+				Content: image.BuildCurrentTurnContent(lastText, visionBlocks),
+			}
+		}
+	}
+
+	replyText, err := c.callClaude(ctx, studentID, courseID, intakeSystemPrompt(topic), msgs, 512)
 	if err != nil {
 		return false, "", fmt.Errorf("chair: intake step: %w", err)
 	}
@@ -177,6 +211,16 @@ func (c *Chair) AssignDueDates(ctx context.Context, courseID, studentID uuid.UUI
 //
 // @{"req": ["REQ-AGENT-015"]}
 func (c *Chair) Chat(ctx context.Context, courseID, studentID uuid.UUID, userMessage string) (string, error) {
+	return c.ChatWithImages(ctx, courseID, studentID, userMessage, nil)
+}
+
+// ChatWithImages is the vision-aware variant of Chat. When visionBlocks is
+// non-empty the current user turn is built as a multi-block content list
+// [imageBlock..., textBlock] per the SDD. History turns remain text-only.
+// When visionBlocks is nil or empty the call is identical to Chat.
+//
+// @{"req": ["REQ-AGENT-015", "REQ-AGENT-023"]}
+func (c *Chair) ChatWithImages(ctx context.Context, courseID, studentID uuid.UUID, userMessage string, visionBlocks []anthropic.ContentBlockParamUnion) (string, error) {
 	if _, err := c.chatRepo.InsertMessage(ctx, courseID, "student", userMessage); err != nil {
 		return "", fmt.Errorf("chair: chat: store student message: %w", err)
 	}
@@ -186,11 +230,26 @@ func (c *Chair) Chat(ctx context.Context, courseID, studentID uuid.UUID, userMes
 		return "", fmt.Errorf("chair: chat: load history: %w", err)
 	}
 
-	// ensureUserFirst: since the kickoff feature, every course history starts
-	// with the Chair's opening question (assistant turn), and the Anthropic
-	// API rejects assistant-first conversations. The history always ends with
-	// the student message stored above, so only the head needs anchoring.
-	messages := ensureUserFirst(buildMessages(history))
+	// Build history turns as text-only params (no image re-send across prior
+	// turns — current turn only carries images to bound token cost).
+	historyMsgs := ensureUserFirst(buildMessages(history))
+
+	// Replace the last message (the student turn just stored) with the
+	// vision-aware multi-block content. The last element of historyMsgs is
+	// always the student turn because InsertMessage ran above and
+	// buildMessages maps "student" → user role.
+	var messages []anthropic.MessageParam
+	if len(visionBlocks) > 0 && len(historyMsgs) > 0 {
+		messages = historyMsgs[:len(historyMsgs)-1]
+		currentContent := image.BuildCurrentTurnContent(userMessage, visionBlocks)
+		currentTurn := anthropic.MessageParam{
+			Role:    anthropic.MessageParamRoleUser,
+			Content: currentContent,
+		}
+		messages = append(messages, currentTurn)
+	} else {
+		messages = historyMsgs
+	}
 
 	replyText, err := c.callClaude(ctx, studentID, courseID, chairSystemPrompt(), messages, 1024)
 	if err != nil {

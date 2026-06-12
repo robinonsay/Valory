@@ -366,3 +366,69 @@ describe('renderMarkdown — U+E000/U+E001 input stripping (Fix 4)', () => {
     expect(doc.querySelector('h1')?.textContent?.trim()).toBe('Clean input')
   })
 })
+
+describe('renderMarkdown — same-origin image API paths (REQ-FECOURSE-270)', () => {
+  it('allows /api/v1/images/{uuid} path for an img src', () => {
+    const src = '![alt](/api/v1/images/550e8400-e29b-41d4-a716-446655440000)'
+    const out = renderMarkdown(src)
+    const doc = parse(out)
+    const img = doc.querySelector('img')
+    expect(img).not.toBeNull()
+    expect(img?.getAttribute('src')).toBe('/api/v1/images/550e8400-e29b-41d4-a716-446655440000')
+  })
+
+  it('allows lowercase and uppercase hex digits in UUID path', () => {
+    const src = '![alt](/api/v1/images/550E8400-E29B-41D4-A716-446655440000)'
+    const out = renderMarkdown(src)
+    const doc = parse(out)
+    const img = doc.querySelector('img')
+    expect(img?.getAttribute('src')).toBe('/api/v1/images/550E8400-E29B-41D4-A716-446655440000')
+  })
+
+  it('strips /api/v1/images/../../evil path traversal', () => {
+    const src = '![alt](/api/v1/images/../../evil)'
+    const out = renderMarkdown(src)
+    const doc = parse(out)
+    const imgs = doc.querySelectorAll('img')
+    for (const img of Array.from(imgs)) {
+      const imgSrc = img.getAttribute('src') ?? ''
+      expect(imgSrc).not.toContain('..')
+    }
+  })
+
+  it('strips /api/v1/imagesx/{uuid} (wrong endpoint path)', () => {
+    const src = '![alt](/api/v1/imagesx/550e8400-e29b-41d4-a716-446655440000)'
+    const out = renderMarkdown(src)
+    const doc = parse(out)
+    const imgs = doc.querySelectorAll('img')
+    for (const img of Array.from(imgs)) {
+      const imgSrc = img.getAttribute('src') ?? ''
+      // src should be stripped because path does not match /api/v1/images/
+      expect(imgSrc).not.toContain('imagesx')
+    }
+  })
+
+  it('strips /api/v1/images/{malformed-uuid}', () => {
+    const src = '![alt](/api/v1/images/not-a-uuid)'
+    const out = renderMarkdown(src)
+    const doc = parse(out)
+    const imgs = doc.querySelectorAll('img')
+    for (const img of Array.from(imgs)) {
+      const imgSrc = img.getAttribute('src') ?? ''
+      // Must not allow malformed UUIDs
+      if (imgSrc) {
+        expect(imgSrc).not.toContain('not-a-uuid')
+      }
+    }
+  })
+
+  it('preserves existing https:// image URLs alongside API paths', () => {
+    const src = '![ext](https://example.com/pic.png) and ![api](/api/v1/images/550e8400-e29b-41d4-a716-446655440000)'
+    const out = renderMarkdown(src)
+    const doc = parse(out)
+    const imgs = doc.querySelectorAll('img')
+    const srcs = Array.from(imgs).map(img => img.getAttribute('src') ?? '')
+    expect(srcs).toContain('https://example.com/pic.png')
+    expect(srcs).toContain('/api/v1/images/550e8400-e29b-41d4-a716-446655440000')
+  })
+})

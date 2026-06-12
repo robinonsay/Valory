@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615"]}
+// @{"req": ["REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615", "REQ-FECOURSE-625"]}
 
 import MarkdownIt from 'markdown-it'
 import katex from 'katex'
@@ -246,12 +246,18 @@ function ensureDOMPurifyHooksInstalled(): void {
     // Enforce safe image sources
     if (node.tagName === 'IMG') {
       const src = node.getAttribute('src') ?? ''
-      // Only allow https://, http://, or data:image/<known-type>;base64,
+      // Allow:
+      // 1. https:// and http:// URLs (external images)
+      // 2. data:image/<known-type>;base64, URIs (inline base64)
+      // 3. /api/v1/images/<uuid> paths (same-origin uploaded images)
+      //
       // data:image/svg+xml is excluded because SVG can contain script elements;
       // only raster formats (png, jpeg, gif, webp) are permitted.
+      // The UUID regex ensures only valid image paths are matched.
       if (
         !/^https?:\/\//i.test(src) &&
-        !/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src)
+        !/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src) &&
+        !/^\/api\/v1\/images\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(src)
       ) {
         node.removeAttribute('src')
       }
@@ -284,7 +290,7 @@ function ensureDOMPurifyHooksInstalled(): void {
 // The DOMPurify pass is always the final stage so KaTeX output cannot introduce
 // any XSS vector regardless of what the LaTeX source contains.
 //
-// @{"req": ["REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615"]}
+// @{"req": ["REQ-FECOURSE-612", "REQ-FECOURSE-613", "REQ-FECOURSE-614", "REQ-FECOURSE-615", "REQ-FECOURSE-625"]}
 export function renderMarkdown(source: string): string {
   ensureDOMPurifyHooksInstalled()
 

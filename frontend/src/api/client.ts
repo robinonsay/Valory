@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-045", "REQ-FEAUTH-046", "REQ-FEAUTH-047", "REQ-FEAUTH-048", "REQ-FEAUTH-049", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-157"]}
+// @{"req": ["REQ-FEAUTH-045", "REQ-FEAUTH-046", "REQ-FEAUTH-047", "REQ-FEAUTH-048", "REQ-FEAUTH-049", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-157", "REQ-FECOURSE-622"]}
 
 // ApiError is thrown for any non-2xx HTTP response so callers can distinguish
 // network/application errors from successful responses.
@@ -129,4 +129,55 @@ export function put<T>(path: string, body: unknown, token?: string | null): Prom
 // @{"req": ["REQ-FEAUTH-045", "REQ-FEAUTH-046", "REQ-FEAUTH-047", "REQ-FEAUTH-048", "REQ-FEAUTH-049", "REQ-FEAUTH-157"]}
 export function del<T>(path: string, token?: string | null): Promise<T> {
   return request<T>('DELETE', path, { token })
+}
+
+// @{"req": ["REQ-FECOURSE-622", "REQ-FECONTENT-221"]}
+// uploadMultipart sends a multipart form request using fetch. FormData is sent
+// with the __Host-session cookie (withCredentials) and X-CSRF-Token header.
+// Returns the parsed JSON response on success or throws ApiError on failure.
+export async function uploadMultipart<T>(
+  path: string,
+  formData: FormData,
+  token?: string | null
+): Promise<T> {
+  const headers: Record<string, string> = {}
+
+  if (token != null) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  // Read CSRF cookie fresh on every mutating request
+  const csrf = document.cookie
+    .split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith('__Host-csrf='))
+    ?.split('=')[1]
+  if (csrf !== undefined) {
+    headers['X-CSRF-Token'] = csrf
+  }
+
+  const response = await fetch(path, {
+    method: 'POST',
+    headers,
+    body: formData
+    // Note: no explicit Content-Type header; the browser automatically sets
+    // it to multipart/form-data with the correct boundary when body is FormData.
+  })
+
+  if (response.status === 401) {
+    if (unauthorizedHandler !== null) {
+      const h = unauthorizedHandler
+      unauthorizedHandler = null
+      h()
+    }
+    const errBody = await response.json().catch(() => null)
+    throw new ApiError(response.status, errBody)
+  }
+
+  if (!response.ok) {
+    const errBody = await response.json().catch(() => null)
+    throw new ApiError(response.status, errBody)
+  }
+
+  return response.json() as Promise<T>
 }

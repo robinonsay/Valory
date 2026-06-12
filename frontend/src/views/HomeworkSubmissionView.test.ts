@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECONTENT-020", "REQ-FECONTENT-021", "REQ-FECONTENT-022", "REQ-FECONTENT-111", "REQ-FECONTENT-112", "REQ-FECONTENT-113", "REQ-FECONTENT-114", "REQ-FECONTENT-120", "REQ-FECONTENT-125", "REQ-FECONTENT-130"]}
+// @{"req": ["REQ-FECONTENT-020", "REQ-FECONTENT-021", "REQ-FECONTENT-022", "REQ-FECONTENT-111", "REQ-FECONTENT-112", "REQ-FECONTENT-113", "REQ-FECONTENT-114", "REQ-FECONTENT-120", "REQ-FECONTENT-125", "REQ-FECONTENT-130", "REQ-FECONTENT-220", "REQ-FECONTENT-221", "REQ-FECONTENT-222", "REQ-FECONTENT-223", "REQ-FECONTENT-224"]}
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -16,6 +16,9 @@ function makeFile(name: string, sizeBytes: number): File {
   return new File([content], name, { type: 'application/octet-stream' })
 }
 
+let objectUrlCounter = 0
+const mockObjectUrls = new Map<string, boolean>()
+
 const router = createRouter({
   history: createMemoryHistory(),
   routes: [
@@ -30,10 +33,26 @@ describe('HomeworkSubmissionView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    objectUrlCounter = 0
+    mockObjectUrls.clear()
+
+    // Mock URL.createObjectURL and URL.revokeObjectURL for image preview tests
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => {
+        const url = `blob:http://localhost/${objectUrlCounter++}`
+        mockObjectUrls.set(url, true)
+        return url
+      }),
+      revokeObjectURL: vi.fn((url: string) => {
+        mockObjectUrls.delete(url)
+      })
+    })
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   // @{"req": ["REQ-FECONTENT-020"]}
@@ -248,5 +267,76 @@ describe('HomeworkSubmissionView', () => {
     expect(XHRConstructor).not.toHaveBeenCalled()
 
     vi.unstubAllGlobals()
+  })
+
+  // @{"req": ["REQ-FECONTENT-220"]}
+  it('renders image attachment section with "Add Images" button', async () => {
+    const mockHomework = {
+      id: 'hw-1',
+      title: 'Homework 1',
+      description: 'Write a report.',
+      due_date: '2026-06-01T23:59:00Z'
+    }
+
+    vi.spyOn(clientModule, 'get').mockImplementation(async (path: string) => {
+      if (path.includes('/submissions/latest')) {
+        throw new clientModule.ApiError(404, { error: 'not found' })
+      }
+      return mockHomework
+    })
+
+    const authStore = useAuthStore()
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
+
+    await router.push('/courses/course-1/homework/hw-1')
+
+    const wrapper = mount(HomeworkSubmissionView, {
+      global: { plugins: [router] }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Attach Images')
+    expect(wrapper.find('.attach-images-button').exists()).toBe(true)
+  })
+
+  // @{"req": ["REQ-FECONTENT-224"]}
+  it('displays image count in latest submission details when > 0', async () => {
+    const mockHomework = {
+      id: 'hw-1',
+      title: 'Homework 1',
+      description: 'Write a report.',
+      due_date: '2026-06-01T23:59:00Z'
+    }
+
+    const mockSubmission = {
+      id: 'sub-1',
+      format: 'tex',
+      file_size_bytes: 5000,
+      submitted_at: '2026-06-11T12:00:00Z',
+      grading_status: 'pending',
+      image_count: 3
+    }
+
+    vi.spyOn(clientModule, 'get').mockImplementation(async (path: string) => {
+      if (path.includes('/submissions/latest')) {
+        return mockSubmission
+      }
+      return mockHomework
+    })
+
+    const authStore = useAuthStore()
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
+
+    await router.push('/courses/course-1/homework/hw-1')
+
+    const wrapper = mount(HomeworkSubmissionView, {
+      global: { plugins: [router] }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Images attached:')
+    expect(wrapper.text()).toContain('3')
   })
 })

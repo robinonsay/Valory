@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/valory/valory/internal/auth"
@@ -367,7 +368,7 @@ func TestKickoffIdempotency_KickoffSentinelFlag_Logic(t *testing.T) {
 // tests because all DB paths are replaced by seams).
 func newIntakeChatTestHandler(
 	insertMsg func(context.Context, uuid.UUID, string, string) (ChatMessageRow, error),
-	runIntake func(context.Context, uuid.UUID, uuid.UUID) (bool, string, error),
+	runIntake func(context.Context, uuid.UUID, uuid.UUID, []anthropic.ContentBlockParamUnion) (bool, string, error),
 	updateMsg func(context.Context, uuid.UUID, string) error,
 	transition func(context.Context, uuid.UUID) error,
 	ensureRun func(context.Context, uuid.UUID) (uuid.UUID, error),
@@ -418,7 +419,7 @@ func TestHandleIntakeChat_SentinelDetected_LaunchesSyllabus(t *testing.T) {
 		func(_ context.Context, _ uuid.UUID, _, _ string) (ChatMessageRow, error) {
 			return ChatMessageRow{}, nil
 		},
-		func(_ context.Context, _, _ uuid.UUID) (bool, string, error) {
+		func(_ context.Context, _, _ uuid.UUID, _ []anthropic.ContentBlockParamUnion) (bool, string, error) {
 			// Return done=true with the sentinel embedded so stripping is exercised.
 			return true, "Great answers! INTAKE_COMPLETE", nil
 		},
@@ -441,7 +442,7 @@ func TestHandleIntakeChat_SentinelDetected_LaunchesSyllabus(t *testing.T) {
 
 	req := intakeChatRequest(courseID, studentID, "I have been coding for 3 years")
 	rec := httptest.NewRecorder()
-	h.handleIntakeChat(rec, req, courseID, studentID, "I have been coding for 3 years")
+	h.handleIntakeChat(rec, req, courseID, studentID, "I have been coding for 3 years", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
@@ -488,7 +489,7 @@ func TestHandleIntakeChat_SentinelDetected_EmitsStatusChangeEvent(t *testing.T) 
 		func(_ context.Context, _ uuid.UUID, _, _ string) (ChatMessageRow, error) {
 			return ChatMessageRow{}, nil
 		},
-		func(_ context.Context, _, _ uuid.UUID) (bool, string, error) {
+		func(_ context.Context, _, _ uuid.UUID, _ []anthropic.ContentBlockParamUnion) (bool, string, error) {
 			return true, "All done. INTAKE_COMPLETE", nil
 		},
 		func(_ context.Context, _ uuid.UUID, _ string) error { return nil },
@@ -503,7 +504,7 @@ func TestHandleIntakeChat_SentinelDetected_EmitsStatusChangeEvent(t *testing.T) 
 
 	req := intakeChatRequest(courseID, studentID, "ready to start")
 	rec := httptest.NewRecorder()
-	h.handleIntakeChat(rec, req, courseID, studentID, "ready to start")
+	h.handleIntakeChat(rec, req, courseID, studentID, "ready to start", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -548,7 +549,7 @@ func TestHandleIntakeChat_SentinelAlone_Returns200WithEmptyReply(t *testing.T) {
 		func(_ context.Context, _ uuid.UUID, _, _ string) (ChatMessageRow, error) {
 			return ChatMessageRow{}, nil
 		},
-		func(_ context.Context, _, _ uuid.UUID) (bool, string, error) {
+		func(_ context.Context, _, _ uuid.UUID, _ []anthropic.ContentBlockParamUnion) (bool, string, error) {
 			// Raw reply is exactly the sentinel — no surrounding text.
 			return true, intakeSentinel, nil
 		},
@@ -561,7 +562,7 @@ func TestHandleIntakeChat_SentinelAlone_Returns200WithEmptyReply(t *testing.T) {
 
 	req := intakeChatRequest(courseID, studentID, "done")
 	rec := httptest.NewRecorder()
-	h.handleIntakeChat(rec, req, courseID, studentID, "done")
+	h.handleIntakeChat(rec, req, courseID, studentID, "done", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
@@ -579,5 +580,57 @@ func TestHandleIntakeChat_SentinelAlone_Returns200WithEmptyReply(t *testing.T) {
 	}
 	if resp["course_status"] != "syllabus_draft" {
 		t.Errorf("expected course_status=syllabus_draft, got %q", resp["course_status"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleIntakeChat — vision blocks are forwarded to RunIntakeStepWithImages
+// ---------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-AGENT-023"]}
+func TestHandleIntakeChat_WithVisionBlocks_BlocksForwardedToRunStep(t *testing.T) {
+	// REQ-AGENT-023: the intake path must accept vision blocks from the current
+	// turn and pass them through to the model call. The attach UI lives on the
+	// intake chat view, so silently dropping blocks would discard student images.
+	//
+	// The runIntakeStep seam receives the blocks; we verify they are non-nil
+	// and have the expected length.
+	courseID := uuid.New()
+	studentID := uuid.New()
+
+	// Build a minimal fake image block — content doesn't matter, only that
+	// the slice is forwarded intact.
+	fakeBlock := anthropic.NewImageBlockBase64("image/png", "aGVsbG8=")
+	inputBlocks := []anthropic.ContentBlockParamUnion{fakeBlock}
+
+	var capturedBlocks []anthropic.ContentBlockParamUnion
+
+	h := newIntakeChatTestHandler(
+		func(_ context.Context, _ uuid.UUID, _, _ string) (ChatMessageRow, error) {
+			return ChatMessageRow{}, nil
+		},
+		func(_ context.Context, _, _ uuid.UUID, vb []anthropic.ContentBlockParamUnion) (bool, string, error) {
+			capturedBlocks = vb
+			return false, "Please describe your experience level.", nil
+		},
+		func(_ context.Context, _ uuid.UUID, _ string) error { return nil },
+		func(_ context.Context, _ uuid.UUID) error { return nil },
+		func(_ context.Context, _ uuid.UUID) (uuid.UUID, error) { return uuid.New(), nil },
+		func(_ context.Context, _ uuid.UUID, _ string, _ interface{}) error { return nil },
+		func(_ context.Context, _, _ uuid.UUID) error { return nil },
+	)
+
+	req := intakeChatRequest(courseID, studentID, "here is my diagram")
+	rec := httptest.NewRecorder()
+	h.handleIntakeChat(rec, req, courseID, studentID, "here is my diagram", inputBlocks)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	if len(capturedBlocks) != 1 {
+		t.Fatalf("expected 1 vision block forwarded to runIntakeStep, got %d", len(capturedBlocks))
+	}
+	if capturedBlocks[0] != fakeBlock {
+		t.Error("vision block forwarded to runIntakeStep does not match input block")
 	}
 }

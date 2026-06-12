@@ -201,7 +201,7 @@ func TestInteg_Insert_LaTeXSubmission_Persists(t *testing.T) {
 	defer release()
 
 	repo := NewRepository(pool)
-	row, err := repo.Insert(sCtx, hwID, studentID, "latex", "/uploads/hw.tex", 2048)
+	row, err := repo.Insert(sCtx, hwID, studentID, "latex", "/uploads/hw.tex", 2048, nil)
 	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
@@ -259,13 +259,13 @@ func TestInteg_Insert_DuplicateSubmission_ReturnsErrAlreadySubmitted(t *testing.
 	repo := NewRepository(pool)
 
 	// First submission must succeed.
-	if _, err := repo.Insert(sCtx, hwID, studentID, "markdown", "/uploads/a.md", 512); err != nil {
+	if _, err := repo.Insert(sCtx, hwID, studentID, "markdown", "/uploads/a.md", 512, nil); err != nil {
 		t.Fatalf("first Insert: %v", err)
 	}
 
 	// Second submission with the same (homework_id, student_id) must return the
 	// domain sentinel, not a raw database error.
-	_, err := repo.Insert(sCtx, hwID, studentID, "markdown", "/uploads/b.md", 512)
+	_, err := repo.Insert(sCtx, hwID, studentID, "markdown", "/uploads/b.md", 512, nil)
 	if err != ErrAlreadySubmitted {
 		t.Errorf("second Insert error = %v, want ErrAlreadySubmitted", err)
 	}
@@ -293,7 +293,7 @@ func TestInteg_Insert_SQLInjectionInFilePath_StoredVerbatim(t *testing.T) {
 	injectionPath := `'; DROP TABLE submissions; --`
 
 	repo := NewRepository(pool)
-	row, err := repo.Insert(sCtx, hwID, studentID, "markdown", injectionPath, 64)
+	row, err := repo.Insert(sCtx, hwID, studentID, "markdown", injectionPath, 64, nil)
 	if err != nil {
 		t.Fatalf("Insert with injection payload: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestInteg_RLS_StudentCannotReadAnotherStudentsSubmission(t *testing.T) {
 	defer releaseA()
 
 	repo := NewRepository(pool)
-	if _, err := repo.Insert(ctxA, hwID, studentA, "asciidoc", "/uploads/a.adoc", 1024); err != nil {
+	if _, err := repo.Insert(ctxA, hwID, studentA, "asciidoc", "/uploads/a.adoc", 1024, nil); err != nil {
 		t.Fatalf("Insert as studentA: %v", err)
 	}
 
@@ -374,7 +374,7 @@ func TestInteg_RLS_StudentCannotInsertSubmissionForAnotherStudent(t *testing.T) 
 	defer releaseB()
 
 	repo := NewRepository(pool)
-	_, err := repo.Insert(ctxB, hwID, studentA, "markdown", "/uploads/evil.md", 256)
+	_, err := repo.Insert(ctxB, hwID, studentA, "markdown", "/uploads/evil.md", 256, nil)
 	if err == nil {
 		t.Fatal("Insert as studentB with studentA's ID succeeded — RLS INSERT policy not enforced")
 	}
@@ -408,7 +408,7 @@ func TestInteg_Insert_NonExistentHomeworkID_ReturnsForeignKeyViolation(t *testin
 	defer release()
 
 	repo := NewRepository(pool)
-	_, err := repo.Insert(sCtx, phantomHW, studentID, "latex", "/uploads/ghost.tex", 128)
+	_, err := repo.Insert(sCtx, phantomHW, studentID, "latex", "/uploads/ghost.tex", 128, nil)
 	// Code 23503 = foreign_key_violation.
 	integCheckPgError(t, err, "23503")
 }
@@ -432,7 +432,7 @@ func TestInteg_Insert_ZeroByteFile_ReturnsCheckConstraintViolation(t *testing.T)
 	defer release()
 
 	repo := NewRepository(pool)
-	_, err := repo.Insert(sCtx, hwID, studentID, "markdown", "/uploads/empty.md", 0)
+	_, err := repo.Insert(sCtx, hwID, studentID, "markdown", "/uploads/empty.md", 0, nil)
 	// Code 23514 = check_violation.
 	integCheckPgError(t, err, "23514")
 }
@@ -457,7 +457,7 @@ func TestInteg_SetRawScore_ServerRole_TransitionsToGraded(t *testing.T) {
 	defer releaseStudent()
 
 	repo := NewRepository(pool)
-	inserted, err := repo.Insert(sCtx, hwID, studentID, "latex", "/uploads/scored.tex", 4096)
+	inserted, err := repo.Insert(sCtx, hwID, studentID, "latex", "/uploads/scored.tex", 4096, nil)
 	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestInteg_MarkGradingFailed_ServerRole_TransitionsToFailed(t *testing.T) {
 	defer releaseStudent()
 
 	repo := NewRepository(pool)
-	inserted, err := repo.Insert(sCtx, hwID, studentID, "asciidoc", "/uploads/fail.adoc", 1500)
+	inserted, err := repo.Insert(sCtx, hwID, studentID, "asciidoc", "/uploads/fail.adoc", 1500, nil)
 	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}

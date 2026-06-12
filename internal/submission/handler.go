@@ -18,6 +18,10 @@ import (
 	"github.com/valory/valory/internal/course"
 )
 
+// maxSubmissionImages is the maximum number of image IDs a submission may carry
+// (REQ-SUBMISSION-006).
+const maxSubmissionImages = 8
+
 // defaultMaxUploadBytes is used when the config key is absent or zero.
 const defaultMaxUploadBytes = int64(10485760) // 10 MB
 
@@ -27,10 +31,25 @@ type courseOwnershipChecker interface {
 	GetCourseByID(ctx context.Context, id uuid.UUID) (course.CourseRow, error)
 }
 
+// imageOwnershipValidator is satisfied by *image.Repository and by test stubs.
+// Defined locally (consumer side) to avoid an import cycle between submission
+// and image packages. Only ValidateOwnership and the cap check are needed here.
+type imageOwnershipValidator interface {
+	ValidateOwnership(ctx context.Context, ids []uuid.UUID, studentID, courseID uuid.UUID) error
+}
+
+// homeworkDetailFetcher is satisfied by *Repository and by test stubs. Defined
+// locally so handler tests can inject a stub without a live database.
+type homeworkDetailFetcher interface {
+	GetHomework(ctx context.Context, homeworkID uuid.UUID) (HomeworkRow, error)
+}
+
 // Handler serves the submission upload and retrieval endpoints.
 type Handler struct {
 	repo       *Repository
-	courseRepo courseOwnershipChecker // used to verify course ownership before accepting uploads
+	hwFetcher  homeworkDetailFetcher   // used by getHomeworkDetail; defaults to repo
+	courseRepo courseOwnershipChecker  // used to verify course ownership before accepting uploads
+	imageRepo  imageOwnershipValidator // nil when image support is not wired (graceful degradation)
 	uploadsDir string
 	configSvc  interface{ GetInt64(string) int64 }
 }
@@ -39,19 +58,118 @@ type Handler struct {
 func NewHandler(repo *Repository, courseRepo courseOwnershipChecker, uploadsDir string, configSvc interface{ GetInt64(string) int64 }) *Handler {
 	return &Handler{
 		repo:       repo,
+		hwFetcher:  repo, // *Repository satisfies homeworkDetailFetcher
 		courseRepo: courseRepo,
 		uploadsDir: uploadsDir,
 		configSvc:  configSvc,
 	}
 }
 
+// SetImageRepository injects the image repository so the submission upload
+// handler can validate image_ids ownership (REQ-SUBMISSION-005). Called from
+// main after both packages are wired to avoid an import cycle.
+//
+// @{"req": ["REQ-SUBMISSION-005"]}
+func (h *Handler) SetImageRepository(repo imageOwnershipValidator) {
+	h.imageRepo = repo
+}
+
 // Routes mounts submission endpoints under /courses/{id}/homework/{homeworkId}.
 // Must be mounted inside the authenticated + CSRF group.
 //
-// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003"]}
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-002", "REQ-SUBMISSION-003", "REQ-FECONTENT-020"]}
 func (h *Handler) Routes(r chi.Router) {
+	r.Get("/", h.getHomeworkDetail)
 	r.Post("/submissions", h.upload)
 	r.Get("/submissions/latest", h.getLatest)
+}
+
+// getHomeworkDetail returns the homework title, description (rubric), and due
+// date for the given homework assignment. It enforces the same IDOR checks as
+// the upload handler: the homework must belong to the course in the URL, and
+// the course must belong to the authenticated student.
+//
+// Response shape mirrors the HomeworkDetail TypeScript interface in
+// HomeworkSubmissionView.vue: {id, title, description, due_date}.
+//
+// @{"req": ["REQ-FECONTENT-020", "REQ-SUBMISSION-001"]}
+func (h *Handler) getHomeworkDetail(w http.ResponseWriter, r *http.Request) {
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	studentID := uuid.UUID(rawID)
+
+	courseIDStr := chi.URLParam(r, "id")
+	courseID, err := uuid.Parse(courseIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid course id")
+		return
+	}
+
+	homeworkIDStr := chi.URLParam(r, "homeworkId")
+	homeworkID, err := uuid.Parse(homeworkIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid homework id")
+		return
+	}
+
+	// Verify the course belongs to the requesting student before revealing
+	// any homework data (mirrors the ownership check in upload and getLatest).
+	c, err := h.courseRepo.GetCourseByID(r.Context(), courseID)
+	if err != nil {
+		if errors.Is(err, course.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "course not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+	if c.StudentID != studentID {
+		writeError(w, http.StatusForbidden, "FORBIDDEN", "access forbidden")
+		return
+	}
+
+	hw, err := h.hwFetcher.GetHomework(r.Context(), homeworkID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "homework not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	// Verify the homework belongs to the course from the URL to prevent IDOR
+	// (a student supplying their own valid courseId but a homeworkId from
+	// another course would otherwise leak data across course boundaries).
+	if hw.CourseID != courseID {
+		writeError(w, http.StatusForbidden, "FORBIDDEN", "homework does not belong to this course")
+		return
+	}
+
+	resp := homeworkDetailToResponse(hw)
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// homeworkDetailToResponse converts a HomeworkRow to the JSON shape expected
+// by the HomeworkDetail TypeScript interface in HomeworkSubmissionView.vue:
+// {id, title, description, due_date}. The rubric column is surfaced as
+// "description" because that is the field name the frontend destructures.
+// due_date is omitted from the response when no schedule row exists.
+//
+// @{"req": ["REQ-FECONTENT-020", "REQ-SUBMISSION-001"]}
+func homeworkDetailToResponse(hw HomeworkRow) map[string]interface{} {
+	resp := map[string]interface{}{
+		"id":          hw.ID.String(),
+		"title":       hw.Title,
+		"description": hw.Rubric,
+	}
+	if hw.DueDate != nil {
+		resp["due_date"] = hw.DueDate.Format(time.RFC3339)
+	}
+	return resp
 }
 
 // upload accepts a multipart file upload for a homework assignment.
@@ -161,6 +279,41 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse optional image_ids JSON array from the multipart form field
+	// (REQ-SUBMISSION-004). The field is a JSON-encoded array of UUID strings,
+	// e.g. '["uuid-1","uuid-2"]'. Absent or empty field means no images attached.
+	var imageIDs []uuid.UUID
+	if rawImageIDs := r.FormValue("image_ids"); rawImageIDs != "" {
+		var rawStrs []string
+		if err := json.Unmarshal([]byte(rawImageIDs), &rawStrs); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "INVALID_IMAGE_IDS", "image_ids must be a JSON array of UUID strings")
+			return
+		}
+		// REQ-SUBMISSION-006: cap at 8 images.
+		if len(rawStrs) > maxSubmissionImages {
+			writeError(w, http.StatusUnprocessableEntity, "TOO_MANY_IMAGES", "image_ids must not exceed 8 entries")
+			return
+		}
+		for _, s := range rawStrs {
+			id, err := uuid.Parse(s)
+			if err != nil {
+				writeError(w, http.StatusUnprocessableEntity, "INVALID_IMAGE_ID", "image_ids contains an invalid UUID")
+				return
+			}
+			imageIDs = append(imageIDs, id)
+		}
+	}
+
+	// REQ-SUBMISSION-005: validate that every image ID is owned by this student
+	// in this course. imageRepo may be nil when the image package is not wired
+	// (test environments); in that case we skip the check and store an empty slice.
+	if h.imageRepo != nil && len(imageIDs) > 0 {
+		if err := h.imageRepo.ValidateOwnership(r.Context(), imageIDs, studentID, courseID); err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "INVALID_IMAGE_ID", "one or more image_ids are invalid or not owned by you in this course")
+			return
+		}
+	}
+
 	// Build the storage path scoped to student + homework to avoid collisions.
 	submissionID := uuid.New()
 	ext := filepath.Ext(header.Filename)
@@ -181,7 +334,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	row, err := h.repo.Insert(r.Context(), homeworkID, studentID, format, storagePath, int64(len(fileBytes)))
+	row, err := h.repo.Insert(r.Context(), homeworkID, studentID, format, storagePath, int64(len(fileBytes)), imageIDs)
 	if err != nil {
 		if errors.Is(err, ErrAlreadySubmitted) {
 			// Clean up the file we just wrote since the DB insert was rejected.
@@ -251,8 +404,11 @@ func (h *Handler) getLatest(w http.ResponseWriter, r *http.Request) {
 }
 
 // submissionToResponse converts a SubmissionRow to the JSON response shape.
+// image_count is derived from len(ImageIDs) per the SDD; it is not persisted
+// separately but is included so the frontend can display the count without
+// separately fetching the image_ids array (REQ-FECONTENT-224).
 //
-// @{"req": ["REQ-SUBMISSION-001"]}
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-004"]}
 func submissionToResponse(row SubmissionRow) map[string]interface{} {
 	resp := map[string]interface{}{
 		"id":              row.ID.String(),
@@ -262,6 +418,7 @@ func submissionToResponse(row SubmissionRow) map[string]interface{} {
 		"file_size_bytes": row.FileSizeBytes,
 		"submitted_at":    row.SubmittedAt.Format(time.RFC3339),
 		"grading_status":  row.GradingStatus,
+		"image_count":     len(row.ImageIDs),
 	}
 	if row.RawScore != nil {
 		resp["raw_score"] = *row.RawScore

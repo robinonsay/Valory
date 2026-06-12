@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valory/valory/internal/auth"
 	"github.com/valory/valory/internal/db"
+	"github.com/valory/valory/internal/image"
 	"github.com/valory/valory/internal/notify"
 )
 
@@ -55,6 +56,9 @@ type SubmissionToGrade struct {
 	FilePath    string
 	Rubric      string
 	SubmittedAt time.Time
+	// ImageIDs is the ordered list of image UUIDs attached at submission time.
+	// Nil means no images were attached (REQ-AGENT-025).
+	ImageIDs    []uuid.UUID
 }
 
 // AgentRunner is the central orchestrator. It owns the polling goroutines and
@@ -68,6 +72,7 @@ type AgentRunner struct {
 	submissionRepo submissionRepository
 	gradeSvc       gradeService
 	aiClient       aiMessenger
+	imageRepo      *image.Repository // nil-safe: grading falls back to text-only when nil
 	configSvc      interface {
 		GetInt64(string) int64
 		GetFloat64(string) float64
@@ -100,6 +105,16 @@ func NewAgentRunner(
 		aiClient:       aiClient,
 		configSvc:      configSvc,
 	}
+}
+
+// SetImageRepository injects the image repository so the grading runner can
+// load attached images and pass them as vision blocks to Claude (REQ-AGENT-025).
+// Called from main after both packages are wired. Nil-safe: when not set the
+// grading call falls back to text-only.
+//
+// @{"req": ["REQ-AGENT-025"]}
+func (r *AgentRunner) SetImageRepository(repo *image.Repository) {
+	r.imageRepo = repo
 }
 
 // Start launches background polling goroutines:
@@ -611,9 +626,11 @@ func (r *AgentRunner) pollGradingQueue(ctx context.Context) {
 
 	// Load pending submissions joined with their homework rubric and course_id so
 	// GradeSubmission has everything it needs without additional queries.
+	// image_ids (UUID[]) is included so the grading vision path can load the
+	// attached images without a separate query (REQ-AGENT-025).
 	rows, err := conn.Query(ctx,
 		`SELECT s.id, s.homework_id, s.student_id, c.id AS course_id,
-		        s.file_path, h.rubric, s.submitted_at
+		        s.file_path, h.rubric, s.submitted_at, s.image_ids
 		 FROM submissions s
 		 JOIN homework h ON h.id = s.homework_id
 		 JOIN courses c ON c.id = h.course_id
@@ -638,6 +655,7 @@ func (r *AgentRunner) pollGradingQueue(ctx context.Context) {
 			&sub.FilePath,
 			&sub.Rubric,
 			&sub.SubmittedAt,
+			&sub.ImageIDs,
 		); err != nil {
 			log.Printf("runner: poll grading: scan row: %v", err)
 			continue
@@ -675,11 +693,17 @@ func (r *AgentRunner) pollGradingQueue(ctx context.Context) {
 // content, parses the raw_score from the JSON response, stores it on the
 // submission, and triggers grade computation via gradeSvc.
 //
+// When the submission has image_ids attached (REQ-AGENT-025) the grading call
+// uses a multi-block user message: [imageBlock..., textBlock]. Images are
+// capped at 8; the grading runner slices defensively even though the cap is
+// enforced at submission time. Missing image rows (dangling UUIDs after
+// account deletion) are tolerated per the SDD deletion cascade note.
+//
 // Claude is instructed to return ONLY {"score": <0-100>}. Any non-JSON or
 // out-of-range response is treated as a grading failure and the submission is
 // marked 'failed' so the grading loop does not retry it indefinitely.
 //
-// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002"]}
+// @{"req": ["REQ-GRADE-001", "REQ-GRADE-002", "REQ-AGENT-025"]}
 func (r *AgentRunner) GradeSubmission(ctx context.Context, sub SubmissionToGrade) error {
 	// Read the submission file. File content validation already happened at
 	// upload time, so we only need to surface read errors here.
@@ -701,11 +725,43 @@ func (r *AgentRunner) GradeSubmission(ctx context.Context, sub SubmissionToGrade
 		string(fileBytes),
 	)
 
+	// Build the user message. When images are attached, prepend vision blocks
+	// before the text block so Claude sees image context first (REQ-AGENT-025).
+	// Defensively cap to 8 even though the submission handler enforces this at
+	// upload time; dangling UUIDs are tolerated (rows simply won't appear in
+	// the GetByIDs result).
+	var userContent []anthropic.ContentBlockParamUnion
+	if r.imageRepo != nil && len(sub.ImageIDs) > 0 {
+		imageIDs := sub.ImageIDs
+		if len(imageIDs) > 8 {
+			imageIDs = imageIDs[:8]
+		}
+		imgRows, imgErr := r.imageRepo.GetByIDs(ctx, imageIDs)
+		if imgErr != nil {
+			log.Printf("runner: grade submission %s: load images: %v", sub.ID, imgErr)
+			// Non-fatal: fall through to text-only grading rather than failing.
+		} else {
+			// Warn when fewer rows come back than requested — the missing UUIDs are
+			// likely dangling references from a cascade delete or a data inconsistency.
+			// Grading proceeds with the available images so the student is not blocked,
+			// but the discrepancy is logged so operators can investigate data quality.
+			if len(imgRows) < len(imageIDs) {
+				log.Printf("runner: grade submission %s: expected %d image rows, got %d (dangling UUIDs after deletion?)",
+					sub.ID, len(imageIDs), len(imgRows))
+			}
+			userContent = append(userContent, image.ImageRowsToBlocks(imgRows)...)
+		}
+	}
+	userContent = append(userContent, anthropic.NewTextBlock(prompt))
+
 	msg, err := r.aiClient.Messages(ctx, sub.StudentID, sub.CourseID, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeSonnet4_6,
 		MaxTokens: 256,
 		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+			{
+				Role:    anthropic.MessageParamRoleUser,
+				Content: userContent,
+			},
 		},
 	})
 	if err != nil {

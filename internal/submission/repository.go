@@ -21,12 +21,13 @@ type SubmissionRow struct {
 	ID            uuid.UUID
 	HomeworkID    uuid.UUID
 	StudentID     uuid.UUID
-	Format        string   // "latex", "markdown", "asciidoc"
+	Format        string     // "latex", "markdown", "asciidoc"
 	FilePath      string
 	FileSizeBytes int64
 	SubmittedAt   time.Time
-	RawScore      *float64 // nil until graded
-	GradingStatus string   // "pending", "graded", "failed"
+	RawScore      *float64   // nil until graded
+	GradingStatus string     // "pending", "graded", "failed"
+	ImageIDs      []uuid.UUID // nil when no images were attached (REQ-SUBMISSION-004)
 }
 
 // Repository provides database access for the submissions table.
@@ -53,18 +54,27 @@ func (r *Repository) conn(ctx context.Context) db.Querier {
 	return r.pool
 }
 
-// Insert stores a new submission record. Returns ErrAlreadySubmitted on unique
-// constraint violation (a student may only have one submission per homework item).
+// Insert stores a new submission record. imageIDs is the list of image UUIDs
+// attached at submission time (REQ-SUBMISSION-004); pass nil when none were
+// attached. Returns ErrAlreadySubmitted on unique constraint violation (a
+// student may only have one submission per homework item).
 //
-// @{"req": ["REQ-SUBMISSION-001"]}
-func (r *Repository) Insert(ctx context.Context, homeworkID, studentID uuid.UUID, format, filePath string, fileSizeBytes int64) (SubmissionRow, error) {
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-004"]}
+func (r *Repository) Insert(ctx context.Context, homeworkID, studentID uuid.UUID, format, filePath string, fileSizeBytes int64, imageIDs []uuid.UUID) (SubmissionRow, error) {
+	// Convert empty slice to nil so the DB stores NULL rather than an empty
+	// array; NULL is the documented sentinel for "no images attached" (migration 012).
+	var dbImageIDs interface{}
+	if len(imageIDs) > 0 {
+		dbImageIDs = imageIDs
+	}
+
 	var row SubmissionRow
 	err := r.conn(ctx).QueryRow(ctx,
-		`INSERT INTO submissions (homework_id, student_id, format, file_path, file_size_bytes)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO submissions (homework_id, student_id, format, file_path, file_size_bytes, image_ids)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, homework_id, student_id, format, file_path, file_size_bytes,
-		           submitted_at, raw_score, grading_status`,
-		homeworkID, studentID, format, filePath, fileSizeBytes,
+		           submitted_at, raw_score, grading_status, image_ids`,
+		homeworkID, studentID, format, filePath, fileSizeBytes, dbImageIDs,
 	).Scan(
 		&row.ID,
 		&row.HomeworkID,
@@ -75,6 +85,7 @@ func (r *Repository) Insert(ctx context.Context, homeworkID, studentID uuid.UUID
 		&row.SubmittedAt,
 		&row.RawScore,
 		&row.GradingStatus,
+		&row.ImageIDs,
 	)
 	if err != nil {
 		// pgx surfaces unique constraint violations as *pgconn.PgError with code 23505.
@@ -90,12 +101,12 @@ func (r *Repository) Insert(ctx context.Context, homeworkID, studentID uuid.UUID
 // GetLatestByHomework returns the submission for a given student/homework pair.
 // Because of the unique constraint there is at most one row.
 //
-// @{"req": ["REQ-SUBMISSION-001"]}
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-004"]}
 func (r *Repository) GetLatestByHomework(ctx context.Context, homeworkID, studentID uuid.UUID) (SubmissionRow, error) {
 	var row SubmissionRow
 	err := r.conn(ctx).QueryRow(ctx,
 		`SELECT id, homework_id, student_id, format, file_path, file_size_bytes,
-		        submitted_at, raw_score, grading_status
+		        submitted_at, raw_score, grading_status, image_ids
 		 FROM submissions
 		 WHERE homework_id = $1 AND student_id = $2
 		 ORDER BY submitted_at DESC
@@ -111,6 +122,7 @@ func (r *Repository) GetLatestByHomework(ctx context.Context, homeworkID, studen
 		&row.SubmittedAt,
 		&row.RawScore,
 		&row.GradingStatus,
+		&row.ImageIDs,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -142,14 +154,48 @@ func (r *Repository) GetHomeworkCourseID(ctx context.Context, homeworkID uuid.UU
 	return courseID, nil
 }
 
+// HomeworkRow is the in-memory representation of a homework row joined with
+// its optional due_date_schedules entry.
+type HomeworkRow struct {
+	ID       uuid.UUID
+	CourseID uuid.UUID
+	Title    string
+	Rubric   string
+	DueDate  *time.Time // nil when no due_date_schedules row exists for this homework
+}
+
+// GetHomework fetches a single homework row together with its due date (if
+// one has been scheduled). The homework table has no RLS, so the bare pool is
+// used rather than the RLS-scoped conn(ctx) helper. Callers are responsible
+// for verifying course/student ownership before returning this data.
+//
+// @{"req": ["REQ-FECONTENT-020", "REQ-SUBMISSION-001"]}
+func (r *Repository) GetHomework(ctx context.Context, homeworkID uuid.UUID) (HomeworkRow, error) {
+	var row HomeworkRow
+	err := r.pool.QueryRow(ctx,
+		`SELECT h.id, h.course_id, h.title, h.rubric, d.due_date
+		 FROM homework h
+		 LEFT JOIN due_date_schedules d ON d.homework_id = h.id
+		 WHERE h.id = $1`,
+		homeworkID,
+	).Scan(&row.ID, &row.CourseID, &row.Title, &row.Rubric, &row.DueDate)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return HomeworkRow{}, ErrNotFound
+		}
+		return HomeworkRow{}, err
+	}
+	return row, nil
+}
+
 // ListPendingGrading returns all submissions with grading_status = 'pending'.
 // Used by the agent grading runner. Runs as server role (no RLS filter).
 //
-// @{"req": ["REQ-SUBMISSION-001"]}
+// @{"req": ["REQ-SUBMISSION-001", "REQ-SUBMISSION-004"]}
 func (r *Repository) ListPendingGrading(ctx context.Context) ([]SubmissionRow, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, homework_id, student_id, format, file_path, file_size_bytes,
-		        submitted_at, raw_score, grading_status
+		        submitted_at, raw_score, grading_status, image_ids
 		 FROM submissions
 		 WHERE grading_status = 'pending'`,
 	)
@@ -171,6 +217,7 @@ func (r *Repository) ListPendingGrading(ctx context.Context) ([]SubmissionRow, e
 			&row.SubmittedAt,
 			&row.RawScore,
 			&row.GradingStatus,
+			&row.ImageIDs,
 		); err != nil {
 			return nil, err
 		}

@@ -27,7 +27,7 @@
 //   from __filename (this file lives at frontend/e2e/seed.ts, so two parent
 //   directories up is the repo root).
 
-import { execSync } from 'node:child_process'
+import { execSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -194,6 +194,78 @@ export function markKickoffSent(courseId: string): void {
     `SET intake_kickoff_sent = true, intake_kickoff_attempts = 3, updated_at = now() ` +
     `WHERE id = ${sqLit(courseId)};`
   runPsql(sql)
+}
+
+// @{"req": ["REQ-FECONTENT-220", "REQ-FECONTENT-221", "REQ-FECONTENT-222"]}
+//
+// seedHomework inserts a single homework row for the given course and returns
+// the generated UUID of the new row.
+//
+// The homework table (migration 003_course.sql) has no RLS, so the postgres
+// superuser used by runPsql() can insert directly without GUC setup.
+//
+// Parameters:
+//   courseId     — UUID of the course that owns this homework.
+//   title        — homework title (VARCHAR 255).
+//   sectionIndex — 0-based section index (defaults to 0).
+//
+// The rubric is set to a fixed test string; grade_weight is set to 0.5
+// (50 % of course grade).  Both are required non-null columns.
+//
+// Implementation note:
+//   runPsql() discards stdout (uses stdio:pipe, result is not captured).  To
+//   read back the generated UUID we use spawnSync with {encoding:'utf8'} which
+//   returns stdout directly, passing the SQL via stdin to avoid any shell-
+//   quoting layer.  The query uses a subquery so the INSERT and SELECT happen
+//   in one round-trip: INSERT ... RETURNING id is wrapped in a CTE and selected
+//   in an outer query that psql prints as a table row.
+export function seedHomework(courseId: string, title: string, sectionIndex = 0): string {
+  assertUUID(courseId, 'courseId')
+  if (title.length === 0 || title.length > 255) {
+    throw new Error(`seed.ts: seedHomework: title must be 1–255 characters`)
+  }
+  if (!Number.isInteger(sectionIndex) || sectionIndex < 0) {
+    throw new Error(`seed.ts: seedHomework: sectionIndex must be a non-negative integer`)
+  }
+
+  // Use a CTE so the INSERT and the RETURNING id are part of one statement.
+  // psql prints the id column as a bare UUID string in --tuples-only mode
+  // (no column headers, no row counts) which is easy to parse.
+  const sql =
+    `WITH inserted AS (` +
+    `  INSERT INTO homework (course_id, section_index, title, rubric, grade_weight) ` +
+    `  VALUES (${sqLit(courseId)}, ${sectionIndex}, ${sqLit(title)}, ` +
+    `  'E2E test rubric — no AI grading criteria', 0.500) RETURNING id` +
+    `) SELECT id FROM inserted;`
+
+  const result = spawnSync(
+    'docker',
+    ['compose', 'exec', '-T', 'db', 'psql', '-U', 'postgres', '-d', 'valory', '--tuples-only', '--no-align'],
+    {
+      cwd: repoRoot,
+      input: sql,
+      encoding: 'utf8' as BufferEncoding
+    }
+  )
+
+  if (result.status !== 0) {
+    throw new Error(
+      `seed.ts: seedHomework: psql failed (exit ${result.status ?? '?'})\n` +
+      `stderr: ${result.stderr ?? ''}\n` +
+      `stdout: ${result.stdout ?? ''}`
+    )
+  }
+
+  // stdout contains one line: the UUID of the inserted row (bare, no header).
+  const stdout = (result.stdout as string).trim()
+  const match = stdout.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
+  if (!match) {
+    throw new Error(
+      `seed.ts: seedHomework: could not parse UUID from psql output: ${JSON.stringify(stdout)}\n` +
+      `stderr: ${result.stderr ?? ''}`
+    )
+  }
+  return match[1]
 }
 
 // @{"req": ["REQ-FEAUTH-056"]}

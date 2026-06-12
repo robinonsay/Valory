@@ -1,0 +1,754 @@
+= Image Upload Design
+:revdate: 2026-06-12
+:toc:
+:toclevels: 3
+
+// Sprint 15, Task 15.1
+// Satisfies: REQ-AGENT-023..025, REQ-SUBMISSION-004..006, REQ-FECOURSE-622..626,
+//            REQ-FECONTENT-220..224
+
+== Overview
+
+=== Problem
+
+Students currently cannot attach images to chat messages or homework submissions.
+Blocking cases include diagrams, handwritten working, screenshots of error output,
+and visual artefacts central to the subject (graphs, circuit diagrams, artwork,
+etc.).  The Anthropic SDK already supports vision via image content blocks in
+`MessageParam`; the only missing pieces are storage, an upload API, and wiring
+into the two call sites that invoke Claude (`chair.Chat` and the grading runner).
+
+=== Decision summary
+
+[cols="1,3"]
+|===
+|Decision |Ruling
+
+|Storage backend
+|PostgreSQL `bytea` in a new `images` table. Rationale in section 3.
+
+|URL scheme in chat messages
+|Absolute URL in the JSON response body; frontend embeds as markdown image
+syntax using the absolute URL; sanitizer extended to allow same-origin
+`/api/v1/images/` paths.
+
+|Chat image reference
+|Structured `attachments` array field added alongside the existing `message`
+field in the POST body. The array carries image IDs. Images are resolved by
+the handler before the Claude call, not stored as URLs in chat history.
+
+|Grading images
+|`image_ids` array column added to `submissions`; grading runner reads bytes
+from the `images` table and constructs vision blocks.
+
+|Vision call scope
+|Current turn only; no image history re-send across prior turns.
+
+|Size cap
+|5 MB per image; 4 images per chat message; 8 images per homework submission.
+
+|Allowed MIME types
+|`image/png`, `image/jpeg`, `image/gif`, `image/webp`
+|===
+
+== Requirements in Scope
+
+[cols="1,4"]
+|===
+|ID |Description
+
+|REQ-AGENT-023
+|The agent module shall accept an optional `attachments` array of image IDs in
+the chat POST body and pass the corresponding images as vision content blocks in
+the current-turn Claude call.
+
+|REQ-AGENT-024
+|The agent module shall reject a chat POST whose `attachments` array contains
+more than four image IDs with HTTP 422.
+
+|REQ-AGENT-025
+|The agent module shall pass images attached to a homework submission as vision
+content blocks in the grading Claude call, capped at eight images per call.
+
+|REQ-SUBMISSION-004
+|The submission module shall accept an optional `image_ids` JSON array alongside
+the multipart file upload for a homework submission and store the IDs in a new
+`submissions.image_ids` column.
+
+|REQ-SUBMISSION-005
+|The submission module shall reject a homework submission whose `image_ids` field
+references an image not owned by the submitting student.
+
+|REQ-SUBMISSION-006
+|The submission module shall reject a homework submission whose `image_ids` field
+contains more than eight entries.
+
+|REQ-FECOURSE-622
+|The intake chat frontend shall provide an image attach button that opens a file
+picker restricted to PNG, JPEG, GIF, and WebP files of at most 5 MB.
+
+|REQ-FECOURSE-623
+|The intake chat frontend shall validate selected images for type and size on the
+client and surface an error message if validation fails, preventing upload.
+
+|REQ-FECOURSE-624
+|The intake chat frontend shall display a thumbnail preview of each attached
+image below the text input before send and allow removal of individual images.
+
+|REQ-FECOURSE-625
+|The intake chat frontend shall upload each selected image to
+`POST /api/v1/courses/{id}/images` before sending the chat message, include
+the returned image ID in the `attachments` array of the chat POST, and render
+the sent user message with the text content and attached image thumbnails
+(not as markdown in the message content).
+
+|REQ-FECOURSE-626
+|The intake chat frontend shall surface an upload error message when the image
+upload returns a non-201 status and prevent the chat message from being sent.
+
+|REQ-FECONTENT-220
+|The homework submission frontend shall provide an image attach section that
+allows up to eight images of at most 5 MB each in PNG, JPEG, GIF, or WebP
+format.
+
+|REQ-FECONTENT-221
+|The homework submission frontend shall upload each attached image to
+`POST /api/v1/courses/{id}/images` before posting the submission and pass the
+returned image IDs in the `image_ids` form field.
+
+|REQ-FECONTENT-222
+|The homework submission frontend shall display a thumbnail preview of each
+attached image before submission.
+
+|REQ-FECONTENT-223
+|The homework submission frontend shall surface an upload error message when an
+image upload returns a non-201 status and block the submission from proceeding.
+
+|REQ-FECONTENT-224
+|The homework submission frontend shall display the count of images attached to
+a past submission in the latest-submission detail section.
+|===
+
+== Data Model
+
+=== `images` Table
+
+This table stores uploaded image bytes alongside ownership and provenance
+metadata.  All columns except `submission_id` are non-nullable.
+
+[source,sql]
+----
+-- Migration 012: additive, no destructive changes
+BEGIN;
+
+INSERT INTO schema_migrations (version) VALUES ('012_images')
+    ON CONFLICT (version) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS images (
+    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- owner: the student who uploaded the image
+    student_id      UUID         NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
+    -- course scope: images are isolated per course
+    course_id       UUID         NOT NULL REFERENCES courses(id)  ON DELETE CASCADE,
+    -- nullable: set when the image was attached to a specific homework submission
+    submission_id   UUID         REFERENCES submissions(id)       ON DELETE SET NULL,
+    mime_type       VARCHAR(32)  NOT NULL
+                    CHECK (mime_type IN ('image/png','image/jpeg','image/gif','image/webp')),
+    byte_size       BIGINT       NOT NULL CHECK (byte_size > 0 AND byte_size <= 5242880),
+    -- sha256 hex digest: content-addressable identity and tamper detection
+    sha256          CHAR(64)     NOT NULL,
+    data            BYTEA        NOT NULL,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- Fast lookups by owner + course (the most common read path is the grading runner
+-- loading all images for a submission).
+CREATE INDEX IF NOT EXISTS images_student_course_idx
+    ON images (student_id, course_id);
+
+-- Index for submission join.
+CREATE INDEX IF NOT EXISTS images_submission_idx
+    ON images (submission_id) WHERE submission_id IS NOT NULL;
+
+ALTER TABLE images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE images FORCE ROW LEVEL SECURITY;
+
+-- Students read and insert their own images.
+DO $$ BEGIN
+    CREATE POLICY images_student_policy ON images
+        USING (student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid)
+        WITH CHECK (student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Admins have full read access.
+DO $$ BEGIN
+    CREATE POLICY images_admin_policy ON images
+        USING (current_setting('app.current_role', true) = 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Server role can read (needed by grading runner and vision call paths).
+DO $$ BEGIN
+    CREATE POLICY images_server_select_policy ON images
+        FOR SELECT
+        USING (current_setting('app.current_role', true) = 'server');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Server role can insert (not needed by current paths, but included for symmetry
+-- with other tables so future server-side image generation does not require a
+-- migration).
+DO $$ BEGIN
+    CREATE POLICY images_server_insert_policy ON images
+        FOR INSERT
+        WITH CHECK (current_setting('app.current_role', true) = 'server');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON images TO valory_app;
+
+-- Add image_ids to submissions: stores the ordered list of image UUIDs attached
+-- at submission time.  NULL means no images were attached (not an empty array)
+-- to avoid a default migration burden on existing rows.
+ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS image_ids UUID[] DEFAULT NULL;
+
+COMMIT;
+----
+
+==== Storage choice rationale: `bytea` vs filesystem
+
+The submission module already stores homework files on a filesystem volume
+(`internal/submission/handler.go`).  For images, PostgreSQL `bytea` is
+the right choice for the following reasons specific to this stack:
+
+. *Backup story*: the deployment uses `pg_dump` as the only backup mechanism.
+  Images stored in `bytea` are included in `pg_dump` automatically and require
+  zero operational changes.  Filesystem-stored images would require a separate
+  volume-snapshot strategy or `tar`-and-restore that does not currently exist.
+
+. *RLS ownership*: images carry student ownership and RLS policies identical to
+  `chat_messages` and `lesson_content`.  A filesystem path cannot be protected
+  by RLS.  Enforcing ownership through the DB connection (the standard pattern
+  throughout this codebase) keeps the security model consistent.
+
+. *Tamper evidence*: the `sha256` column records the content hash at upload time.
+  Anyone with DB access can verify an image row has not been modified
+  post-insertion.  No equivalent integrity check exists for filesystem files
+  without additional checksumming tooling.
+
+. *Size*: the 5 MB/image cap and 4-per-message / 8-per-submission caps bound
+  total image storage to a manageable level for a single-host deployment.
+  At 100 active students each with 4 homework sets and 8 images each,
+  the worst-case image data is 100 × 4 × 8 × 5 MB = 16 GB — well within
+  a standard Postgres data volume for this scale.
+
+. *Atomicity*: upload, image row insert, and (for submissions) the submission
+  row update happen in the same DB transaction.  No orphaned files can exist
+  after a crash between a file write and the DB insert (the bug class that the
+  existing submission handler partially guards against with `os.Remove`).
+
+The primary cost — row bloat in the `images` table — is acceptable given the
+size caps and the single-host, single-operator deployment model.
+
+==== Migration plan
+
+Migration `012_images` is additive:
+* New `images` table: rollback drops it.
+* `ADD COLUMN image_ids UUID[] DEFAULT NULL` on `submissions`: rollback drops
+  the column.  The `DEFAULT NULL` means existing rows are unaffected; no
+  backfill is required.
+
+Rollback DDL:
+[source,sql]
+----
+ALTER TABLE submissions DROP COLUMN IF EXISTS image_ids;
+DROP TABLE IF EXISTS images;
+----
+
+== API Contract
+
+=== POST /api/v1/courses/{id}/images
+
+Uploads a single image for use in chat messages or homework submissions.
+
+[cols="1,3"]
+|===
+|Attribute |Value
+
+|Method
+|POST
+
+|Auth
+|Session cookie required; CSRF token required (same as all state-changing
+endpoints — see `internal/security/csrf.go`)
+
+|Content-Type
+|`multipart/form-data`
+
+|Form field
+|`image` (file, required)
+|===
+
+Server-side processing order:
+
+. `http.MaxBytesReader` capped at 5,242,881 bytes (5 MB + 1 sentinel byte).
+. `r.ParseMultipartForm(5 << 20)`.
+. Header size check: reject if `header.Size > 5 << 20` with HTTP 413.
+. Read bytes into memory.
+. `http.DetectContentType` on first 512 bytes.  Reject if the detected type is
+  not in `{image/png, image/jpeg, image/gif, image/webp}` with HTTP 422.
+  Never trust the `Content-Type` header or file extension alone.
+. Compute SHA-256 of bytes.
+. Per-user rate check: if the student already has ≥ 200 images for this course
+  reject with HTTP 429.  (200 = 4 images × ~50 messages; gives ample headroom
+  for iteration without enabling unbounded storage.)
+. Insert into `images` with `app.current_role = server` (uses
+  `db.AcquireServerConn` identical to the `chatRepo.InsertMessage` pattern).
+
+Success response — HTTP 201:
+[source,json]
+----
+{
+  "image_id": "550e8400-e29b-41d4-a716-446655440000",
+  "url": "/api/v1/images/550e8400-e29b-41d4-a716-446655440000"
+}
+----
+
+The `url` field is the same-origin path used to serve the image.  The frontend
+embeds this in agent-reply markdown (see section 5) and as an `<img src>` in
+submission previews.
+
+Error responses:
+[cols="1,3"]
+|===
+|Status |Condition
+
+|400
+|Missing `image` field
+
+|413
+|Image exceeds 5 MB
+
+|422
+|MIME type not in allowed set after `http.DetectContentType`
+
+|429
+|Per-course upload cap (200 images) reached
+
+|401 / 403
+|Unauthenticated or course not owned by student
+|===
+
+=== GET /api/v1/images/{imageId}
+
+Serves an image by ID.  Required for the frontend to render uploaded images in
+chat history and submission previews.
+
+[cols="1,3"]
+|===
+|Attribute |Value
+
+|Method
+|GET
+
+|Auth
+|Session cookie required; no CSRF required (safe method)
+
+|Ownership check
+|Image `student_id` must equal the authenticated user, OR
+`current_role = server` (for the grading runner — that path never calls this
+endpoint directly, but the policy must permit it for future use)
+
+|Response headers
+|`Content-Type: <actual mime_type from images row>` +
+`X-Content-Type-Options: nosniff` +
+`Cache-Control: public, max-age=31536000, immutable` +
+`Content-Disposition: attachment` (not `inline`) as a defence-in-depth measure;
+the browser will still render images embedded via `<img src>`, and the
+`attachment` disposition prevents the browser from navigating to the URL
+directly, which would open the image in a new tab with full origin and
+potentially execute SVG scripts — SVG is not an allowed MIME type, but the
+header provides belt-and-suspenders coverage.
+|===
+
+Images are immutable after upload, so the `immutable` cache directive is
+correct.  The UUID-based path means cache-busting on re-upload is free (a new
+UUID is always issued).
+
+Error responses:
+[cols="1,3"]
+|===
+|Status |Condition
+
+|404
+|Image not found
+
+|403
+|Image owned by a different student
+|===
+
+=== Chat POST body extension
+
+The existing `POST /api/v1/courses/{id}/chat` body shape is:
+[source,json]
+----
+{ "message": "some text" }
+----
+
+The extended shape adds an optional `attachments` field:
+[source,json]
+----
+{
+  "message": "some text",
+  "attachments": [
+    "550e8400-e29b-41d4-a716-446655440000",
+    "661e9500-f39c-52e5-b827-557766550001"
+  ]
+}
+----
+
+`attachments` is an array of image UUIDs previously returned by
+`POST /api/v1/courses/{id}/images`.  If absent or empty, behaviour is
+unchanged.  Maximum 4 entries; the handler returns HTTP 422 if exceeded.
+
+Images are *not* stored in `chat_messages.content`.  The handler resolves
+the UUIDs from the `images` table immediately before the Claude call, builds
+vision blocks for the current turn only, and discards them.  This keeps the
+`chat_messages` schema unchanged and avoids sending image data in every
+subsequent history read.
+
+=== Homework submission form extension
+
+`POST /api/v1/courses/{id}/homework/{hwId}/submissions` currently accepts
+multipart with a `file` field.  Two new optional fields are added:
+
+[cols="1,3"]
+|===
+|Field |Description
+
+|`image_ids`
+|JSON-encoded array of image UUID strings, e.g.
+`["uuid-1","uuid-2"]`.  Maximum 8 entries.  Each UUID must reference an
+image row owned by the submitting student in the same course.
+
+|`image_count`
+|Integer; informational only, used by the frontend to display count in the
+submission detail view.  Derived server-side from `len(image_ids)` and not
+persisted separately.
+|===
+
+The handler validates each UUID against the `images` table before inserting
+the submission row.  Any invalid or foreign-owned UUID causes HTTP 422 with
+code `INVALID_IMAGE_ID`.
+
+== Agent Interactions
+
+=== Chat vision path
+
+[source]
+----
+Frontend                Handler (handler.go/chat)          Chair (chair.go/Chat)       Claude API
+   |                           |                                  |                         |
+   |--POST /chat {message,     |                                  |                         |
+   |   attachments:[id1,id2]}->|                                  |                         |
+   |                           |--resolve UUIDs from images table |                         |
+   |                           |  (server-role conn, SELECT       |                         |
+   |                           |   id,data,mime_type WHERE        |                         |
+   |                           |   id IN ($1,$2) AND              |                         |
+   |                           |   student_id = $3)               |                         |
+   |                           |                                  |                         |
+   |                           |--build visionBlocks []           |                         |
+   |                           |  anthropic.ImageBlockParam       |                         |
+   |                           |  {Source: base64(data),          |                         |
+   |                           |   MediaType: mime_type}          |                         |
+   |                           |                                  |                         |
+   |                           |--chair.ChatWithImages(ctx,       |                         |
+   |                           |   courseID, studentID,           |                         |
+   |                           |   message, visionBlocks)-------->|                         |
+   |                           |                                  |--buildMessages(history) |
+   |                           |                                  |  + append current user  |
+   |                           |                                  |  turn as multi-block:   |
+   |                           |                                  |  [imageBlock..., text]  |
+   |                           |                                  |--Messages()------------>|
+   |                           |                                  |<--reply text------------|
+   |                           |<--reply--------------------------|                         |
+   |<--{reply, course_status}--|                                  |                         |
+----
+
+The `ChatWithImages` variant of `chair.Chat` accepts an additional
+`[]anthropic.ImageBlockParam` argument.  When the slice is non-empty the
+current-turn user message is built as a multi-block content list instead of
+`anthropic.NewTextBlock`:
+
+[source,go]
+----
+// buildCurrentTurnContent constructs the content blocks for the current student
+// turn. When images are present they precede the text block, matching the
+// Anthropic recommendation for vision prompts.
+func buildCurrentTurnContent(
+    message string,
+    images []anthropic.ImageBlockParam,
+) []anthropic.ContentBlockParamUnion {
+    blocks := make([]anthropic.ContentBlockParamUnion, 0, len(images)+1)
+    for _, img := range images {
+        blocks = append(blocks, anthropic.ContentBlockParamUnion{
+            OfImage: &img,
+        })
+    }
+    blocks = append(blocks, anthropic.ContentBlockParamUnion{
+        OfText: &anthropic.TextBlockParam{Text: message},
+    })
+    return blocks
+}
+
+// The new user MessageParam for the current turn:
+currentTurn := anthropic.MessageParam{
+    Role:    anthropic.MessageParamRoleUser,
+    Content: buildCurrentTurnContent(message, visionBlocks),
+}
+----
+
+History turns (from `buildMessages`) remain as single-block text params.  Only
+the current turn carries image blocks.  This bounds the token cost to exactly
+one image set per call regardless of conversation length.
+
+The image block source type used is `base64`:
+[source,go]
+----
+func imageToBlock(mimeType string, data []byte) anthropic.ImageBlockParam {
+    return anthropic.ImageBlockParam{
+        Type: anthropic.ImageBlockParamTypeImage,
+        Source: anthropic.ImageBlockParamSource{
+            Type:      anthropic.Base64ImageSourceTypeBase64,
+            MediaType: anthropic.Base64ImageSourceMediaType(mimeType),
+            Data:      base64.StdEncoding.EncodeToString(data),
+        },
+    }
+}
+----
+
+This matches the SDK's `anthropic.NewImageBlockBase64` constructor pattern
+available in the vendored module.
+
+=== Grading vision path
+
+The grading runner (`agent/runner.go`, grading branch) currently reads the
+submission file from disk and passes it as text.  After this change it also
+loads attached images:
+
+[source]
+----
+GradingRunner                    DB (server-role)               Claude API
+     |                                |                              |
+     |--SELECT image_ids FROM         |                              |
+     |  submissions WHERE id=$1------>|                              |
+     |<--image_ids [uuid...]----------|                              |
+     |                                |                              |
+     |--SELECT id,data,mime_type FROM |                              |
+     |  images WHERE id=ANY($1)------>|                              |
+     |<--rows (up to 8)---------------|                              |
+     |                                |                              |
+     |--build grading prompt blocks:  |                              |
+     |  [imageBlock...] + textBlock   |                              |
+     |  (submission text)             |                              |
+     |                                |                              |
+     |--client.Messages({             |                              |
+     |   system: gradingPrompt,       |                              |
+     |   messages: [{role:user,       |                              |
+     |     content: [img...,text]}]}) |                              |
+     |---------------------------------------------->               |
+     |<--------------------------------------------------------------| reply
+----
+
+Image IDs are loaded from `submissions.image_ids` (the new `UUID[]` column).
+If `image_ids` is NULL or empty the grading call is text-only, preserving the
+existing path.  A maximum of 8 images is enforced at submission time; the
+grading runner slices to `[:8]` defensively.
+
+== Sanitizer Change: Same-Origin Image Paths
+
+The DOMPurify hook in `renderMarkdown.ts` currently strips any `img src` that
+is not `https?://` or `data:image/(png|jpeg|gif|webp);base64,`.  A relative
+path like `/api/v1/images/uuid` is stripped.
+
+The resolution is to extend the hook's allowlist to accept paths matching
+`/api/v1/images/` exactly:
+
+[source,typescript]
+----
+// In the afterSanitizeAttributes hook, replace the img-src check:
+if (node.tagName === 'IMG') {
+  const src = node.getAttribute('src') ?? ''
+  if (
+    !/^https?:\/\//i.test(src) &&
+    !/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src) &&
+    !/^\/api\/v1\/images\/[0-9a-f-]{36}$/i.test(src)   // NEW
+  ) {
+    node.removeAttribute('src')
+  }
+}
+----
+
+The regex `^\/api\/v1\/images\/[0-9a-f-]{36}$` matches only a UUID-shaped path
+under `/api/v1/images/`.  It does not match:
+* `javascript:` schemes
+* Paths with `..` traversal
+* External domains embedded as a path prefix
+
+SVG is not in the allowed MIME list for upload, so there is no SVG-script
+execution risk from the backend.  The GET endpoint also sets
+`X-Content-Type-Options: nosniff`, which prevents MIME-confusion attacks even
+if an attacker somehow stores bytes that are both valid WebP and valid SVG.
+
+Agent-generated replies embed image references using standard Markdown image
+syntax: `![alt text](/api/v1/images/uuid)`.  The frontend renders agent
+messages through `renderMarkdown` which passes the patched sanitizer.  Student
+messages are rendered as plain text via `{{ }}` interpolation and never through
+`renderMarkdown`, so uploaded images in student bubbles are shown only as
+thumbnails pre-populated by the frontend before send — they never render via
+the markdown pipeline.
+
+== Validation and Security
+
+=== MIME sniffing
+
+The server runs `http.DetectContentType(buf[:512])` on the raw bytes.  The
+result is compared against the allowlist `{image/png, image/jpeg, image/gif,
+image/webp}`.  The browser-supplied `Content-Type` header and file extension
+are both ignored for this check.
+
+`image/jpeg` covers JFIF and Exif variants.  `http.DetectContentType` uses
+Go's built-in sniff algorithm (identical to the WHATWG MIME Sniff spec).
+
+=== Size enforcement
+
+`http.MaxBytesReader(w, r.Body, 5<<20+1)` caps the body read.  The `+1`
+sentinel byte technique (already in `submission/handler.go`) allows the handler
+to distinguish "exactly at limit" from "over limit" by inspecting
+`header.Size > 5<<20`.
+
+=== Per-course rate cap
+
+200 images per student per course.  Enforced by a `SELECT COUNT(*) FROM images
+WHERE student_id = $1 AND course_id = $2` check before the insert.  The check
+uses the server-role connection to bypass RLS (same pattern as
+`chair.courseTopic`).  A race between two concurrent uploads is accepted: at
+most one extra image row may be inserted above the cap before both readers
+observe the count; the cap is a soft abuse guard, not a hard quota for billing.
+
+=== Ownership check on submission image IDs
+
+The submission handler queries `SELECT id FROM images WHERE id = ANY($1) AND
+student_id = $2` with the image IDs from the form field.  If the returned row
+count does not equal `len(image_ids)` it means at least one ID is invalid or
+foreign-owned; the request is rejected with HTTP 422 `INVALID_IMAGE_ID`.
+
+=== Deletion cascade
+
+`images.student_id` has `ON DELETE CASCADE` referencing `users(id)`.  When a
+student account is deleted (REQ-USER-007), all their image rows are deleted
+automatically by the DB.  `submissions.image_ids` is a `UUID[]` column that
+references images by value, not by FK; after image deletion the array values
+become dangling.  The grading runner must tolerate a `SELECT ... WHERE id =
+ANY(image_ids)` returning fewer rows than `len(image_ids)` without failing.
+
+=== Audit events
+
+Image upload and image-ID validation failures are candidates for audit entries.
+At this scale, a `log.Printf` on each upload (matching the existing codebase
+pattern) is sufficient.  No new `audit_log` rows are written; the schema does
+not change for audit purposes.
+
+== New Requirements — Verified-Free ID Ranges
+
+The following ID ranges were verified against the existing requirement files
+before assignment:
+
+[cols="1,3"]
+|===
+|Namespace |First free ID found
+
+|REQ-AGENT-*
+|REQ-AGENT-023 (l2-requirements.json ends at REQ-AGENT-022)
+
+|REQ-SUBMISSION-*
+|REQ-SUBMISSION-004 (l2-requirements.json ends at REQ-SUBMISSION-003)
+
+|REQ-FECOURSE-*
+|REQ-FECOURSE-270 (gap between the 260-block and 300-block;
+REQ-FECOURSE-270 and 271 are unreferenced in all scanned files)
+
+|REQ-FECONTENT-*
+|REQ-FECONTENT-220 (highest leaf ID in the content file is 215, in the
+notification polling block)
+|===
+
+Assigned IDs in this design:
+
+REQ-AGENT-023, REQ-AGENT-024, REQ-AGENT-025 — see section 2. +
+REQ-SUBMISSION-004, REQ-SUBMISSION-005, REQ-SUBMISSION-006 — see section 2. +
+REQ-FECOURSE-622, REQ-FECOURSE-623, REQ-FECOURSE-624, REQ-FECOURSE-625, REQ-FECOURSE-626 — see section 2. +
+REQ-FECONTENT-220, REQ-FECONTENT-221, REQ-FECONTENT-222, REQ-FECONTENT-223, REQ-FECONTENT-224 — see section 2.
+
+== Note on Current-Turn Vision in Intake Path
+
+The intake chat path (chair.Chat and the frontend) currently supports vision blocks
+only on the current turn. The backend implementation loads image bytes and constructs
+vision content blocks immediately before the Claude call; image data is not stored
+in chat history. As a result, agent-generated images rendered via markdown are
+persisted and re-displayed in history, but student-attached images are not shown
+in old student bubbles after a page refresh (only as text in the new attachments-aware
+frontend structure). This design decision bounds token cost to the current turn and
+keeps the chat_messages schema unchanged. A future enhancement could store image IDs
+in chat history to enable full history re-send, but that is out of scope for this sprint.
+
+== Alternatives Considered
+
+=== Object storage (S3-compatible volume)
+
+Rejected.  The deployment has no S3 service.  Adding MinIO would increase
+operational complexity for this sprint without proportional benefit.  The
+`pg_dump` backup story would still require a separate volume backup unless
+all data lived in Postgres.
+
+=== Filesystem storage for images (matching the submission handler)
+
+Rejected.  Filesystem storage would require a separate backup strategy,
+cannot be protected by RLS, and breaks the atomicity guarantee (file write
++ DB row must be atomic).  The existing submission handler's filesystem
+approach is a legacy design that predates the current RLS model; it is not
+a precedent to extend.
+
+=== Embedding images as markdown in `chat_messages.content`
+
+Rejected.  Storing raw base64 data URIs in `chat_messages.content` would
+bloat the chat history table, make full-history reads expensive, and push
+base64 blobs into every Claude call regardless of whether the current turn
+benefits from them.  The structured `attachments` approach keeps image data
+out of history rows.
+
+=== Extending the sanitizer to allow all same-origin paths
+
+Rejected.  Allowing any `/api/v1/...` path as an image source would permit
+JSON endpoints to be embedded as images (harmless for display but inconsistent
+with the principle of minimal-allowlist).  The UUID-shaped regex is tightly
+scoped to the images endpoint.
+
+=== Passing image URLs to Claude (URL source type) instead of base64
+
+Rejected.  The images are served on a private, same-host port with session-
+cookie authentication.  Claude's servers cannot reach them.  The `base64`
+source type is the only viable option for locally-stored images.
+
+== Open Questions
+
+All open questions resolved during design.  Decisions grounded in rationale
+above:
+
+* Storage: bytea (pg_dump, RLS, atomicity)
+* URL scheme: same-origin path + sanitizer extension
+* Chat reference: structured `attachments` array (clean history, bounded cost)
+* Vision call scope: current turn only (cost control)
+* Size/count caps: 5 MB / 4 per chat message / 8 per submission

@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/valory/valory/internal/admin"
@@ -23,6 +24,7 @@ import (
 	"github.com/valory/valory/internal/course"
 	"github.com/valory/valory/internal/db"
 	"github.com/valory/valory/internal/grade"
+	"github.com/valory/valory/internal/image"
 	"github.com/valory/valory/internal/infra"
 	"github.com/valory/valory/internal/notify"
 	"github.com/valory/valory/internal/security"
@@ -184,8 +186,39 @@ func main() {
 	// @{"req": ["REQ-AGENT-018"]}
 	courseHandler.SetIntakeStarter(chair)
 
+	// --- Image module wiring ---
+	// imageRepo uses the plain pool; upload handler acquires a server-role conn
+	// internally via db.AcquireServerConn (identical to the chat-message pattern).
+	// @{"req": ["REQ-AGENT-023", "REQ-AGENT-024", "REQ-AGENT-025", "REQ-SUBMISSION-004", "REQ-SUBMISSION-005", "REQ-SUBMISSION-006"]}
+	imageRepo := image.NewRepository(pool)
+
+	// courseOwnedBy is the ownership predicate injected into the image handler.
+	// It uses the request-scoped connection (carrying the student's GUCs) so that
+	// the courses_student_policy is satisfied without a server-role bypass.
+	// The closure mirrors the ownership check pattern used in submission/handler.go.
+	courseOwnedBy := func(r *http.Request, courseID, studentID uuid.UUID) bool {
+		c, err := courseRepo.GetCourseByID(r.Context(), courseID)
+		if err != nil {
+			return false
+		}
+		return c.StudentID == studentID
+	}
+	imageHandler := image.NewHandler(imageRepo, courseOwnedBy)
+
+	// Inject the image repository into the agent handler so chat attachments
+	// resolve to vision blocks (REQ-AGENT-023).
+	agentHandler.SetImageRepository(imageRepo)
+
+	// Inject the image repository into the agent runner so grading vision
+	// blocks can be built from submission image_ids (REQ-AGENT-025).
+	agentRunner.SetImageRepository(imageRepo)
+
 	// --- Submission handler wiring (depends on courseRepo for ownership checks) ---
 	submissionHandler := submission.NewHandler(submissionRepo, courseRepo, uploadsDir, configSvc)
+
+	// Inject the image repository into the submission handler so image_ids
+	// ownership is validated before inserting the submission row (REQ-SUBMISSION-005).
+	submissionHandler.SetImageRepository(imageRepo)
 
 	// --- Admin config handler ---
 	adminConfigHandler := admin.NewConfigHandler(configSvc, auditRepo, pool)
@@ -269,7 +302,7 @@ func main() {
 				})
 			})
 
-			// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015", "REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004", "REQ-GRADE-001", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-GRADE-004", "REQ-GRADE-005"]}
+			// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015", "REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004", "REQ-GRADE-001", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-GRADE-004", "REQ-GRADE-005", "REQ-AGENT-023", "REQ-AGENT-024", "REQ-AGENT-025"]}
 			// --- Course, agent, content, submission, and grade routes share the /courses prefix.
 			r.Route("/courses", func(r chi.Router) {
 				// Top-level course CRUD (list, create, etc.)
@@ -301,8 +334,18 @@ func main() {
 							gradeHandler.HomeworkRoutes(r)
 						})
 					})
+					// @{"req": ["REQ-AGENT-023", "REQ-AGENT-024"]}
+					// POST /courses/{id}/images — image upload (auth + CSRF already applied
+					// by the enclosing group; ownership is checked inside the handler).
+					imageHandler.UploadRoutes(r)
 				})
 			})
+
+			// @{"req": ["REQ-AGENT-025"]}
+			// GET /images/{imageId} — image retrieval. Mounted outside /courses because
+			// the URL carries only the image UUID, not the course. Auth is enforced by
+			// the enclosing group; CSRF is not required for GET (safe method).
+			imageHandler.ServeRoutes(r)
 
 			// @{"req": ["REQ-NOTIFY-001", "REQ-NOTIFY-002"]}
 			// --- Notification routes ---

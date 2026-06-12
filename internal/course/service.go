@@ -121,7 +121,12 @@ func (s *CourseService) ApproveSyllabus(ctx context.Context, courseID, studentID
 		return SyllabusRow{}, CourseRow{}, err
 	}
 
-	tx, err := s.repo.Pool().Begin(ctx)
+	// BeginTx begins the transaction on the request-scoped connection when one
+	// is present in ctx, so that the RLS GUCs set by the auth middleware remain
+	// in effect for both writes inside the transaction. Using Pool().Begin would
+	// acquire a fresh connection with empty GUCs, causing the UPDATE to fail
+	// under FORCE RLS.
+	tx, err := s.repo.BeginTx(ctx)
 	if err != nil {
 		return SyllabusRow{}, CourseRow{}, err
 	}
@@ -160,7 +165,10 @@ func (s *CourseService) RequestModification(ctx context.Context, courseID, stude
 		return SyllabusRow{}, CourseRow{}, err
 	}
 
-	tx, err := s.repo.Pool().Begin(ctx)
+	// BeginTx begins the transaction on the request-scoped connection for the
+	// same reason as ApproveSyllabus: both writes must share the connection that
+	// carries the student's RLS GUCs.
+	tx, err := s.repo.BeginTx(ctx)
 	if err != nil {
 		return SyllabusRow{}, CourseRow{}, err
 	}

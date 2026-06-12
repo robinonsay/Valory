@@ -144,7 +144,7 @@
   {
     "id": "REQ-FECOURSE-011",
     "title": "Dashboard: Course Card Display",
-    "description": "The course frontend module shall display each course card with its topic, status, and creation date.",
+    "description": "The course frontend module shall display each course card with its title or topic, status, and creation date.",
     "rationale": "Students need enough information on each card to identify a course and understand its current lifecycle stage.",
     "verification_method": "Demonstration",
     "uses": ["REQ-FECOURSE-001"],
@@ -659,10 +659,10 @@
   },
   {
     "id": "REQ-FECOURSE-110",
-    "title": "Dashboard: Course Card Topic",
-    "description": "The course frontend module shall display the topic field from the course object on each dashboard card.",
-    "rationale": "The topic is the primary human-readable identifier for a course and must appear on every card.",
-    "verification_method": "Inspection",
+    "title": "Dashboard: Course Card Title with Topic Fallback",
+    "description": "The course frontend module shall display title on each dashboard card, or topic when title is empty.",
+    "rationale": "The AI pipeline sets title after course creation; before it is set the topic is the only available human-readable identifier, so cards must never show a blank heading.",
+    "verification_method": "Test",
     "uses": ["REQ-FECOURSE-011"]
   },
   {

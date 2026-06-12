@@ -13,7 +13,7 @@ const auth = useAuthStore()
 const courseStore = useCourseStore()
 
 const showCreateModal = ref(false)
-const newCourseTitle = ref('New Course')
+const newCourseTopic = ref('')
 const createError = ref<string | null>(null)
 const isCreating = ref(false)
 
@@ -41,13 +41,13 @@ const navigateToCourse = (courseId: string, status: string): void => {
 const openCreateModal = (): void => {
   showCreateModal.value = true
   createError.value = null
-  newCourseTitle.value = 'New Course'
+  newCourseTopic.value = ''
 }
 
 const closeCreateModal = (): void => {
   showCreateModal.value = false
   createError.value = null
-  newCourseTitle.value = 'New Course'
+  newCourseTopic.value = ''
 }
 
 const createNewCourse = async (): Promise<void> => {
@@ -61,15 +61,20 @@ const createNewCourse = async (): Promise<void> => {
   try {
     const response = await post<CourseResponse>(
       '/api/v1/courses',
-      { title: 'New Course' },
+      { topic: newCourseTopic.value.trim() },
       auth.token
     )
 
-    courseStore.setCurrent(response.course)
-    courseStore.courses.unshift(response.course)
+    // The backend returns the created course FLAT (no {course} wrapper).
+    courseStore.setCurrent(response)
+    courseStore.courses.unshift(response)
 
     closeCreateModal()
-    await router.push(`/courses/${response.course.id}/intake`)
+    await router.push(`/courses/${response.id}/intake`)
+    // Reset after navigation: normally the component unmounts, but if the
+    // navigation is cancelled by a guard the re-opened modal must not be
+    // stuck on the disabled "Creating..." state.
+    isCreating.value = false
   } catch (err) {
     if (err instanceof ApiError) {
       if (err.status === 409) {
@@ -112,7 +117,7 @@ const createNewCourse = async (): Promise<void> => {
         class="course-card"
         @click="navigateToCourse(course.id, course.status)"
       >
-        <h3>{{ course.title }}</h3>
+        <h3>{{ course.title || course.topic }}</h3>
         <div class="course-details">
           <span class="status-badge">{{ course.status }}</span>
           <span class="date">{{ new Date(course.created_at).toLocaleDateString() }}</span>
@@ -139,13 +144,13 @@ const createNewCourse = async (): Promise<void> => {
 
         <form @submit.prevent="createNewCourse">
           <div class="form-group">
-            <label for="course-title">Title</label>
+            <label for="course-topic">Topic</label>
             <input
-              id="course-title"
-              v-model="newCourseTitle"
+              id="course-topic"
+              v-model="newCourseTopic"
               type="text"
-              placeholder="New Course"
-              disabled
+              placeholder="e.g. Linear Algebra"
+              required
             />
           </div>
 
@@ -153,7 +158,11 @@ const createNewCourse = async (): Promise<void> => {
             <button type="button" class="cancel-button" @click="closeCreateModal">
               Cancel
             </button>
-            <button type="submit" class="submit-button" :disabled="isCreating">
+            <button
+              type="submit"
+              class="submit-button"
+              :disabled="isCreating || newCourseTopic.trim() === ''"
+            >
               {{ isCreating ? 'Creating...' : 'Create' }}
             </button>
           </div>

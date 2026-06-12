@@ -450,9 +450,13 @@ func (r *AgentRunner) generateAllSections(ctx context.Context, runID, courseID, 
 //
 // @{"req": ["REQ-AGENT-007", "REQ-AGENT-008", "REQ-CONTENT-001"]}
 func (r *AgentRunner) runReviewLoop(ctx context.Context, runID, courseID, studentID uuid.UUID, section GeneratedSection) error {
-	maxIterations := r.configSvc.GetInt64("agent_correction_loop_limit")
+	// Key must match migration 002's seed and the admin allowedKeys whitelist in config_handler.go.
+	maxIterations := r.configSvc.GetInt64("correction_loop_max_iterations")
 	if maxIterations <= 0 {
-		maxIterations = 3
+		// Fallback matches the migration 002 seeded default so behavior is
+		// consistent whether the config row is present, absent, or mangled
+		// by a direct DB edit (the admin API validates >= 1).
+		maxIterations = 5
 	}
 
 	current := section

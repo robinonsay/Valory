@@ -110,7 +110,7 @@ describe('fetchCourse', () => {
       updated_at: '2026-05-01T12:00:00Z'
     }
 
-    vi.mocked(get).mockResolvedValue({ course: mockCourse } as CourseResponse)
+    vi.mocked(get).mockResolvedValue(mockCourse as CourseResponse)
 
     await store.fetchCourse('1', 'token123')
 

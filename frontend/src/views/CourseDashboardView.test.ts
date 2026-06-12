@@ -88,6 +88,7 @@ describe('CourseDashboardView', () => {
       {
         id: '1',
         title: 'Math 101',
+        topic: 'Mathematics',
         status: 'active',
         student_id: 'student1',
         created_at: '2026-05-01T00:00:00Z',
@@ -96,6 +97,7 @@ describe('CourseDashboardView', () => {
       {
         id: '2',
         title: 'Physics 101',
+        topic: 'Physics',
         status: 'intake',
         student_id: 'student1',
         created_at: '2026-05-01T01:00:00Z',
@@ -126,6 +128,7 @@ describe('CourseDashboardView', () => {
       {
         id: 'course-123',
         title: 'Active Course',
+        topic: 'Mathematics',
         status: 'active',
         student_id: 'student1',
         created_at: '2026-05-01T00:00:00Z',
@@ -155,6 +158,7 @@ describe('CourseDashboardView', () => {
       {
         id: 'course-456',
         title: 'Intake Course',
+        topic: 'Physics',
         status: 'intake',
         student_id: 'student1',
         created_at: '2026-05-01T00:00:00Z',
@@ -172,15 +176,14 @@ describe('CourseDashboardView', () => {
 
   it('new course button POSTs and navigates to intake on success', async () => {
     const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({
-      course: {
         id: 'new-course-id',
-        title: 'New Course',
+        title: '',
+        topic: 'Linear Algebra',
         status: 'intake',
         student_id: 'student1',
         created_at: '2026-05-01T10:00:00Z',
         updated_at: '2026-05-01T10:00:00Z'
-      }
-    } as CourseResponse)
+      } as CourseResponse)
 
     const pushSpy = vi.spyOn(router, 'push')
 
@@ -197,12 +200,16 @@ describe('CourseDashboardView', () => {
     await createBtn.trigger('click')
     await wrapper.vm.$nextTick()
 
+    const input = wrapper.find('input#course-topic')
+    await input.setValue('Linear Algebra')
+    await wrapper.vm.$nextTick()
+
     const form = wrapper.find('form')
     await form.trigger('submit')
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses', { title: 'New Course' }, 'test-token')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses', { topic: 'Linear Algebra' }, 'test-token')
     expect(pushSpy).toHaveBeenCalledWith('/courses/new-course-id/intake')
   })
 
@@ -286,14 +293,15 @@ describe('CourseDashboardView', () => {
   it('adds new course to list on successful creation', async () => {
     const newCourse: Course = {
       id: 'new-id',
-      title: 'New Course',
+      title: '',
+      topic: 'Linear Algebra',
       status: 'intake',
       student_id: 'student1',
       created_at: '2026-05-01T10:00:00Z',
       updated_at: '2026-05-01T10:00:00Z'
     }
 
-    vi.spyOn(clientModule, 'post').mockResolvedValue({ course: newCourse } as CourseResponse)
+    vi.spyOn(clientModule, 'post').mockResolvedValue(newCourse as CourseResponse)
 
     const wrapper = mount(CourseDashboardView, {
       global: {
@@ -306,6 +314,7 @@ describe('CourseDashboardView', () => {
       {
         id: '1',
         title: 'Existing Course',
+        topic: 'Mathematics',
         status: 'active',
         student_id: 'student1',
         created_at: '2026-05-01T00:00:00Z',
@@ -318,6 +327,10 @@ describe('CourseDashboardView', () => {
 
     const createBtn = wrapper.find('.create-button')
     await createBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('input#course-topic')
+    await input.setValue('Linear Algebra')
     await wrapper.vm.$nextTick()
 
     const form = wrapper.find('form')
@@ -342,6 +355,7 @@ describe('CourseDashboardView', () => {
       {
         id: 'syllabus-course',
         title: 'Syllabus Course',
+        topic: 'Calculus',
         status: 'syllabus_draft',
         student_id: 'student1',
         created_at: '2026-05-01T00:00:00Z',
@@ -355,5 +369,172 @@ describe('CourseDashboardView', () => {
     await courseCard.trigger('click')
 
     expect(pushSpy).toHaveBeenCalledWith('/courses/syllabus-course/syllabus')
+  })
+
+  it('submit button is disabled when topic field is empty', async () => {
+    const wrapper = mount(CourseDashboardView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    const createBtn = wrapper.find('.create-button')
+    await createBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const submitButton = wrapper.find('.submit-button')
+    expect((submitButton.element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('submit button is disabled when topic field contains only whitespace', async () => {
+    const wrapper = mount(CourseDashboardView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    const createBtn = wrapper.find('.create-button')
+    await createBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('input#course-topic')
+    await input.setValue('   ')
+    await wrapper.vm.$nextTick()
+
+    const submitButton = wrapper.find('.submit-button')
+    expect((submitButton.element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('submit button is enabled when topic field has non-whitespace text', async () => {
+    const wrapper = mount(CourseDashboardView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    const createBtn = wrapper.find('.create-button')
+    await createBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('input#course-topic')
+    await input.setValue('Linear Algebra')
+    await wrapper.vm.$nextTick()
+
+    const submitButton = wrapper.find('.submit-button')
+    expect((submitButton.element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('POST body includes trimmed topic value', async () => {
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({
+        id: 'new-course-id',
+        title: '',
+        topic: 'Linear Algebra',
+        status: 'intake',
+        student_id: 'student1',
+        created_at: '2026-05-01T10:00:00Z',
+        updated_at: '2026-05-01T10:00:00Z'
+      } as CourseResponse)
+
+    const wrapper = mount(CourseDashboardView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    const auth = useAuthStore()
+    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+
+    const createBtn = wrapper.find('.create-button')
+    await createBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('input#course-topic')
+    await input.setValue('  Linear Algebra  ')
+    await wrapper.vm.$nextTick()
+
+    const form = wrapper.find('form')
+    await form.trigger('submit')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses', { topic: 'Linear Algebra' }, 'test-token')
+  })
+
+  it('course card renders topic when title is empty', async () => {
+    const wrapper = mount(CourseDashboardView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    const courseStore = useCourseStore()
+    courseStore.courses = [
+      {
+        id: 'new-course',
+        title: '',
+        topic: 'Linear Algebra',
+        status: 'intake',
+        student_id: 'student1',
+        created_at: '2026-05-01T10:00:00Z',
+        updated_at: '2026-05-01T10:00:00Z'
+      }
+    ]
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Linear Algebra')
+  })
+
+  it('course card renders title when title is present', async () => {
+    const wrapper = mount(CourseDashboardView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    const courseStore = useCourseStore()
+    courseStore.courses = [
+      {
+        id: 'course',
+        title: 'Math 101',
+        topic: 'Mathematics',
+        status: 'active',
+        student_id: 'student1',
+        created_at: '2026-05-01T00:00:00Z',
+        updated_at: '2026-05-01T12:00:00Z'
+      }
+    ]
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Math 101')
+  })
+
+  it('modal closes and resets topic on cancel', async () => {
+    const wrapper = mount(CourseDashboardView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    const createBtn = wrapper.find('.create-button')
+    await createBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('input#course-topic')
+    await input.setValue('Linear Algebra')
+    await wrapper.vm.$nextTick()
+
+    const cancelButton = wrapper.find('.cancel-button')
+    await cancelButton.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.modal').exists()).toBe(false)
+
+    await createBtn.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const newInput = wrapper.find('input#course-topic')
+    expect((newInput.element as HTMLInputElement).value).toBe('')
   })
 })

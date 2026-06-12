@@ -15,7 +15,7 @@ interface LoginResponse {
 const router = useRouter()
 const auth = useAuthStore()
 
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const error = ref('')
 const isLoading = ref(false)
@@ -25,8 +25,11 @@ async function handleSubmit() {
   isLoading.value = true
 
   try {
+    // The API authenticates by username (POST /api/v1/auth/login expects
+    // {username, password} — see internal/auth/handler.go). This form
+    // previously sent {email} and could never log anyone in.
     const response = await post<LoginResponse>('/api/v1/auth/login', {
-      email: email.value,
+      username: username.value,
       password: password.value
     })
 
@@ -69,11 +72,12 @@ function clearError() {
       </div>
 
       <div class="form-group">
-        <label for="email">Email</label>
+        <label for="username">Username</label>
         <input
-          id="email"
-          v-model="email"
-          type="email"
+          id="username"
+          v-model="username"
+          type="text"
+          autocomplete="username"
           required
           @input="clearError"
         />
@@ -85,6 +89,7 @@ function clearError() {
           id="password"
           v-model="password"
           type="password"
+          autocomplete="current-password"
           required
           @input="clearError"
         />
@@ -135,7 +140,7 @@ label {
   color: #333;
 }
 
-input[type='email'],
+input[type='text'],
 input[type='password'] {
   width: 100%;
   padding: 0.75rem;
@@ -145,7 +150,7 @@ input[type='password'] {
   box-sizing: border-box;
 }
 
-input[type='email']:focus,
+input[type='text']:focus,
 input[type='password']:focus {
   outline: none;
   border-color: #1976d2;

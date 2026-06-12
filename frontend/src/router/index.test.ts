@@ -1,8 +1,9 @@
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001"]}
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { guardFn } from '@/router/index'
+import router from '@/router/index'
 import type { RouteLocationNormalized } from 'vue-router'
 
 // Helper to build a minimal RouteLocationNormalized suitable for guardFn.
@@ -107,5 +108,85 @@ describe('router beforeEach guard', () => {
 
     const result = guardFn(makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }), auth)
     expect(result).toBeUndefined()
+  })
+
+  // 9. getting-started — role-scoped routes (LEAD AMENDMENT): students get
+  // /getting-started inside StudentLayout, admins get /admin/getting-started
+  // inside AdminLayout, so each role keeps its persistent nav (and logout)
+  // visible on the orientation page.
+  // @{"req": ["REQ-FEONBOARD-001"]}
+  it('allows authenticated consented student to reach /getting-started', () => {
+    auth.login('tok', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.setConsented()
+
+    const result = guardFn(makeRoute('/getting-started', { requiresAuth: true, requiredRole: 'student' }), auth)
+    expect(result).toBeUndefined()
+  })
+
+  it('allows authenticated consented admin to reach /admin/getting-started', () => {
+    auth.login('tok', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.setConsented()
+
+    const result = guardFn(makeRoute('/admin/getting-started', { requiresAuth: true, requiredRole: 'admin' }), auth)
+    expect(result).toBeUndefined()
+  })
+
+  it('redirects an admin hitting the student /getting-started path to the admin home', () => {
+    auth.login('tok', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.setConsented()
+
+    const result = guardFn(makeRoute('/getting-started', { requiresAuth: true, requiredRole: 'student' }), auth)
+    expect(result).toBe('/admin/users')
+  })
+
+  // Rule 6: a consented admin must never land on the chrome-less /consent
+  // gate page; they are redirected to the admin home.
+  it('redirects a consented admin navigating to /consent to /admin/users', () => {
+    auth.login('tok', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.setConsented()
+
+    const result = guardFn(makeRoute('/consent', { requiresAuth: true }), auth)
+    expect(result).toBe('/admin/users')
+  })
+
+  it('still routes an unconsented admin to /consent after login', () => {
+    auth.login('tok', 'admin', Math.floor(Date.now() / 1000) + 3600)
+
+    const result = guardFn(makeRoute('/admin/users', { requiresAuth: true, requiredRole: 'admin' }), auth)
+    expect(result).toBe('/consent')
+  })
+
+  it('/getting-started redirects unauthenticated user to /login', () => {
+    const result = guardFn(makeRoute('/getting-started', { requiresAuth: true, requiredRole: 'student' }), auth)
+    expect(result).toBe('/login')
+  })
+
+  it('resolves /getting-started to the StudentLayout child and /admin/getting-started to the AdminLayout child', () => {
+    const student = router.resolve('/getting-started')
+    expect(student.name).toBe('getting-started')
+    expect(student.matched[student.matched.length - 1].meta.requiredRole).toBe('student')
+
+    const admin = router.resolve('/admin/getting-started')
+    expect(admin.name).toBe('getting-started-admin')
+    expect(admin.matched[admin.matched.length - 1].meta.requiredRole).toBe('admin')
+  })
+
+  // 10. Student path preservation — deep link paths unchanged after router restructure
+  // @{"req": ["REQ-FEAUTH-041"]}
+  it('student route /courses/:id/intake still has requiredRole student', () => {
+    const route = router.resolve('/courses/abc123/intake')
+    // matched contains the route records; the leaf record has requiredRole: student
+    const leaf = route.matched[route.matched.length - 1]
+    expect(leaf.meta.requiredRole).toBe('student')
+  })
+
+  it('student route /courses/:id/hub still resolves correctly', () => {
+    const route = router.resolve('/courses/abc123/hub')
+    expect(route.name).toBe('course-hub')
+  })
+
+  it('student route /courses/:id/grades still resolves correctly', () => {
+    const route = router.resolve('/courses/abc123/grades')
+    expect(route.name).toBe('grades')
   })
 })

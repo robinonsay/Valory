@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-155", "REQ-FEAUTH-156"]}
+// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156"]}
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from './auth'
@@ -160,5 +160,60 @@ describe('useAuthStore', () => {
     expect(setItemSpy).not.toHaveBeenCalled()
 
     setItemSpy.mockRestore()
+  })
+
+  // logoutServer tests — REQ-FEAUTH-019, REQ-FEAUTH-020, REQ-FEAUTH-118, REQ-FEAUTH-119
+  describe('logoutServer', () => {
+    // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-118", "REQ-FEAUTH-119"]}
+    it('POSTs to /api/v1/auth/logout with the bearer token then clears local state', async () => {
+      const store = useAuthStore()
+      store.login('my-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+      store.setConsented()
+
+      const postSpy = vi.spyOn(clientModule, 'post').mockResolvedValue(undefined)
+
+      await store.logoutServer()
+
+      expect(postSpy).toHaveBeenCalledWith('/api/v1/auth/logout', {}, 'my-token')
+      expect(store.token).toBeNull()
+      expect(store.role).toBeNull()
+      expect(store.expiresAt).toBeNull()
+      expect(store.isConsented).toBe(false)
+
+      postSpy.mockRestore()
+    })
+
+    // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020"]}
+    it('clears local state even when the server POST fails', async () => {
+      const store = useAuthStore()
+      store.login('my-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+      store.setConsented()
+
+      const postSpy = vi.spyOn(clientModule, 'post').mockRejectedValue(new Error('Network error'))
+
+      await store.logoutServer()
+
+      // The user must never be stranded in a logged-in state after a network
+      // failure; local state is cleared regardless of server response.
+      expect(store.token).toBeNull()
+      expect(store.role).toBeNull()
+      expect(store.isConsented).toBe(false)
+
+      postSpy.mockRestore()
+    })
+
+    // @{"req": ["REQ-FEAUTH-020"]}
+    it('does not POST when there is no current token', async () => {
+      const store = useAuthStore()
+      // token is null — no server call should be made
+      const postSpy = vi.spyOn(clientModule, 'post').mockResolvedValue(undefined)
+
+      await store.logoutServer()
+
+      expect(postSpy).not.toHaveBeenCalled()
+      expect(store.token).toBeNull()
+
+      postSpy.mockRestore()
+    })
   })
 })

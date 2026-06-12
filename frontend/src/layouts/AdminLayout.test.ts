@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-010", "REQ-FEADMIN-011", "REQ-FEADMIN-012", "REQ-FEADMIN-013", "REQ-FEADMIN-100", "REQ-FEADMIN-101", "REQ-FEADMIN-102", "REQ-FEADMIN-110"]}
+// @{"req": ["REQ-FEADMIN-010", "REQ-FEADMIN-011", "REQ-FEADMIN-012", "REQ-FEADMIN-013", "REQ-FEADMIN-100", "REQ-FEADMIN-101", "REQ-FEADMIN-102", "REQ-FEADMIN-110", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEONBOARD-002"]}
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -24,7 +24,8 @@ describe('AdminLayout', () => {
             { path: 'users', name: 'admin-users', component: { template: '<div>Users View</div>' } },
             { path: 'audit', name: 'admin-audit', component: { template: '<div>Audit View</div>' } },
             { path: 'config', name: 'admin-config', component: { template: '<div>Config View</div>' } },
-            { path: 'courses', name: 'admin-courses', component: { template: '<div>Courses View</div>' } }
+            { path: 'courses', name: 'admin-courses', component: { template: '<div>Courses View</div>' } },
+            { path: 'getting-started', name: 'getting-started-admin', component: { template: '<div>Getting Started</div>' } }
           ]
         },
         {
@@ -36,7 +37,7 @@ describe('AdminLayout', () => {
     })
   }
 
-  it('renders navigation links for Users, Audit Log, Config, Course Oversight', () => {
+  it('renders navigation links for Users, Audit Log, Config, Course Oversight, Getting Started', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
     auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
@@ -56,15 +57,22 @@ describe('AdminLayout', () => {
     expect(wrapper.text()).toContain('Audit Log')
     expect(wrapper.text()).toContain('Config')
     expect(wrapper.text()).toContain('Course Oversight')
+    // @{"req": ["REQ-FEONBOARD-002"]}
+    expect(wrapper.text()).toContain('Getting Started')
 
     const links = wrapper.findAll('a')
-    expect(links.length).toBeGreaterThanOrEqual(4)
+    expect(links.length).toBeGreaterThanOrEqual(5)
   })
 
-  it('logout button calls auth.logout() and navigates to /login', async () => {
+  // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-118", "REQ-FEAUTH-119"]}
+  it('logout button calls auth.logoutServer() and navigates to /login', async () => {
     const router = createTestRouter()
     const auth = useAuthStore()
     auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+
+    // Mock logoutServer so the test does not make real fetch calls; we verify
+    // that logoutServer is invoked (it clears state internally) and navigation occurs.
+    const logoutServerSpy = vi.spyOn(auth, 'logoutServer').mockResolvedValue(undefined)
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -85,9 +93,10 @@ describe('AdminLayout', () => {
     await logoutButton.trigger('click')
     await router.isReady()
 
-    expect(auth.token).toBeNull()
-    expect(auth.role).toBeNull()
+    expect(logoutServerSpy).toHaveBeenCalledOnce()
     expect(router.currentRoute.value.path).toBe('/login')
+
+    logoutServerSpy.mockRestore()
   })
 
   it('RouterView is rendered', () => {

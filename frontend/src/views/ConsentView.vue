@@ -18,7 +18,9 @@ const handleAgree = async (): Promise<void> => {
   try {
     await post('/api/v1/consent', { version: '1.0' }, auth.token)
     auth.setConsented()
-    await router.push('/courses')
+    // Admins are exempt from the consent gate but can still land here;
+    // send each role to its own home.
+    await router.push(auth.isAdmin ? '/admin/users' : '/courses')
   } catch (err) {
     if (err instanceof ApiError) {
       errorMessage.value = 'Failed to record consent. Please try again.'

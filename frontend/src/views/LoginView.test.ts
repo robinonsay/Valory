@@ -19,7 +19,7 @@ describe('LoginView', () => {
     vi.useRealTimers()
   })
 
-  it('should render email and password fields and a submit button', () => {
+  it('should render username and password fields and a submit button', () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [{ path: '/', component: { template: '<div></div>' } }]
@@ -31,12 +31,12 @@ describe('LoginView', () => {
       }
     })
 
-    const emailInput = wrapper.find('input[type="email"]')
+    const usernameInput = wrapper.find('#username')
     const passwordInput = wrapper.find('input[type="password"]')
     const submitButton = wrapper.find('button[type="submit"]')
 
-    expect(emailInput.exists()).toBe(true)
-    expect(emailInput.attributes('required')).toBeDefined()
+    expect(usernameInput.exists()).toBe(true)
+    expect(usernameInput.attributes('required')).toBeDefined()
     expect(passwordInput.exists()).toBe(true)
     expect(passwordInput.attributes('required')).toBeDefined()
     expect(submitButton.exists()).toBe(true)
@@ -67,7 +67,7 @@ describe('LoginView', () => {
 
     const auth = useAuthStore()
 
-    await wrapper.find('input[type="email"]').setValue('test@example.com')
+    await wrapper.find('#username').setValue('test@example.com')
     await wrapper.find('input[type="password"]').setValue('password123')
     await wrapper.find('form').trigger('submit')
 
@@ -75,7 +75,7 @@ describe('LoginView', () => {
     await wrapper.vm.$nextTick()
 
     expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/login', {
-      email: 'test@example.com',
+      username: 'test@example.com',
       password: 'password123'
     })
     expect(auth.token).toBe('test-token')
@@ -110,7 +110,7 @@ describe('LoginView', () => {
 
     const auth = useAuthStore()
 
-    await wrapper.find('input[type="email"]').setValue('admin@example.com')
+    await wrapper.find('#username').setValue('admin@example.com')
     await wrapper.find('input[type="password"]').setValue('adminpass')
     await wrapper.find('form').trigger('submit')
 
@@ -142,7 +142,7 @@ describe('LoginView', () => {
 
     const auth = useAuthStore()
 
-    await wrapper.find('input[type="email"]').setValue('test@example.com')
+    await wrapper.find('#username').setValue('test@example.com')
     await wrapper.find('input[type="password"]').setValue('wrong')
     await wrapper.find('form').trigger('submit')
 
@@ -173,7 +173,7 @@ describe('LoginView', () => {
       }
     })
 
-    await wrapper.find('input[type="email"]').setValue('test@example.com')
+    await wrapper.find('#username').setValue('test@example.com')
     await wrapper.find('input[type="password"]').setValue('password123')
     await wrapper.find('form').trigger('submit')
 
@@ -216,7 +216,7 @@ describe('LoginView', () => {
     const submitButton = wrapper.find('button[type="submit"]')
     expect(submitButton.text()).toBe('Sign in')
 
-    await wrapper.find('input[type="email"]').setValue('test@example.com')
+    await wrapper.find('#username').setValue('test@example.com')
     await wrapper.find('input[type="password"]').setValue('password123')
     await wrapper.find('form').trigger('submit')
 
@@ -254,7 +254,7 @@ describe('LoginView', () => {
       }
     })
 
-    await wrapper.find('input[type="email"]').setValue('test@example.com')
+    await wrapper.find('#username').setValue('test@example.com')
     await wrapper.find('input[type="password"]').setValue('wrong')
     await wrapper.find('form').trigger('submit')
 
@@ -264,7 +264,7 @@ describe('LoginView', () => {
     let errorElement = wrapper.find('.error-message')
     expect(errorElement.exists()).toBe(true)
 
-    await wrapper.find('input[type="email"]').trigger('input')
+    await wrapper.find('#username').trigger('input')
     await wrapper.vm.$nextTick()
 
     errorElement = wrapper.find('.error-message')

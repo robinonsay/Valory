@@ -43,7 +43,7 @@ async function fetchAuditLog(before?: number): Promise<void> {
     }
 
     const response = await get<AuditResponse>(url, auth.token)
-    entries.value.push(...response.entries)
+    entries.value.push(...(response.entries ?? []))
     nextBefore.value = response.next_before
   } catch (err) {
     if (err instanceof ApiError) {

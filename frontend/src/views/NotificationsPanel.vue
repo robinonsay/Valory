@@ -32,7 +32,7 @@ const unreadCount = computed(() => {
 async function fetchNotifications() {
   try {
     const response = await get<NotificationsResponse>('/api/v1/notifications', auth.token || undefined)
-    notifications.value = response.notifications
+    notifications.value = response.notifications ?? []
     error.value = ''
   } catch (err) {
     if (err instanceof ApiError && err.status !== 401) {

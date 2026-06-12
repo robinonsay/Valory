@@ -33,7 +33,7 @@ export const useCourseStore = defineStore('course', () => {
     error.value = null
     try {
       const response = await get<CourseListResponse>('/api/v1/courses', token)
-      courses.value = response.courses
+      courses.value = response.courses ?? []
     } catch (err) {
       if (err instanceof ApiError) {
         error.value = err.message
@@ -50,8 +50,9 @@ export const useCourseStore = defineStore('course', () => {
     loading.value = true
     error.value = null
     try {
+      // CourseResponse is the FLAT course object (no wrapper) — see types/course.ts.
       const response = await get<CourseResponse>(`/api/v1/courses/${id}`, token)
-      currentCourse.value = response.course
+      currentCourse.value = response
     } catch (err) {
       if (err instanceof ApiError) {
         error.value = err.message

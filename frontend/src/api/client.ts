@@ -93,6 +93,13 @@ export async function request<T>(
     throw new ApiError(response.status, errBody)
   }
 
+  // Several endpoints (consent, user deactivate/activate/delete, password
+  // reset confirm) reply 204 No Content. response.json() throws on an empty
+  // body, which would turn a successful call into a spurious failure.
+  if (response.status === 204) {
+    return undefined as T
+  }
+
   return response.json() as Promise<T>
 }
 

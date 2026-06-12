@@ -1,10 +1,10 @@
-// @{"req": ["REQ-FEADMIN-045", "REQ-FEADMIN-046", "REQ-FEADMIN-047", "REQ-FEADMIN-050", "REQ-FEADMIN-055", "REQ-FEADMIN-210", "REQ-FEADMIN-215", "REQ-FEADMIN-220", "REQ-FEADMIN-230", "REQ-FEADMIN-240", "REQ-FEADMIN-250", "REQ-FEADMIN-260"]}
+// @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325"]}
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { get, patch, ApiError } from '@/api/client'
-import { CONFIG_KEYS, validateWeights } from './systemConfig'
+import { CONFIG_KEYS, CONFIG_LABELS, CONFIG_HINTS, validateWeights } from './systemConfig'
 
 interface ConfigResponse {
   config: Record<string, string>
@@ -20,8 +20,20 @@ const fetchError = ref<string | null>(null)
 const saveError = ref<string | null>(null)
 const saveSuccess = ref(false)
 const weightError = ref<string | null>(null)
+const fieldErrors = ref<Record<string, string>>({})
 
-// @{"req": ["REQ-FEADMIN-240", "REQ-FEADMIN-250"]}
+// @{"req": ["REQ-FEADMIN-325"]}
+// parseFieldError extracts the key prefix from backend validation error strings
+// e.g. "homework_weight: must equal 1.0" -> key="homework_weight", message="must equal 1.0"
+function parseFieldError(errorString: string): { key: string; message: string } | null {
+  const colonIdx = errorString.indexOf(':')
+  if (colonIdx === -1) return null
+  const key = errorString.substring(0, colonIdx).trim()
+  const message = errorString.substring(colonIdx + 1).trim()
+  return { key, message }
+}
+
+// @{"req": ["REQ-FEADMIN-041", "REQ-FEADMIN-320"]}
 // changedFields computes only the keys whose values differ from the fetched
 // originals so the PATCH body never contains unchanged entries.
 const changedFields = computed<Record<string, string>>(() => {
@@ -34,10 +46,10 @@ const changedFields = computed<Record<string, string>>(() => {
   return delta
 })
 
-// @{"req": ["REQ-FEADMIN-215"]}
+// @{"req": ["REQ-FEADMIN-042", "REQ-FEADMIN-323"]}
 const hasUnsavedChanges = computed(() => Object.keys(changedFields.value).length > 0)
 
-// @{"req": ["REQ-FEADMIN-045", "REQ-FEADMIN-046", "REQ-FEADMIN-210"]}
+// @{"req": ["REQ-FEADMIN-040"]}
 async function fetchConfig() {
   try {
     loading.value = true
@@ -60,11 +72,12 @@ async function fetchConfig() {
   }
 }
 
-// @{"req": ["REQ-FEADMIN-047", "REQ-FEADMIN-220", "REQ-FEADMIN-230", "REQ-FEADMIN-240", "REQ-FEADMIN-250", "REQ-FEADMIN-260"]}
+// @{"req": ["REQ-FEADMIN-043", "REQ-FEADMIN-041", "REQ-FEADMIN-043", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325"]}
 async function saveConfig() {
   saveError.value = null
   saveSuccess.value = false
   weightError.value = null
+  fieldErrors.value = {}
 
   const weightValidationError = validateWeights(formValues.value)
   if (weightValidationError !== null) {
@@ -84,8 +97,24 @@ async function saveConfig() {
     saveSuccess.value = true
   } catch (err) {
     if (err instanceof ApiError) {
-      const body = err.body as { error?: string } | null
-      saveError.value = body?.error ?? err.message
+      if (err.status === 422) {
+        const body = err.body as { validation_errors?: string[] } | null
+        if (body?.validation_errors && Array.isArray(body.validation_errors)) {
+          const errors: Record<string, string> = {}
+          for (const errorStr of body.validation_errors) {
+            const parsed = parseFieldError(errorStr)
+            if (parsed) {
+              errors[parsed.key] = parsed.message
+            }
+          }
+          fieldErrors.value = errors
+        } else {
+          saveError.value = 'Validation failed'
+        }
+      } else {
+        const body = err.body as { error?: string } | null
+        saveError.value = body?.error ?? err.message
+      }
     } else {
       saveError.value = 'Failed to save configuration'
     }
@@ -123,13 +152,17 @@ onMounted(() => {
       <div v-if="weightError" class="error-banner weight-error">{{ weightError }}</div>
 
       <div v-for="key in CONFIG_KEYS" :key="key" class="form-field">
-        <label :for="`config-${key}`">{{ key }}</label>
+        <label :for="`config-${key}`">
+          {{ CONFIG_LABELS[key] }}
+          <span v-if="CONFIG_HINTS[key]" class="hint">({{ CONFIG_HINTS[key] }})</span>
+        </label>
         <input
           :id="`config-${key}`"
           v-model="formValues[key]"
           type="text"
           class="config-input"
         />
+        <div v-if="fieldErrors[key]" class="field-error">{{ fieldErrors[key] }}</div>
       </div>
 
       <div class="form-actions">
@@ -215,6 +248,21 @@ onMounted(() => {
   font-weight: 600;
   color: #333;
   font-size: 0.95rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.hint {
+  font-weight: 400;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.field-error {
+  font-size: 0.85rem;
+  color: #d32f2f;
+  margin-top: 0.25rem;
 }
 
 .config-input {

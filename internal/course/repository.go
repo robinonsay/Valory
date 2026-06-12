@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/valory/valory/internal/auth"
+	"github.com/valory/valory/internal/db"
 )
 
 var (
@@ -72,10 +74,44 @@ func NewRepository(pool *pgxpool.Pool) *CourseRepository {
 	return &CourseRepository{pool: pool}
 }
 
+// conn returns the request-scoped connection stored in ctx by the auth
+// middleware when one is present. That connection carries app.current_user_id
+// and app.current_role GUCs required for RLS evaluation on the courses table
+// (FORCE ROW LEVEL SECURITY). Falls back to the bare pool for background
+// callers (e.g. agent pipeline) that supply a server-role pool instead.
+//
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008", "REQ-SECURITY-002"]}
+func (r *CourseRepository) conn(ctx context.Context) db.Querier {
+	if c, ok := auth.ConnFromContext(ctx); ok {
+		return c
+	}
+	return r.pool
+}
+
+// BeginTx begins a database transaction on the request-scoped connection when
+// one is present in ctx, or on the bare pool otherwise. This is critical for
+// HTTP-handler-driven calls (ApproveSyllabus, RequestModification): those
+// operations must run the transaction on the same connection that carries the
+// RLS GUCs set by the auth middleware. Beginning a transaction on r.pool would
+// acquire a fresh connection with empty GUCs, causing every table write to fail
+// under FORCE RLS.
+//
+// pgxpool.Conn satisfies pgx.Tx's Begin contract (it exposes a Begin method).
+// We use the *pgxpool.Conn directly rather than introducing a new interface so
+// that no speculative abstraction is needed.
+//
+// @{"req": ["REQ-COURSE-005", "REQ-COURSE-006", "REQ-SECURITY-002"]}
+func (r *CourseRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	if c, ok := auth.ConnFromContext(ctx); ok {
+		return c.Begin(ctx)
+	}
+	return r.pool.Begin(ctx)
+}
+
 // @{"req": ["REQ-COURSE-001"]}
 func (r *CourseRepository) CreateCourse(ctx context.Context, studentID uuid.UUID, topic string) (CourseRow, error) {
 	var course CourseRow
-	err := r.pool.QueryRow(ctx,
+	err := r.conn(ctx).QueryRow(ctx,
 		`INSERT INTO courses (student_id, topic, status)
 		 VALUES ($1, $2, 'intake')
 		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
@@ -99,7 +135,7 @@ func (r *CourseRepository) CreateCourse(ctx context.Context, studentID uuid.UUID
 // @{"req": ["REQ-COURSE-001", "REQ-COURSE-002"]}
 func (r *CourseRepository) GetCourseByID(ctx context.Context, id uuid.UUID) (CourseRow, error) {
 	var course CourseRow
-	err := r.pool.QueryRow(ctx,
+	err := r.conn(ctx).QueryRow(ctx,
 		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at
 		 FROM courses WHERE id = $1`,
 		id).
@@ -163,7 +199,7 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 		args = []interface{}{studentID, statusFilter, limit + 1, createdAt, cursorID}
 	}
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.conn(ctx).Query(ctx, query, args...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -212,7 +248,7 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 // @{"req": ["REQ-COURSE-003", "REQ-COURSE-004"]}
 func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowedFrom []string, newStatus string, preWithdrawalStatus *string) (CourseRow, error) {
 	var course CourseRow
-	err := r.pool.QueryRow(ctx,
+	err := r.conn(ctx).QueryRow(ctx,
 		`UPDATE courses
 		 SET status = $2,
 		     pre_withdrawal_status = COALESCE($4, pre_withdrawal_status),
@@ -251,7 +287,7 @@ func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowed
 // @{"req": ["REQ-COURSE-005", "REQ-COURSE-006"]}
 func (r *CourseRepository) GetLatestSyllabus(ctx context.Context, courseID uuid.UUID) (SyllabusRow, error) {
 	var syllabus SyllabusRow
-	err := r.pool.QueryRow(ctx,
+	err := r.conn(ctx).QueryRow(ctx,
 		`SELECT id, course_id, content_adoc, version, approved_at, created_at
 		 FROM syllabi
 		 WHERE course_id = $1
@@ -278,7 +314,7 @@ func (r *CourseRepository) GetLatestSyllabus(ctx context.Context, courseID uuid.
 // @{"req": ["REQ-COURSE-005", "REQ-COURSE-006"]}
 func (r *CourseRepository) InsertSyllabus(ctx context.Context, courseID uuid.UUID, contentAdoc string, version int) (SyllabusRow, error) {
 	var syllabus SyllabusRow
-	err := r.pool.QueryRow(ctx,
+	err := r.conn(ctx).QueryRow(ctx,
 		`INSERT INTO syllabi (course_id, content_adoc, version)
 		 VALUES ($1, $2, $3)
 		 RETURNING id, course_id, content_adoc, version, approved_at, created_at`,
@@ -297,7 +333,9 @@ func (r *CourseRepository) InsertSyllabus(ctx context.Context, courseID uuid.UUI
 	return syllabus, nil
 }
 
-// Pool returns the underlying pool so the service can begin transactions.
+// Pool returns the underlying pool so callers outside this package that need
+// direct pool access (e.g. the submission handler ownership check) can still
+// reach it. HTTP-handler driven repository methods use conn(ctx) instead.
 //
 // @{"req": ["REQ-COURSE-005", "REQ-COURSE-006"]}
 func (r *CourseRepository) Pool() *pgxpool.Pool {
@@ -306,7 +344,7 @@ func (r *CourseRepository) Pool() *pgxpool.Pool {
 
 // @{"req": ["REQ-COURSE-006"]}
 func (r *CourseRepository) ApproveSyllabus(ctx context.Context, courseID, syllabusID uuid.UUID) error {
-	tag, err := r.pool.Exec(ctx,
+	tag, err := r.conn(ctx).Exec(ctx,
 		`UPDATE syllabi SET approved_at = NOW() WHERE id = $1 AND course_id = $2`,
 		syllabusID, courseID)
 	if err != nil {
@@ -423,7 +461,7 @@ func (r *CourseRepository) TransitionTx(ctx context.Context, tx pgx.Tx, id uuid.
 // @{"req": ["REQ-COURSE-007"]}
 func (r *CourseRepository) InsertHomework(ctx context.Context, courseID uuid.UUID, sectionIndex int, title, rubric string, gradeWeight float64) (HomeworkRow, error) {
 	var homework HomeworkRow
-	err := r.pool.QueryRow(ctx,
+	err := r.conn(ctx).QueryRow(ctx,
 		`INSERT INTO homework (course_id, section_index, title, rubric, grade_weight)
 		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id, course_id, section_index, title, rubric, grade_weight, created_at`,
@@ -445,7 +483,7 @@ func (r *CourseRepository) InsertHomework(ctx context.Context, courseID uuid.UUI
 
 // @{"req": ["REQ-COURSE-007"]}
 func (r *CourseRepository) InsertDueDateSchedule(ctx context.Context, courseID, homeworkID uuid.UUID, dueDate time.Time) error {
-	_, err := r.pool.Exec(ctx,
+	_, err := r.conn(ctx).Exec(ctx,
 		`INSERT INTO due_date_schedules (course_id, homework_id, due_date)
 		 VALUES ($1, $2, $3)`,
 		courseID, homeworkID, dueDate)
@@ -454,7 +492,7 @@ func (r *CourseRepository) InsertDueDateSchedule(ctx context.Context, courseID, 
 
 // @{"req": ["REQ-COURSE-001", "REQ-COURSE-007"]}
 func (r *CourseRepository) ListHomeworkByCourseID(ctx context.Context, courseID uuid.UUID) ([]HomeworkRow, error) {
-	rows, err := r.pool.Query(ctx,
+	rows, err := r.conn(ctx).Query(ctx,
 		`SELECT h.id, h.course_id, h.section_index, h.title, h.rubric, h.grade_weight, h.created_at
 		 FROM homework h
 		 WHERE h.course_id = $1
@@ -489,7 +527,7 @@ func (r *CourseRepository) ListHomeworkByCourseID(ctx context.Context, courseID 
 
 // @{"req": ["REQ-COURSE-007"]}
 func (r *CourseRepository) ListDueDatesByCourseID(ctx context.Context, courseID uuid.UUID) (map[uuid.UUID]time.Time, error) {
-	rows, err := r.pool.Query(ctx,
+	rows, err := r.conn(ctx).Query(ctx,
 		`SELECT homework_id, due_date
 		 FROM due_date_schedules
 		 WHERE course_id = $1`,
@@ -516,7 +554,7 @@ func (r *CourseRepository) ListDueDatesByCourseID(ctx context.Context, courseID 
 
 // @{"req": ["REQ-COURSE-008"]}
 func (r *CourseRepository) AgreeToSchedule(ctx context.Context, courseID uuid.UUID) (int, error) {
-	result, err := r.pool.Exec(ctx,
+	result, err := r.conn(ctx).Exec(ctx,
 		`UPDATE due_date_schedules
 		 SET agreed_at = NOW()
 		 WHERE course_id = $1 AND agreed_at IS NULL`,

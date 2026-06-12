@@ -64,12 +64,27 @@ func main() {
 	}
 	defer pool.Close()
 
+	// serverPool is a separate pool whose every acquired connection is
+	// pre-configured with app.current_role='server' and the all-zeros sentinel
+	// UUID via BeforeAcquire. It is passed exclusively to server-side actors
+	// (agent pipeline, grading runner, notify writes) that write to FORCE-RLS
+	// tables whose server-side policies require app.current_role='server'.
+	// HTTP handler repositories keep the plain pool and use the request-scoped
+	// connection (carrying the student's GUCs) injected by the auth middleware.
+	// @{"req": ["REQ-AGENT-003", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-CONTENT-001", "REQ-NOTIFY-001", "REQ-SECURITY-002"]}
+	serverPool, err := db.NewServerPool(ctx, databaseURL)
+	if err != nil {
+		log.Fatalf("server: connect to database (server pool): %v", err)
+	}
+	defer serverPool.Close()
+
 	if err := runMigrations(ctx, pool); err != nil {
 		log.Fatalf("server: run migrations: %v", err)
 	}
 
 	// Startup recovery: any agent_run left in 'running' state survived a crash.
 	// Mark them failed so the polling loop can schedule fresh runs.
+	// agent_runs has no RLS so either pool works here.
 	// @{"req": ["REQ-AGENT-016"]}
 	if _, err := pool.Exec(ctx,
 		`UPDATE agent_runs SET status = 'failed', error = 'server restart' WHERE status = 'running'`,
@@ -105,11 +120,21 @@ func main() {
 
 	throttledClient := agent.NewThrottledClient(anthropicAPIKey, pool, configSvc)
 
-	agentRepo := agent.NewAgentRepository(pool)
-	chatRepo := agent.NewChatRepository(pool)
-	chair := agent.NewChair(throttledClient, pool, agentRepo, chatRepo)
-	professor := agent.NewProfessor(throttledClient, pool, agentRepo, braveAPIKey)
-	reviewer := agent.NewReviewer(throttledClient, pool, agentRepo)
+	// Agent-side repositories and actors use serverPool so that every pool
+	// connection already carries app.current_role='server' via BeforeAcquire.
+	// This satisfies the server-side RLS policies on courses (005),
+	// lesson_content, section_feedback, chat_messages, notifications,
+	// submissions, grades, and student_badges without requiring every call site
+	// to manually acquire a server-role connection via db.AcquireServerConn.
+	// db.AcquireServerConn calls that already exist in chair/professor/reviewer
+	// are harmless with serverPool: BeforeAcquire has already set the GUCs and
+	// AcquireServerConn sets them again — a no-op double-set is safe.
+	// @{"req": ["REQ-AGENT-003", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-CONTENT-001", "REQ-NOTIFY-001", "REQ-SECURITY-002"]}
+	agentRepo := agent.NewAgentRepository(serverPool)
+	chatRepo := agent.NewChatRepository(serverPool)
+	chair := agent.NewChair(throttledClient, serverPool, agentRepo, chatRepo)
+	professor := agent.NewProfessor(throttledClient, serverPool, agentRepo, braveAPIKey)
+	reviewer := agent.NewReviewer(throttledClient, serverPool, agentRepo)
 
 	// --- Badge module wiring (required by grade module) ---
 	badgeRepo := badge.NewRepository(pool)
@@ -124,7 +149,12 @@ func main() {
 	gradeSvc := grade.NewService(gradeRepo, pool, badgeSvc, configSvc)
 	gradeHandler := grade.NewHandler(gradeSvc, gradeRepo)
 
-	agentRunner := agent.NewAgentRunner(pool, agentRepo, chair, professor, reviewer, submissionRepo, gradeSvc, throttledClient, configSvc)
+	// agentRunner uses serverPool so that notify.Write calls and direct pool
+	// queries inside the runner (generateAllSections, ensureDueDates,
+	// lookupAdminID, pollFeedback, pollGradingQueue) all execute under the
+	// server role without needing per-call AcquireServerConn wrappers.
+	// @{"req": ["REQ-AGENT-003", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-SECURITY-002"]}
+	agentRunner := agent.NewAgentRunner(serverPool, agentRepo, chair, professor, reviewer, submissionRepo, gradeSvc, throttledClient, configSvc)
 	agentHandler := agent.NewAgentHandler(agentRunner, chair, chatRepo)
 
 	// Start background polling goroutines (30s gen poll, 60s feedback poll, 30s grade poll).

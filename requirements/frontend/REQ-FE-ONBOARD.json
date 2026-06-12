@@ -1,0 +1,172 @@
+[
+  {
+    "id": "REQ-FEONBOARD-001",
+    "title": "Getting Started Route",
+    "description": "The onboard frontend module shall serve an authenticated getting-started page reachable by both student and admin roles.",
+    "rationale": "New users of either role need a single, bookmarkable orientation page reachable without hunting through the application.",
+    "verification_method": "Test"
+  },
+  {
+    "id": "REQ-FEONBOARD-002",
+    "title": "Getting Started Nav Link",
+    "description": "The onboard frontend module shall render a Getting Started navigation link in the persistent navigation bar for all authenticated users.",
+    "rationale": "Orientation guidance must be reachable from any authenticated page so users can consult it at any point in their workflow.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-001"]
+  },
+  {
+    "id": "REQ-FEONBOARD-003",
+    "title": "Student Orientation Steps",
+    "description": "The onboard frontend module shall display a seven-step student orientation sequence on /getting-started for users with role student.",
+    "rationale": "Students need role-appropriate guidance covering every stage of the learning workflow from consent through grade receipt.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FEONBOARD-001"],
+    "implements": [
+      "REQ-FEONBOARD-010",
+      "REQ-FEONBOARD-011",
+      "REQ-FEONBOARD-012",
+      "REQ-FEONBOARD-013",
+      "REQ-FEONBOARD-014",
+      "REQ-FEONBOARD-015",
+      "REQ-FEONBOARD-016"
+    ]
+  },
+  {
+    "id": "REQ-FEONBOARD-004",
+    "title": "Admin Orientation Steps",
+    "description": "The onboard frontend module shall display a four-step admin orientation sequence on /getting-started for users with role admin.",
+    "rationale": "Admins need role-appropriate guidance covering user management, system configuration, audit oversight, and course monitoring.",
+    "verification_method": "Demonstration",
+    "uses": ["REQ-FEONBOARD-001"],
+    "implements": [
+      "REQ-FEONBOARD-020",
+      "REQ-FEONBOARD-021",
+      "REQ-FEONBOARD-022",
+      "REQ-FEONBOARD-023"
+    ]
+  },
+  {
+    "id": "REQ-FEONBOARD-010",
+    "title": "Student Step 1 — AI Consent",
+    "description": "The onboard frontend module shall present consent acceptance as the first student orientation step.",
+    "rationale": "Consent is a gate that must be completed before any other student workflow step; it must be first in the sequence.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-003"]
+  },
+  {
+    "id": "REQ-FEONBOARD-011",
+    "title": "Student Step 2 — Create Course with Topic",
+    "description": "The onboard frontend module shall describe creating a course by entering a non-empty topic as the second student orientation step.",
+    "rationale": "The backend course creation endpoint requires a topic field; the orientation must reflect this exact field name and requirement.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-003"]
+  },
+  {
+    "id": "REQ-FEONBOARD-012",
+    "title": "Student Step 3 — Intake Chat",
+    "description": "The onboard frontend module shall describe the intake chat with the AI agent as the third student orientation step.",
+    "rationale": "Intake chat is the first substantive AI interaction; students must know it follows course creation.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-003"]
+  },
+  {
+    "id": "REQ-FEONBOARD-013",
+    "title": "Student Step 4 — Syllabus Approval",
+    "description": "The onboard frontend module shall describe reviewing and approving the AI-generated syllabus as the fourth student orientation step.",
+    "rationale": "Syllabus approval is a required gate before schedule agreement; students must understand they control this checkpoint.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-003"]
+  },
+  {
+    "id": "REQ-FEONBOARD-014",
+    "title": "Student Step 5 — Generated Sections",
+    "description": "The onboard frontend module shall describe navigating the AI-generated course sections as the fifth student orientation step.",
+    "rationale": "After schedule agreement the content generation pipeline runs; students must know sections will appear automatically.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-003"]
+  },
+  {
+    "id": "REQ-FEONBOARD-015",
+    "title": "Student Step 6 — Homework Submission",
+    "description": "The onboard frontend module shall describe submitting homework assignments as the sixth student orientation step.",
+    "rationale": "Homework submission is the primary graded activity; students need orientation on how and where to submit.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-003"]
+  },
+  {
+    "id": "REQ-FEONBOARD-016",
+    "title": "Student Step 7 — Grades and Badges",
+    "description": "The onboard frontend module shall describe viewing grades and earned badges as the seventh student orientation step.",
+    "rationale": "Grades and badges are the terminal outcome of the course workflow; students need to know where to find them.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-003"]
+  },
+  {
+    "id": "REQ-FEONBOARD-020",
+    "title": "Admin Step 1 — User Management",
+    "description": "The onboard frontend module shall describe the user management view as the first admin orientation step.",
+    "rationale": "User provisioning is the first administrative task in a new deployment; it must be the first orientation step.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-004"]
+  },
+  {
+    "id": "REQ-FEONBOARD-021",
+    "title": "Admin Step 2 — System Configuration Guide",
+    "description": "The onboard frontend module shall describe system configuration with a link to docs/guides/admin-configuration.md as the second admin orientation step.",
+    "rationale": "Admins must be directed to the configuration guide document before adjusting the thirteen system_config keys to avoid misconfiguration.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-004"]
+  },
+  {
+    "id": "REQ-FEONBOARD-022",
+    "title": "Admin Step 3 — Audit Log",
+    "description": "The onboard frontend module shall describe the audit log view and integrity verification as the third admin orientation step.",
+    "rationale": "Audit log review is a periodic oversight obligation; admins must be oriented to the view and its verification action.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-004"]
+  },
+  {
+    "id": "REQ-FEONBOARD-023",
+    "title": "Admin Step 4 — Course Oversight",
+    "description": "The onboard frontend module shall describe the course oversight view as the fourth admin orientation step.",
+    "rationale": "Course oversight enables admins to monitor the student pipeline and diagnose issues; it is the last orientation step after setup tasks.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-004"]
+  },
+  {
+    "id": "REQ-FEONBOARD-030",
+    "title": "Admin Configuration Guide Document",
+    "description": "The onboard frontend module shall include a maintained guide at docs/guides/admin-configuration.md covering all thirteen system_config keys.",
+    "rationale": "Admins require reference documentation for each system_config key, its validation rules, and audit impact before making configuration changes.",
+    "verification_method": "Inspection",
+    "implements": [
+      "REQ-FEONBOARD-031",
+      "REQ-FEONBOARD-032",
+      "REQ-FEONBOARD-033"
+    ]
+  },
+  {
+    "id": "REQ-FEONBOARD-031",
+    "title": "Config Guide — All Thirteen Keys Documented",
+    "description": "The onboard frontend module shall document all thirteen system_config keys in docs/guides/admin-configuration.md.",
+    "rationale": "The thirteen keys are: agent_retry_limit, correction_loop_max_iterations, per_student_token_limit, late_penalty_rate, homework_weight, project_weight, session_inactivity_seconds, account_lockout_seconds, max_upload_bytes, content_generation_timeout_seconds, audit_retention_days, notification_retention_days, and consent_version. Omitting any key leaves admins without complete reference.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-030"]
+  },
+  {
+    "id": "REQ-FEONBOARD-032",
+    "title": "Config Guide — Validation Rules Per Key",
+    "description": "The onboard frontend module shall document the validation rule for each system_config key in docs/guides/admin-configuration.md.",
+    "rationale": "Each key has a distinct constraint enforced by the backend; documenting these constraints prevents rejected PATCH requests and accidental misconfiguration.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-030"]
+  },
+  {
+    "id": "REQ-FEONBOARD-033",
+    "title": "Config Guide — Audit Impact Documented",
+    "description": "The onboard frontend module shall document how configuration changes are recorded in the audit log in docs/guides/admin-configuration.md.",
+    "rationale": "Admins must understand that each config change produces an audit entry so they can plan changes and review their effects in the audit log.",
+    "verification_method": "Inspection",
+    "uses": ["REQ-FEONBOARD-030"]
+  }
+]

@@ -1,10 +1,10 @@
-// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-155", "REQ-FEAUTH-156"]}
+// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156"]}
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { setUnauthorizedHandler } from '@/api/client'
+import { post, setUnauthorizedHandler } from '@/api/client'
 
-// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-155", "REQ-FEAUTH-156"]}
+// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156"]}
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
   const role = ref<'student' | 'admin' | null>(null)
@@ -39,6 +39,28 @@ export const useAuthStore = defineStore('auth', () => {
     setUnauthorizedHandler(null)
   }
 
+  // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-118", "REQ-FEAUTH-119"]}
+  // logoutServer invalidates the server-side session token before clearing local
+  // state. Errors from the server call are deliberately swallowed: the client
+  // must clear auth state even when the network is unavailable so the user is
+  // never left stranded in a logged-in state after clicking logout.
+  // logoutServer lives in the store (not a composable) because it is a state
+  // mutation — it reads token to send the server request and delegates to
+  // logout() to clear that same state. Separating it into a composable would
+  // require injecting the store, adding indirection for no practical benefit.
+  async function logoutServer(): Promise<void> {
+    const currentToken = token.value
+    try {
+      if (currentToken) {
+        await post<void>('/api/v1/auth/logout', {}, currentToken)
+      }
+    } catch {
+      // Intentionally swallow — the server session may already be expired or
+      // the network may be offline. Client state must always be cleared.
+    }
+    logout()
+  }
+
   // @{"req": ["REQ-FEAUTH-036"]}
   function setConsented(): void {
     isConsented.value = true
@@ -60,6 +82,7 @@ export const useAuthStore = defineStore('auth', () => {
     isExpired,
     login,
     logout,
+    logoutServer,
     setConsented,
     registerUnauthorizedHandler
   }

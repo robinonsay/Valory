@@ -26,8 +26,9 @@ onMounted(async () => {
   }
 })
 
+// @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-118", "REQ-FEAUTH-119"]}
 const handleLogout = async (): Promise<void> => {
-  auth.logout()
+  await auth.logoutServer()
   await router.push('/login')
 }
 </script>
@@ -68,6 +69,15 @@ const handleLogout = async (): Promise<void> => {
             class="nav-link"
           >
             Course Oversight
+          </RouterLink>
+          <!-- @{"req": ["REQ-FEONBOARD-002"]} -->
+          <RouterLink
+            to="/admin/getting-started"
+            active-class="active"
+            exact-active-class="active"
+            class="nav-link"
+          >
+            Getting Started
           </RouterLink>
         </div>
       </nav>

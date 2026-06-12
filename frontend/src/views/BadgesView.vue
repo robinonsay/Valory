@@ -24,7 +24,7 @@ onMounted(async () => {
   try {
     loading.value = true
     error.value = null
-    badges.value = await get<StudentBadge[]>('/api/v1/users/me/badges', authStore.token)
+    badges.value = (await get<StudentBadge[]>('/api/v1/users/me/badges', authStore.token)) ?? []
   } catch (err) {
     if (err instanceof ApiError) {
       error.value = 'Failed to load badges. Please try again.'

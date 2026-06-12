@@ -2,3 +2,9 @@ node_modules/
 dist/
 *.local
 .DS_Store
+
+# Playwright e2e artifacts — generated at runtime, not committed.
+# e2e-report/ is the HTML reporter output (playwright.config.ts).
+# test-results/ holds screenshots and traces from failed tests.
+e2e-report/
+test-results/

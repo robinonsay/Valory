@@ -52,7 +52,7 @@ async function fetchCourses(status: string = 'all', cursor: string = '') {
     }
 
     const response = await get<CoursesResponse>(url, auth.token)
-    courses.value.push(...response.courses)
+    courses.value.push(...(response.courses ?? []))
     nextCursor.value = response.next_cursor
   } catch (err) {
     if (err instanceof ApiError) {

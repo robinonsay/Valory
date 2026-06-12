@@ -40,7 +40,7 @@ async function fetchUsers(): Promise<void> {
     loading.value = true
     error.value = null
     const response = await get<UsersResponse>('/api/v1/users', auth.token)
-    users.value = response.users
+    users.value = response.users ?? []
   } catch (err) {
     if (err instanceof ApiError) {
       error.value = `Failed to load users: ${err.message}`

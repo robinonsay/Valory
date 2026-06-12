@@ -900,5 +900,15 @@
     "description": "The security module shall prevent any plaintext managed secret value from appearing in logs, audit payloads, or API responses.",
     "rationale": "Log aggregation systems and audit trails are frequently accessible to support personnel with lower privilege levels; a plaintext credential in any recorded output defeats the purpose of encrypted storage.",
     "verification_method": "Test"
+  },
+  {
+    "id": "REQ-ADMIN-009",
+    "title": "Configurable Model API Endpoint",
+    "description": "The admin module shall allow configuring the model API endpoint, defaulting to the provider's hosted endpoint when unset.",
+    "rationale": "Self-hosted gateways and proxies need a different endpoint; everyone else must work with zero configuration.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-ADMIN-001"
+    ]
   }
 ]

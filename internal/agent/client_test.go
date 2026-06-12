@@ -11,12 +11,14 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/google/uuid"
+	"os"
 )
 
 // mockConfigSvc satisfies the anonymous configSvc interface used by ThrottledClient.
 type mockConfigSvc struct {
 	int64Values   map[string]int64
 	float64Values map[string]float64
+	stringValues  map[string]string
 }
 
 func (m *mockConfigSvc) GetInt64(key string) int64 {
@@ -25,6 +27,10 @@ func (m *mockConfigSvc) GetInt64(key string) int64 {
 
 func (m *mockConfigSvc) GetFloat64(key string) float64 {
 	return m.float64Values[key]
+}
+
+func (m *mockConfigSvc) GetString(key string) string {
+	return m.stringValues[key]
 }
 
 // mockTransport is an http.RoundTripper that replays a fixed sequence of
@@ -469,5 +475,161 @@ func TestMessages_Success_UpsertTokenUsage(t *testing.T) {
 	}
 	if totalAfterSecond != 30 {
 		t.Errorf("total_tokens_used after second call: expected 30, got %d", totalAfterSecond)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests 8-10 — base URL resolution (REQ-ADMIN-009)
+// ---------------------------------------------------------------------------
+
+// captureURLTransport records the Host header (or request URL host) of each
+// outbound request so tests can assert which base URL was used.
+type captureURLTransport struct {
+	captured []string
+	response *http.Response
+}
+
+func (c *captureURLTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.captured = append(c.captured, r.URL.String())
+	// Reset the body so the SDK can read it again on the next call.
+	body := c.response.Body
+	c.response.Body = io.NopCloser(strings.NewReader(
+		`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"hi"}],` +
+			`"model":"claude-sonnet-4-6","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5}}`,
+	))
+	_ = body
+	return c.response, nil
+}
+
+func baseURLCfg(baseURL string) *mockConfigSvc {
+	return &mockConfigSvc{
+		int64Values: map[string]int64{
+			"per_student_token_limit": 0,
+			"agent_retry_limit":       3,
+		},
+		stringValues: map[string]string{
+			"anthropic_base_url": baseURL,
+		},
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestMessages_BaseURL_ConfigSet_OptionApplied(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	transport := &captureURLTransport{
+		response: &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+		},
+	}
+
+	cfg := baseURLCfg("https://my-gateway.local:8443")
+
+	studentID := createTestUser(ctx, t, "baseurl_config_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Networking", "intake")
+
+	tc := &ThrottledClient{
+		client:    anthropic.NewClient(option.WithAPIKey("test-key"), option.WithHTTPClient(&http.Client{Transport: transport}), option.WithMaxRetries(0)),
+		pool:      pool,
+		configSvc: cfg,
+	}
+
+	_, _ = tc.Messages(ctx, studentID, courseID, minimalParams())
+
+	if len(transport.captured) == 0 {
+		t.Fatal("no HTTP requests were captured; expected at least one")
+	}
+	got := transport.captured[0]
+	if !strings.HasPrefix(got, "https://my-gateway.local:8443") {
+		t.Errorf("expected request URL to start with https://my-gateway.local:8443, got %q", got)
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestMessages_BaseURL_EmptyConfig_NoOption(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	// When config is empty and ANTHROPIC_BASE_URL env is unset the SDK uses its
+	// own default (api.anthropic.com). We verify the request does NOT go to a
+	// custom host — i.e. the URL contains the SDK's default host fragment.
+	os.Unsetenv("ANTHROPIC_BASE_URL")
+
+	ctx := context.Background()
+	transport := &captureURLTransport{
+		response: &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+		},
+	}
+
+	cfg := baseURLCfg("") // empty → SDK default
+
+	studentID := createTestUser(ctx, t, "baseurl_empty_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "History", "intake")
+
+	tc := &ThrottledClient{
+		client:    anthropic.NewClient(option.WithAPIKey("test-key"), option.WithHTTPClient(&http.Client{Transport: transport}), option.WithMaxRetries(0)),
+		pool:      pool,
+		configSvc: cfg,
+	}
+
+	_, _ = tc.Messages(ctx, studentID, courseID, minimalParams())
+
+	if len(transport.captured) == 0 {
+		t.Fatal("no HTTP requests captured")
+	}
+	got := transport.captured[0]
+	// SDK default base is https://api.anthropic.com — must NOT be the gateway.
+	if strings.HasPrefix(got, "https://my-gateway.local") {
+		t.Errorf("expected SDK default URL, but request went to custom gateway: %q", got)
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestMessages_BaseURL_EnvFallback_OptionApplied(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	const envGateway = "https://env-gateway.example.com"
+	os.Setenv("ANTHROPIC_BASE_URL", envGateway)
+	defer os.Unsetenv("ANTHROPIC_BASE_URL")
+
+	ctx := context.Background()
+	transport := &captureURLTransport{
+		response: &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+		},
+	}
+
+	cfg := baseURLCfg("") // config empty → env fallback
+
+	studentID := createTestUser(ctx, t, "baseurl_env_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Physics", "intake")
+
+	tc := &ThrottledClient{
+		client:    anthropic.NewClient(option.WithAPIKey("test-key"), option.WithHTTPClient(&http.Client{Transport: transport}), option.WithMaxRetries(0)),
+		pool:      pool,
+		configSvc: cfg,
+	}
+
+	_, _ = tc.Messages(ctx, studentID, courseID, minimalParams())
+
+	if len(transport.captured) == 0 {
+		t.Fatal("no HTTP requests captured")
+	}
+	got := transport.captured[0]
+	if !strings.HasPrefix(got, envGateway) {
+		t.Errorf("expected request URL to start with %q (env fallback), got %q", envGateway, got)
 	}
 }

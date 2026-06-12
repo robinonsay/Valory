@@ -57,7 +57,7 @@
   {
     "id": "REQ-FEADMIN-005",
     "title": "System config view",
-    "description": "The admin frontend module shall provide a form for viewing and patching all thirteen system configuration keys.",
+    "description": "The admin frontend module shall provide a form for viewing and patching all system configuration keys.",
     "rationale": "System configuration controls runtime behaviour of grading, sessions, and content generation; admins need a safe form interface with validation feedback.",
     "verification_method": "Demonstration",
     "implements": [
@@ -1556,7 +1556,7 @@
   {
     "id": "REQ-FEADMIN-510",
     "title": "Explanation blocks render for all 15 config and secret keys",
-    "description": "The admin frontend module shall render an explanation block for each of the fifteen configuration and secret keys.",
+    "description": "The admin frontend module shall render an explanation block for each configuration and secret key.",
     "rationale": "Configuration keys have non-obvious consequences; an always-available explanation block lets admins understand the impact of a change without consulting external documentation.",
     "verification_method": "Demonstration",
     "uses": [

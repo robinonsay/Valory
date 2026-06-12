@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"time"
@@ -34,6 +35,7 @@ var allowedKeys = map[string]bool{
 	"audit_retention_days":               true,
 	"notification_retention_days":        true,
 	"consent_version":                    true,
+	"anthropic_base_url":                 true,
 }
 
 // @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-AUDIT-001", "REQ-GRADE-002", "REQ-GRADE-003"]}
@@ -67,7 +69,7 @@ type updaterInfo struct {
 	Username string `json:"username"`
 }
 
-// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-GRADE-002", "REQ-GRADE-003"]}
+// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-ADMIN-009", "REQ-GRADE-002", "REQ-GRADE-003"]}
 func (h *AdminConfigHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -267,7 +269,7 @@ func (h *AdminConfigHandler) patchConfig(w http.ResponseWriter, r *http.Request)
 // validateConfigValue checks a single key/value pair against the validation
 // rules table. It returns a descriptive error when the value is invalid.
 //
-// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-SUBMISSION-002", "REQ-AUTH-005", "REQ-AUTH-006"]}
+// @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-ADMIN-009", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-SUBMISSION-002", "REQ-AUTH-005", "REQ-AUTH-006"]}
 func validateConfigValue(key, value string) error {
 	switch key {
 	case "agent_retry_limit":
@@ -333,6 +335,19 @@ func validateConfigValue(key, value string) error {
 	case "consent_version":
 		if value == "" {
 			return fmt.Errorf("consent_version must be a non-empty string")
+		}
+	case "anthropic_base_url":
+		// Empty string is valid: it means "use the SDK default endpoint".
+		// Non-empty values must be absolute http(s) URLs with a non-empty host
+		// so that option.WithBaseURL receives a well-formed target.
+		// Userinfo tricks (https://api.anthropic.com@evil.com) parse with host
+		// evil.com and are deliberately allowed: only admins can write this key,
+		// and a redirected endpoint fails Anthropic auth rather than leaking.
+		if value != "" {
+			u, err := url.Parse(value)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return fmt.Errorf("anthropic_base_url must be empty or an absolute http(s) URL")
+			}
 		}
 	}
 	return nil

@@ -129,3 +129,17 @@ test('AdminConfig_InvalidWeightSum_ShowsClientSideErrorAndBlocksSave', async ({ 
   // appear.  Either way the weight error must be gone.
   await expect(weightError).not.toBeVisible()
 })
+
+// @{"verifies": ["REQ-ADMIN-009", "REQ-FEADMIN-510"]}
+// The endpoint field defaults to "" (use Anthropic's hosted API), so it is
+// asserted by presence + explanation rather than by non-empty value.
+test('AdminConfig_AnthropicBaseUrlFieldAndExplanationRender', async ({ page }) => {
+  await login(page, ADMIN_USER, ADMIN_PASS)
+  await page.goto('/admin/config')
+  await expect(page.getByText('Anthropic API Endpoint URL')).toBeVisible()
+  const toggle = page
+    .locator('.form-field-with-explanation', { hasText: 'Anthropic API Endpoint URL' })
+    .locator('button.explanation-toggle')
+  await toggle.click()
+  await expect(page.getByText(/self-hosting a compatible gateway/i)).toBeVisible()
+})

@@ -59,6 +59,9 @@ export const EXPLANATIONS: Record<string, string> = {
   'consent_version':
     'The current AI data-sharing consent version string (e.g. "1.0", "2.0"). Any student whose stored consent version is lower than this value must re-accept consent before accessing any protected endpoint. Bumping this value is a gate action — plan it carefully, as it immediately blocks all students who have not yet accepted the new version. Admins are exempt.',
 
+  'anthropic_base_url':
+    'The Anthropic API endpoint URL, used for all AI features — content generation, grading, and chat. Leave empty to use Anthropic\'s hosted endpoint (recommended). Only set this when self-hosting a compatible gateway or proxy (e.g., for on-premises deployments or custom routing). An incorrect value will stop ALL AI features (course generation, chat, grading) until corrected. Takes effect immediately after saving — no container restart needed.',
+
   'anthropic_api_key':
     'The Anthropic API key used to call Claude for all AI features — content generation, grading, and chat. If set here, this value takes precedence over the `ANTHROPIC_API_KEY` environment variable. If neither is set, all AI features will fail at runtime. Changes take effect within 30 seconds without a container restart.',
 

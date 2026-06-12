@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"os"
 	"time"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -36,16 +37,18 @@ type ThrottledClient struct {
 	configSvc interface {
 		GetInt64(string) int64
 		GetFloat64(string) float64
+		GetString(string) string
 	}
 	// secrets resolves "anthropic_api_key" per call.
 	// nil when the provider is not configured (env-only mode).
 	secrets SecretResolver
 }
 
-// @{"req": ["REQ-AGENT-012", "REQ-ADMIN-004", "REQ-ADMIN-005", "REQ-ADMIN-008", "REQ-SYS-044", "REQ-SYS-049"]}
+// @{"req": ["REQ-AGENT-012", "REQ-ADMIN-004", "REQ-ADMIN-005", "REQ-ADMIN-008", "REQ-ADMIN-009", "REQ-SYS-044", "REQ-SYS-049"]}
 func NewThrottledClient(apiKey string, pool *pgxpool.Pool, configSvc interface {
 	GetInt64(string) int64
 	GetFloat64(string) float64
+	GetString(string) string
 }, secrets SecretResolver) *ThrottledClient {
 	return &ThrottledClient{
 		client:    anthropic.NewClient(option.WithAPIKey(apiKey)),
@@ -86,14 +89,25 @@ func (c *ThrottledClient) Messages(ctx context.Context, studentID, courseID uuid
 		}
 	}
 
-	// Step 2: Resolve the API key per call.
-	// option.WithAPIKey overrides the constructor-time key for this call only —
-	// no client reconstruction, no race window, matches the SDK's design intent.
+	// Step 2: Resolve the API key and base URL per call.
+	// option.WithAPIKey / option.WithBaseURL override the constructor-time values
+	// for this call only — no client reconstruction, no race window, matches the
+	// SDK's design intent.
+	//
+	// Base URL resolution order (REQ-ADMIN-009):
+	//   1. system_config key 'anthropic_base_url' (non-empty)
+	//   2. ANTHROPIC_BASE_URL environment variable (non-empty)
+	//   3. SDK default — no option added, SDK uses https://api.anthropic.com
 	var callOpts []option.RequestOption
 	if c.secrets != nil {
 		if resolvedKey := c.secrets.Get(ctx, "anthropic_api_key"); resolvedKey != "" {
 			callOpts = append(callOpts, option.WithAPIKey(resolvedKey))
 		}
+	}
+	if baseURL := c.configSvc.GetString("anthropic_base_url"); baseURL != "" {
+		callOpts = append(callOpts, option.WithBaseURL(baseURL))
+	} else if envURL := os.Getenv("ANTHROPIC_BASE_URL"); envURL != "" {
+		callOpts = append(callOpts, option.WithBaseURL(envURL))
 	}
 
 	// Step 3: Retry loop with exponential backoff on HTTP 429.

@@ -13,7 +13,8 @@ export const CONFIG_KEYS = [
   'content_generation_timeout_seconds',
   'audit_retention_days',
   'notification_retention_days',
-  'consent_version'
+  'consent_version',
+  'anthropic_base_url'
 ] as const
 
 export const WEIGHT_KEYS = [
@@ -37,7 +38,8 @@ export const CONFIG_LABELS: Record<string, string> = {
   'content_generation_timeout_seconds': 'Content Generation Timeout (seconds)',
   'audit_retention_days': 'Audit Retention (days)',
   'notification_retention_days': 'Notification Retention (days)',
-  'consent_version': 'Consent Version'
+  'consent_version': 'Consent Version',
+  'anthropic_base_url': 'Anthropic API Endpoint URL'
 }
 
 // @{"req": ["REQ-FEADMIN-043", "REQ-FEADMIN-330", "REQ-FEADMIN-331", "REQ-FEADMIN-332", "REQ-FEADMIN-333", "REQ-FEADMIN-334", "REQ-FEADMIN-335", "REQ-FEADMIN-336", "REQ-FEADMIN-337", "REQ-FEADMIN-338", "REQ-FEADMIN-339", "REQ-FEADMIN-340", "REQ-FEADMIN-341", "REQ-FEADMIN-342", "REQ-FEADMIN-343"]}
@@ -54,7 +56,8 @@ export const CONFIG_HINTS: Record<string, string> = {
   'content_generation_timeout_seconds': 'integer >= 1',
   'audit_retention_days': 'integer >= 1',
   'notification_retention_days': 'integer >= 1',
-  'consent_version': 'non-empty string'
+  'consent_version': 'non-empty string',
+  'anthropic_base_url': 'optional; empty or absolute http(s) URL'
 }
 
 // @{"req": ["REQ-FEADMIN-043", "REQ-FEADMIN-330"]}
@@ -113,6 +116,9 @@ export const EXPLANATIONS: Record<string, string> = {
 
   'consent_version':
     'The current AI data-sharing consent version string (e.g. "1.0", "2.0"). Any student whose stored consent version is lower than this value must re-accept consent before accessing any protected endpoint. Bumping this value is a gate action — plan it carefully, as it immediately blocks all students who have not yet accepted the new version. Admins are exempt.',
+
+  'anthropic_base_url':
+    'The Anthropic API endpoint URL, used for all AI features — content generation, grading, and chat. Leave empty to use Anthropic\'s hosted endpoint (recommended). Only set this when self-hosting a compatible gateway or proxy (e.g., for on-premises deployments or custom routing). An incorrect value will stop ALL AI features (course generation, chat, grading) until corrected. Takes effect immediately after saving — no container restart needed.',
 
   'anthropic_api_key':
     'The Anthropic API key used to call Claude for all AI features — content generation, grading, and chat. If set here, this value takes precedence over the `ANTHROPIC_API_KEY` environment variable. If neither is set, all AI features will fail at runtime. Changes take effect within 30 seconds without a container restart.',

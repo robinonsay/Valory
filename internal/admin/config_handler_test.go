@@ -192,7 +192,8 @@ func applyHandlerMigrations(ctx context.Context, p *pgxpool.Pool) error {
 	    ('content_generation_timeout_seconds', '300'),
 	    ('audit_retention_days',               '365'),
 	    ('notification_retention_days',        '90'),
-	    ('consent_version',                    '1.0')
+	    ('consent_version',                    '1.0'),
+	    ('anthropic_base_url',                 '')
 	ON CONFLICT (key) DO NOTHING;
 
 	COMMIT;
@@ -245,6 +246,7 @@ func truncateHandlerTables(ctx context.Context, p *pgxpool.Pool) error {
 			WHEN 'audit_retention_days'               THEN '365'
 			WHEN 'notification_retention_days'        THEN '90'
 			WHEN 'consent_version'                    THEN '1.0'
+			WHEN 'anthropic_base_url'                 THEN ''
 			ELSE value END,
 		updated_by = NULL,
 		updated_at = now()`,
@@ -413,8 +415,8 @@ func makeConfigRequestNoRole(t *testing.T, method, path string, body interface{}
 	return rr
 }
 
-// @{"verifies": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003"]}
-func TestGetConfig_ReturnsAll13Keys(t *testing.T) {
+// @{"verifies": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-ADMIN-009"]}
+func TestGetConfig_ReturnsAll14Keys(t *testing.T) {
 	if handlerTestPool == nil {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
@@ -449,6 +451,7 @@ func TestGetConfig_ReturnsAll13Keys(t *testing.T) {
 		"audit_retention_days",
 		"notification_retention_days",
 		"consent_version",
+		"anthropic_base_url",
 	}
 
 	if len(resp.Config) != len(expectedKeys) {
@@ -877,5 +880,119 @@ func TestPatchConfig_EmptyConsentVersionReturns422(t *testing.T) {
 
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("expected 422 (empty consent_version), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// anthropic_base_url validation tests (REQ-ADMIN-009)
+// ---------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestPatchConfig_AnthropicBaseURL_EmptyIsValid(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"anthropic_base_url": "",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 (empty base URL is valid), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestPatchConfig_AnthropicBaseURL_ValidHTTPSIsAccepted(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"anthropic_base_url": "https://my-gateway.local:8443",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 (valid https URL), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestPatchConfig_AnthropicBaseURL_FTPSchemeReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"anthropic_base_url": "ftp://bad.example.com",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 (ftp:// scheme rejected), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestPatchConfig_AnthropicBaseURL_GarbageStringReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"anthropic_base_url": "not a url at all",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 (garbage string rejected), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-009"]}
+func TestPatchConfig_AnthropicBaseURL_JavascriptSchemeReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"anthropic_base_url": "javascript:alert(1)",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 (javascript: scheme rejected), got %d: %s", rr.Code, rr.Body.String())
 	}
 }

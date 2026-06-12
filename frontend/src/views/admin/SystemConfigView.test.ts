@@ -41,7 +41,8 @@ const FULL_CONFIG = {
   content_generation_timeout_seconds: '300',
   audit_retention_days: '365',
   notification_retention_days: '90',
-  consent_version: '1.0'
+  consent_version: '1.0',
+  anthropic_base_url: ''
 }
 
 beforeEach(() => {
@@ -95,7 +96,7 @@ async function flushAll() {
 
 describe('SystemConfigView', () => {
   // @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042"]}
-  it('fetches config on mount and renders all 13 fields', async () => {
+  it('fetches config on mount and renders all 14 fields', async () => {
     vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
 
     const wrapper = mountWithAuth()
@@ -105,7 +106,7 @@ describe('SystemConfigView', () => {
     expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/admin/config')
 
     const inputs = wrapper.findAll('input.config-input')
-    expect(inputs).toHaveLength(13)
+    expect(inputs).toHaveLength(14)
 
     const expectedKeys = [
       'agent_retry_limit',
@@ -120,7 +121,8 @@ describe('SystemConfigView', () => {
       'content_generation_timeout_seconds',
       'audit_retention_days',
       'notification_retention_days',
-      'consent_version'
+      'consent_version',
+      'anthropic_base_url'
     ]
 
     for (const key of expectedKeys) {
@@ -424,7 +426,7 @@ describe('SystemConfigView', () => {
   })
 
   // @{"req": ["REQ-FEADMIN-510"]}
-  it('all 13 config fields render with explanation blocks', async () => {
+  it('all 14 config fields render with explanation blocks', async () => {
     vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
     vi.mocked(get).mockImplementation((path) => {
       if (path === '/api/v1/admin/secrets') {
@@ -438,7 +440,7 @@ describe('SystemConfigView', () => {
     await wrapper.vm.$nextTick()
 
     const toggleButtons = wrapper.findAll('.explanation-toggle')
-    expect(toggleButtons).toHaveLength(13)
+    expect(toggleButtons).toHaveLength(14)
   })
 
   // @{"req": ["REQ-FEADMIN-511"]}
@@ -506,5 +508,63 @@ describe('SystemConfigView', () => {
       }
     }
     expect(foundAudit).toBe(true)
+  })
+
+  // @{"req": ["REQ-FEADMIN-510"]}
+  it('anthropic_base_url field renders with correct label', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: EMPTY_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('#config-anthropic_base_url')
+    expect(input.exists()).toBe(true)
+
+    const label = wrapper.find('label[for="config-anthropic_base_url"]')
+    expect(label.exists()).toBe(true)
+    expect(label.text()).toContain('Anthropic API Endpoint URL')
+  })
+
+  // @{"req": ["REQ-FEADMIN-511"]}
+  it('anthropic_base_url explanation text renders with self-hosting guidance', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: EMPTY_SECRETS })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const toggleButtons = wrapper.findAll('.explanation-toggle')
+    const baseUrlToggleIndex = 13
+
+    await toggleButtons[baseUrlToggleIndex].trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const allExplanationBlocks = wrapper.findAll('.explanation-block')
+    let foundBaseUrl = false
+    for (const block of allExplanationBlocks) {
+      const text = block.text()
+      if (text.includes('Anthropic API endpoint URL')) {
+        foundBaseUrl = true
+        expect(text).toContain('Leave empty to use Anthropic\'s hosted endpoint')
+        expect(text).toContain('self-hosting a compatible gateway or proxy')
+        expect(text).toContain('course generation, chat, grading')
+        expect(text).toContain('Takes effect immediately after saving — no container restart needed')
+        break
+      }
+    }
+    expect(foundBaseUrl).toBe(true)
   })
 })

@@ -1,7 +1,7 @@
-// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-510", "REQ-FECOURSE-520"]}
+// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-510", "REQ-FECOURSE-520"]}
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { get, post, ApiError } from '@/api/client'
@@ -24,6 +24,8 @@ const courseId = route.params.id as string
 const isLoading = ref(true)
 const fetchError = ref('')
 const syllabusContent = ref('')
+const isDrafting = ref(false)
+const isDraftingWaitExceeded = ref(false)
 
 const modificationText = ref('')
 const isModificationModalOpen = ref(false)
@@ -34,24 +36,95 @@ const modificationSuccess = ref('')
 const isApprovingLoading = ref(false)
 const approveError = ref('')
 
-// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060"]}
+let draftingPollInterval: NodeJS.Timeout | null = null
+let draftingBoundedWaitTimer: NodeJS.Timeout | null = null
+
+// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
 async function fetchSyllabus() {
   isLoading.value = true
   fetchError.value = ''
+  isDrafting.value = false
+  isDraftingWaitExceeded.value = false
   try {
     const response = await get<SyllabusResponse>(
       `/api/v1/courses/${courseId}/syllabus`,
       auth.token
     )
     syllabusContent.value = response.content_adoc
+    stopDraftingPolling()
   } catch (err) {
     if (err instanceof ApiError) {
+      if (err.status === 404) {
+        // Syllabus not yet generated; show drafting indicator and poll
+        isDrafting.value = true
+        isLoading.value = false
+        startDraftingPolling()
+        return
+      }
       fetchError.value = 'Failed to load syllabus. Please try again.'
     } else {
       fetchError.value = 'An error occurred. Please try again.'
     }
   } finally {
-    isLoading.value = false
+    if (!isDrafting.value) {
+      isLoading.value = false
+    }
+  }
+}
+
+// @{"req": ["REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
+function startDraftingPolling(): void {
+  const startTime = Date.now()
+  const POLL_INTERVAL = 4000
+  const BOUNDED_WAIT_MS = 180000
+
+  draftingPollInterval = setInterval(async () => {
+    const elapsed = Date.now() - startTime
+    if (elapsed > BOUNDED_WAIT_MS) {
+      stopDraftingPolling()
+      isDraftingWaitExceeded.value = true
+      return
+    }
+
+    try {
+      const response = await get<SyllabusResponse>(
+        `/api/v1/courses/${courseId}/syllabus`,
+        auth.token
+      )
+      syllabusContent.value = response.content_adoc
+      isDrafting.value = false
+      isDraftingWaitExceeded.value = false
+      isLoading.value = false
+      stopDraftingPolling()
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 404) {
+        stopDraftingPolling()
+        isDrafting.value = false
+        if (err instanceof ApiError) {
+          fetchError.value = 'Failed to load syllabus. Please try again.'
+        } else {
+          fetchError.value = 'An error occurred. Please try again.'
+        }
+      }
+    }
+  }, POLL_INTERVAL)
+
+  draftingBoundedWaitTimer = setTimeout(() => {
+    if (isDrafting.value) {
+      stopDraftingPolling()
+      isDraftingWaitExceeded.value = true
+    }
+  }, BOUNDED_WAIT_MS)
+}
+
+function stopDraftingPolling(): void {
+  if (draftingPollInterval !== null) {
+    clearInterval(draftingPollInterval)
+    draftingPollInterval = null
+  }
+  if (draftingBoundedWaitTimer !== null) {
+    clearTimeout(draftingBoundedWaitTimer)
+    draftingBoundedWaitTimer = null
   }
 }
 
@@ -135,6 +208,10 @@ function closeModificationModal() {
 onMounted(() => {
   fetchSyllabus()
 })
+
+onUnmounted(() => {
+  stopDraftingPolling()
+})
 </script>
 
 <template>
@@ -145,11 +222,25 @@ onMounted(() => {
       Loading syllabus...
     </div>
 
+    <div v-if="isDrafting && !isDraftingWaitExceeded" class="drafting-indicator">
+      <div class="typing-indicator">
+        <span></span><span></span><span></span>
+      </div>
+      <p>Your professor is drafting your syllabus…</p>
+    </div>
+
+    <div v-if="isDraftingWaitExceeded" class="drafting-wait-exceeded">
+      <p>Syllabus generation is taking longer than expected.</p>
+      <button @click="fetchSyllabus()" class="btn btn-primary">
+        Try Again
+      </button>
+    </div>
+
     <div v-if="fetchError" class="error-message">
       {{ fetchError }}
     </div>
 
-    <template v-if="!isLoading && !fetchError">
+    <template v-if="!isLoading && !isDrafting && !fetchError">
       <div class="syllabus-content">
         <div class="syllabus-text">
           <pre>{{ syllabusContent }}</pre>
@@ -248,6 +339,64 @@ h3 {
   text-align: center;
   color: #666;
   font-size: 1.1rem;
+}
+
+.drafting-indicator {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 1rem;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #999;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.5;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-10px);
+  }
+}
+
+.drafting-wait-exceeded {
+  padding: 2rem;
+  text-align: center;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  margin: 2rem 0;
+}
+
+.drafting-wait-exceeded p {
+  color: #666;
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
 }
 
 .error-message {

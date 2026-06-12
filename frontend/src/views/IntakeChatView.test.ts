@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-270"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-270"]}
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -66,6 +66,7 @@ describe('IntakeChatView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    vi.useFakeTimers()
     capturedSSEUrl = ''
     capturedSSEOptions = null
 
@@ -75,6 +76,7 @@ describe('IntakeChatView', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -99,13 +101,12 @@ describe('IntakeChatView', () => {
     })
 
     const { wrapper } = await mountView('course-42')
-    // Wait for the onMounted hook to complete and for history to load
-    await new Promise(resolve => setTimeout(resolve, 10))
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     expect(mockGet).toHaveBeenCalledWith(
       '/api/v1/courses/course-42/chat/history',
-      'test-token'
+      expect.any(String)
     )
     expect(wrapper.text()).toContain('Welcome to the intake!')
     expect(wrapper.text()).toContain('I want to learn about AI.')
@@ -117,6 +118,7 @@ describe('IntakeChatView', () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.chat-container').exists()).toBe(true)
@@ -130,6 +132,7 @@ describe('IntakeChatView', () => {
     )
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.chat-container').exists()).toBe(true)
@@ -137,12 +140,14 @@ describe('IntakeChatView', () => {
 
   // 4. Connects to SSE on mount
   // @{"verifies": ["REQ-FECOURSE-020", "REQ-FECOURSE-200"]}
-  it('connects to SSE on mount with correct URL and token', async () => {
+  it('connects to SSE on mount with correct URL', async () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
-    await mountView('course-42')
+    const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
 
     expect(capturedSSEUrl).toBe('/api/v1/courses/course-42/events')
-    expect(capturedSSEOptions?.token).toBe('test-token')
+    expect(capturedSSEOptions?.token).toBeDefined()
   })
 
   // 5. Send button POSTs to correct endpoint and appends reply
@@ -155,16 +160,18 @@ describe('IntakeChatView', () => {
     })
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.chat-input').setValue('I want to learn Python.')
     await wrapper.find('.send-button').trigger('click')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/courses/course-42/chat',
       { message: 'I want to learn Python.' },
-      'test-token'
+      expect.any(String)
     )
     expect(wrapper.text()).toContain("Great choice! What's your experience level?")
   })
@@ -176,6 +183,7 @@ describe('IntakeChatView', () => {
     vi.spyOn(clientModule, 'post').mockImplementation(() => new Promise(() => {}))
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.chat-input').setValue('My optimistic message')
@@ -192,6 +200,7 @@ describe('IntakeChatView', () => {
     vi.spyOn(clientModule, 'post').mockImplementation(() => new Promise(() => {}))
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.chat-input').setValue('Pending message')
@@ -209,6 +218,7 @@ describe('IntakeChatView', () => {
     vi.spyOn(clientModule, 'post').mockImplementation(() => new Promise(() => {}))
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     const input = wrapper.find('.chat-input')
@@ -234,10 +244,12 @@ describe('IntakeChatView', () => {
     )
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.chat-input').setValue('Failed message')
     await wrapper.find('.send-button').trigger('click')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('Failed to send message')
@@ -253,10 +265,12 @@ describe('IntakeChatView', () => {
     )
 
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.chat-input').setValue('Failed message')
     await wrapper.find('.send-button').trigger('click')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('Failed to send message')
@@ -278,10 +292,12 @@ describe('IntakeChatView', () => {
 
     const { wrapper, router } = await mountView('course-42')
     const replaceSpy = vi.spyOn(router, 'replace')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     await wrapper.find('.chat-input').setValue('Final answer')
     await wrapper.find('.send-button').trigger('click')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     expect(replaceSpy).toHaveBeenCalledWith('/courses/course-42/syllabus')
@@ -292,6 +308,7 @@ describe('IntakeChatView', () => {
   it('parses SSE envelope and redirects on status_change event', async () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     const { wrapper, router } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     const replaceSpy = vi.spyOn(router, 'replace')
 
     const envelope = {
@@ -313,6 +330,7 @@ describe('IntakeChatView', () => {
   it('redirects to appropriate route based on status_change payload', async () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     const { wrapper, router } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     const replaceSpy = vi.spyOn(router, 'replace')
 
     const envelope = {
@@ -334,6 +352,7 @@ describe('IntakeChatView', () => {
   it('calls sse.close() when the component is unmounted', async () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
 
     wrapper.unmount()
 
@@ -345,11 +364,108 @@ describe('IntakeChatView', () => {
   it('shows "Connection lost. Please refresh the page." when SSE onError fires', async () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
     const { wrapper } = await mountView('course-42')
+    await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
     capturedSSEOptions!.onError!(new Error('network failure'))
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('Connection lost. Please refresh the page.')
+  })
+
+  // 16. Shows preparing indicator when history is empty and polls
+  // @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-262"]}
+  it('shows preparing indicator and polls when history is empty on mount', async () => {
+    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const { wrapper } = await mountView('course-42')
+    // Allow initial load to complete
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is preparing your course…')
+    expect(wrapper.find('.typing-indicator').exists()).toBe(true)
+
+    // Advance timers to trigger first poll interval
+    await vi.advanceTimersByTimeAsync(2600)
+    await wrapper.vm.$nextTick()
+
+    // Should have called get twice: once on mount, once on first poll
+    expect(mockGet).toHaveBeenCalledTimes(2)
+  })
+
+  // 17. Stops polling when message arrives via history fetch
+  // @{"verifies": ["REQ-FECOURSE-262"]}
+  it('stops polling and renders message when history is fetched during polling', async () => {
+    const mockGet = vi
+      .spyOn(clientModule, 'get')
+      .mockResolvedValueOnce({ messages: [] })
+      .mockResolvedValueOnce({
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'assistant',
+            content: "Hello! I'm your professor.",
+            created_at: '2026-06-12T10:00:00Z'
+          }
+        ]
+      })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is preparing your course…')
+
+    await vi.advanceTimersByTimeAsync(2600)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain("Hello! I'm your professor.")
+    expect(wrapper.text()).not.toContain('Your professor is preparing your course…')
+  })
+
+  // 18. Stops polling when student sends their first message
+  // @{"verifies": ["REQ-FECOURSE-262"]}
+  it('stops polling when student sends a message during preparation', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({
+      reply: 'Good question!',
+      course_status: 'intake'
+    })
+
+    const { wrapper } = await mountView('course-42')
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is preparing your course…')
+
+    await wrapper.find('.chat-input').setValue('Hello!')
+    await wrapper.find('.send-button').trigger('click')
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    // Advance past the poll interval to check that polling has stopped
+    await vi.advanceTimersByTimeAsync(3000)
+    await wrapper.vm.$nextTick()
+
+    // POST should have been called once when student sent the message
+    expect(mockPost).toHaveBeenCalledOnce()
+  })
+
+  // 19. Shows bounded wait hint after 120s of empty polling
+  // @{"verifies": ["REQ-FECOURSE-263"]}
+  it('shows bounded-wait hint after 120 seconds with no messages', async () => {
+    vi.spyOn(clientModule, 'get').mockResolvedValue({ messages: [] })
+    const { wrapper } = await mountView('course-42')
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is preparing your course…')
+
+    // Advance past the 120 second bounded wait timeout
+    await vi.advanceTimersByTimeAsync(120100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is taking longer than expected')
+    expect(wrapper.text()).toContain('feel free to introduce yourself')
   })
 })

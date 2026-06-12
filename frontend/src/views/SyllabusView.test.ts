@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-510", "REQ-FECOURSE-520"]}
+// @{"req": ["REQ-FECOURSE-055", "REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-060", "REQ-FECOURSE-460", "REQ-FECOURSE-470", "REQ-FECOURSE-480", "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-510", "REQ-FECOURSE-520"]}
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -404,5 +404,188 @@ describe('SyllabusView', () => {
 
     mockGet.mockRestore()
     mockPost.mockRestore()
+  })
+
+  it('shows drafting indicator on 404 error and polls for syllabus', async () => {
+    // @{"verifies": ["REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
+    const mockGet = vi
+      .spyOn(clientModule, 'get')
+      .mockRejectedValueOnce(new clientModule.ApiError(404, { error: 'not found' }))
+      .mockResolvedValueOnce({
+        id: 'syll-123',
+        course_id: 'course-123',
+        content_adoc: '= Syllabus\n\nContent loaded!',
+        version: 1,
+        approved_at: null,
+        created_at: '2025-01-01T00:00:00Z'
+      })
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/courses/:id/syllabus',
+          name: 'course-syllabus',
+          component: SyllabusView
+        }
+      ]
+    })
+
+    router.push('/courses/test-course/syllabus')
+    await router.isReady()
+
+    const auth = useAuthStore()
+    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+
+    const wrapper = mount(SyllabusView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is drafting your syllabus…')
+    expect(wrapper.find('.typing-indicator').exists()).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(4100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('= Syllabus')
+    expect(wrapper.text()).toContain('Content loaded!')
+    expect(wrapper.text()).not.toContain('Your professor is drafting your syllabus…')
+
+    mockGet.mockRestore()
+  })
+
+  it('shows non-404 error banner, not drafting indicator', async () => {
+    // @{"verifies": ["REQ-FECOURSE-490"]}
+    const mockGet = vi
+      .spyOn(clientModule, 'get')
+      .mockRejectedValue(new clientModule.ApiError(500, { error: 'server error' }))
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/courses/:id/syllabus',
+          name: 'course-syllabus',
+          component: SyllabusView
+        }
+      ]
+    })
+
+    router.push('/courses/test-course/syllabus')
+    await router.isReady()
+
+    const auth = useAuthStore()
+    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+
+    const wrapper = mount(SyllabusView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Failed to load syllabus')
+    expect(wrapper.text()).not.toContain('Your professor is drafting your syllabus…')
+
+    mockGet.mockRestore()
+  })
+
+  it('shows longer-than-expected message after 180s of drafting polling', async () => {
+    // @{"verifies": ["REQ-FECOURSE-491"]}
+    const mockGet = vi
+      .spyOn(clientModule, 'get')
+      .mockRejectedValue(new clientModule.ApiError(404, { error: 'not found' }))
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/courses/:id/syllabus',
+          name: 'course-syllabus',
+          component: SyllabusView
+        }
+      ]
+    })
+
+    router.push('/courses/test-course/syllabus')
+    await router.isReady()
+
+    const auth = useAuthStore()
+    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+
+    const wrapper = mount(SyllabusView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is drafting your syllabus…')
+
+    await vi.advanceTimersByTimeAsync(180100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('generation is taking longer than expected')
+    expect(wrapper.text()).toContain('Try Again')
+    expect(wrapper.text()).not.toContain('Your professor is drafting your syllabus…')
+
+    mockGet.mockRestore()
+  })
+
+  it('restarts drafting poll when Try Again is clicked', async () => {
+    // @{"verifies": ["REQ-FECOURSE-491"]}
+    const mockGet = vi
+      .spyOn(clientModule, 'get')
+      .mockRejectedValue(new clientModule.ApiError(404, { error: 'not found' }))
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/courses/:id/syllabus',
+          name: 'course-syllabus',
+          component: SyllabusView
+        }
+      ]
+    })
+
+    router.push('/courses/test-course/syllabus')
+    await router.isReady()
+
+    const auth = useAuthStore()
+    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+
+    const wrapper = mount(SyllabusView, {
+      global: {
+        plugins: [router]
+      }
+    })
+
+    await vi.advanceTimersByTimeAsync(100)
+    await wrapper.vm.$nextTick()
+
+    await vi.advanceTimersByTimeAsync(180100)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('generation is taking longer than expected')
+
+    const tryAgainBtn = wrapper
+      .findAll('button')
+      .find(btn => btn.text().includes('Try Again'))
+    await tryAgainBtn?.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Your professor is drafting your syllabus…')
+
+    mockGet.mockRestore()
   })
 })

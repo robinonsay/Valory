@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-270"]}
+// @{"req": ["REQ-FECOURSE-026", "REQ-FECOURSE-027", "REQ-FECOURSE-028", "REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-230", "REQ-FECOURSE-231", "REQ-FECOURSE-240", "REQ-FECOURSE-250", "REQ-FECOURSE-251", "REQ-FECOURSE-252", "REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263", "REQ-FECOURSE-270"]}
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -45,7 +45,13 @@ const sendError = ref(false)
 const sendErrorMessage = ref('')
 const chatContainer = ref<HTMLElement | null>(null)
 
-// @{"req": ["REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
+const isLoadingHistory = ref(false)
+const isHistoryPolling = ref(false)
+const boundedWaitExceeded = ref(false)
+let historyPollInterval: NodeJS.Timeout | null = null
+let boundedWaitTimer: NodeJS.Timeout | null = null
+
+// @{"req": ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262"]}
 async function loadChatHistory(): Promise<void> {
   try {
     const courseId = route.params.id as string
@@ -55,6 +61,7 @@ async function loadChatHistory(): Promise<void> {
     )
 
     if (response.messages && Array.isArray(response.messages)) {
+      messages.value = []
       response.messages.forEach((msg) => {
         messages.value.push({
           role: msg.role === 'assistant' ? 'agent' : 'user',
@@ -67,6 +74,54 @@ async function loadChatHistory(): Promise<void> {
     // If history fetch fails, proceed with empty history so student can still
     // send messages. The backend will retry the kickoff on first history fetch
     // per the design spec.
+  }
+}
+
+// @{"req": ["REQ-FECOURSE-262", "REQ-FECOURSE-263"]}
+function startHistoryPolling(): void {
+  if (messages.value.length > 0) {
+    return
+  }
+
+  isHistoryPolling.value = true
+  boundedWaitExceeded.value = false
+  const startTime = Date.now()
+  const POLL_INTERVAL = 2500
+  const BOUNDED_WAIT_MS = 120000
+
+  historyPollInterval = setInterval(async () => {
+    if (messages.value.length > 0 || isSending.value) {
+      stopHistoryPolling()
+      return
+    }
+
+    const elapsed = Date.now() - startTime
+    if (elapsed > BOUNDED_WAIT_MS) {
+      stopHistoryPolling()
+      boundedWaitExceeded.value = true
+      return
+    }
+
+    await loadChatHistory()
+  }, POLL_INTERVAL)
+
+  boundedWaitTimer = setTimeout(() => {
+    if (messages.value.length === 0) {
+      stopHistoryPolling()
+      boundedWaitExceeded.value = true
+    }
+  }, BOUNDED_WAIT_MS)
+}
+
+function stopHistoryPolling(): void {
+  isHistoryPolling.value = false
+  if (historyPollInterval !== null) {
+    clearInterval(historyPollInterval)
+    historyPollInterval = null
+  }
+  if (boundedWaitTimer !== null) {
+    clearTimeout(boundedWaitTimer)
+    boundedWaitTimer = null
   }
 }
 
@@ -116,10 +171,13 @@ function onError(): void {
   connectionError.value = true
 }
 
-// @{"req": ["REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225"]}
+// @{"req": ["REQ-FECOURSE-220", "REQ-FECOURSE-221", "REQ-FECOURSE-222", "REQ-FECOURSE-223", "REQ-FECOURSE-224", "REQ-FECOURSE-225", "REQ-FECOURSE-262"]}
 async function sendMessage(): Promise<void> {
   const content = userInput.value.trim()
   if (!content || isSending.value) return
+
+  // Stop polling when student sends their first message
+  stopHistoryPolling()
 
   // Optimistically add the user message before the POST resolves
   messages.value.push({ role: 'user', content })
@@ -177,12 +235,16 @@ const sse = useSSE(`/api/v1/courses/${route.params.id}/events`, {
   onError
 })
 
-// @{"req": ["REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
+// @{"req": ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-262", "REQ-FECOURSE-263"]}
 onMounted(async () => {
   await loadChatHistory()
+  if (messages.value.length === 0) {
+    startHistoryPolling()
+  }
 })
 
 onUnmounted(() => {
+  stopHistoryPolling()
   sse.close()
 })
 </script>
@@ -203,6 +265,17 @@ onUnmounted(() => {
         <div class="message-bubble">
           {{ message.content }}
         </div>
+      </div>
+
+      <div v-if="isHistoryPolling && messages.length === 0" class="message message--agent">
+        <div class="message-bubble typing-indicator">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="preparing-label">Your professor is preparing your course…</div>
+      </div>
+
+      <div v-if="boundedWaitExceeded && messages.length === 0" class="preparing-hint">
+        Your professor is taking longer than expected — feel free to introduce yourself and what you'd like to learn to get started.
       </div>
 
       <div v-if="isSending" class="message message--agent">
@@ -334,6 +407,25 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateY(-10px);
   }
+}
+
+.preparing-label {
+  font-size: 0.875rem;
+  color: #666;
+  margin-top: 0.5rem;
+  text-align: center;
+  font-style: italic;
+}
+
+.preparing-hint {
+  padding: 1rem;
+  margin: 1rem 0;
+  background-color: #f5f5f5;
+  border-left: 4px solid #1976d2;
+  border-radius: 4px;
+  color: #666;
+  text-align: center;
+  line-height: 1.5;
 }
 
 .send-error {

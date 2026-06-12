@@ -1593,5 +1593,56 @@
     "uses": [
       "REQ-FECOURSE-027"
     ]
+  },
+  {
+    "id": "REQ-FECOURSE-028",
+    "title": "Intake View: Course Preparation Indicator",
+    "description": "The course frontend module shall indicate that course preparation is in progress while the intake conversation is empty.",
+    "rationale": "The opening question is generated asynchronously after course creation; without an indicator the student sees a blank page and assumes nothing is happening.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-026"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-262",
+    "title": "Intake View: Refresh History Until Opening Message",
+    "description": "The course frontend module shall refresh the chat history periodically until the first message arrives.",
+    "rationale": "The opening question lands a few seconds after the view mounts; a single fetch on mount misses it and the student never sees it without a manual reload.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-028"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-263",
+    "title": "Intake View: Preparation Wait Bounded",
+    "description": "The course frontend module shall stop refreshing after a bounded wait and invite the student to begin typing.",
+    "rationale": "Opening-question generation can fail permanently; the student must be told they can start the conversation themselves rather than waiting forever.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-028"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-490",
+    "title": "Syllabus View: Drafting Indicator While Generating",
+    "description": "The course frontend module shall indicate that syllabus drafting is in progress when no syllabus exists yet.",
+    "rationale": "Syllabus generation runs in the background after intake completes; showing a failure message while the system is working misleads the student.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-300"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-491",
+    "title": "Syllabus View: Refresh Until Syllabus Available",
+    "description": "The course frontend module shall refresh periodically until the syllabus becomes available or a bounded wait elapses.",
+    "rationale": "The student is redirected to the syllabus view while generation is still running; without refreshing they would be stuck on a stale page.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-490",
+      "REQ-FECOURSE-300"
+    ]
   }
 ]

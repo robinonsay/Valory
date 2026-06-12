@@ -60,7 +60,7 @@ describe('AuditLogView', () => {
     vi.mocked(get).mockResolvedValue(mockResponse)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AuditLogView)
 
@@ -68,7 +68,7 @@ describe('AuditLogView', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/audit?limit=50', 'test-token')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/audit?limit=50')
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(2)
@@ -98,7 +98,7 @@ describe('AuditLogView', () => {
     vi.mocked(get).mockResolvedValue(mockResponse)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AuditLogView)
 
@@ -151,7 +151,7 @@ describe('AuditLogView', () => {
       .mockResolvedValueOnce(mockMoreResponse)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AuditLogView)
 
@@ -174,8 +174,7 @@ describe('AuditLogView', () => {
     expect(rows[1].text()).toContain('user.deactivate')
 
     expect(vi.mocked(get)).toHaveBeenCalledWith(
-      `/api/v1/audit?limit=50&before=${cursorValue}`,
-      'test-token'
+      `/api/v1/audit?limit=50&before=${cursorValue}`
     )
   })
 
@@ -200,7 +199,7 @@ describe('AuditLogView', () => {
     vi.mocked(get).mockResolvedValue(mockResponse)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AuditLogView)
 
@@ -244,7 +243,7 @@ describe('AuditLogView', () => {
       )
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AuditLogView)
 
@@ -276,7 +275,7 @@ describe('AuditLogView', () => {
     )
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AuditLogView)
 

@@ -9,13 +9,13 @@ import * as clientModule from '@/api/client'
 
 // SSE mock state shared across tests — reset in beforeEach.
 let capturedSSEUrl = ''
-let capturedSSEOptions: { token: string; onEvent: Function; onError?: Function } | null = null
+let capturedSSEOptions: { token?: string | null; onEvent: Function; onError?: Function } | null = null
 const mockSSEClose = vi.fn()
 
 // Mock the useSSE composable so tests can control event delivery and inspect
 // the URL/token used for connection without opening a real fetch stream.
 vi.mock('@/composables/useSSE', () => ({
-  useSSE: (url: string, options: { token: string; onEvent: Function; onError?: Function }) => {
+  useSSE: (url: string, options: { token?: string | null; onEvent: Function; onError?: Function }) => {
     capturedSSEUrl = url
     capturedSSEOptions = options
     return { close: mockSSEClose }
@@ -72,7 +72,7 @@ describe('IntakeChatView', () => {
 
     // Provide an authenticated student token for every test.
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
   })
 
   afterEach(() => {
@@ -105,8 +105,7 @@ describe('IntakeChatView', () => {
     await wrapper.vm.$nextTick()
 
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/v1/courses/course-42/chat/history',
-      'test-token'
+      '/api/v1/courses/course-42/chat/history'
     )
     expect(wrapper.text()).toContain('Welcome to the intake!')
     expect(wrapper.text()).toContain('I want to learn about AI.')
@@ -147,7 +146,8 @@ describe('IntakeChatView', () => {
     await wrapper.vm.$nextTick()
 
     expect(capturedSSEUrl).toBe('/api/v1/courses/course-42/events')
-    expect(capturedSSEOptions?.token).toBe('test-token')
+    // Cookie-based auth: token is null/undefined; SSE uses __Host-session cookie
+    expect(capturedSSEOptions?.token == null).toBe(true)
   })
 
   // 5. Send button POSTs to correct endpoint and appends reply
@@ -170,8 +170,7 @@ describe('IntakeChatView', () => {
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/courses/course-42/chat',
-      { message: 'I want to learn Python.' },
-      'test-token'
+      { message: 'I want to learn Python.' }
     )
     expect(wrapper.text()).toContain("Great choice! What's your experience level?")
   })

@@ -1,6 +1,6 @@
 # Valory Frontend — E2E Traceability Test Plan
 
-Sprint 12 — authored 2026-06-12
+Sprint 13 — updated 2026-06-12
 
 This document maps each user-facing journey to its governing requirements and
 the e2e spec file (or planned spec) that verifies it.  Existing spec files are
@@ -19,8 +19,16 @@ added in the sprint shown; no code for those specs exists yet.
 | Admin logout redirects to `/login` | REQ-FEAUTH-019, REQ-FEAUTH-155 | `auth.spec.ts` |
 | Student logout redirects to `/login` | REQ-FEAUTH-020, REQ-FEAUTH-156 | `auth.spec.ts` |
 | Post-logout navigation to a protected route redirects to `/login` | REQ-FEAUTH-118 | `auth.spec.ts` |
-| Session token stored in memory only (not localStorage/cookie) | REQ-FEAUTH-118 | `auth.spec.ts` |
-| Session refresh keeps student logged in across SPA navigation | REQ-AUTH-005 | **PLANNED-Sprint13** `session-refresh.spec.ts` |
+| Session token NOT in localStorage or sessionStorage | REQ-FEAUTH-171 | `session-refresh.spec.ts` — `NoTokenInBrowserStorage` |
+| Session persists across page.reload() — cookie restores auth state | REQ-AUTH-009, REQ-AUTH-011, REQ-FEAUTH-169, REQ-FEAUTH-170 | `session-refresh.spec.ts` — `SessionPersists_AcrossPageReload` |
+| Session persists across hard page.goto() navigation (impossible pre-Sprint-13) | REQ-AUTH-009, REQ-AUTH-011, REQ-FEAUTH-169, REQ-FEAUTH-170 | `session-refresh.spec.ts` — `SessionPersists_HardNavigation` |
+| Logout clears server-side session; page.reload() at /login stays at /login | REQ-AUTH-010 | `session-refresh.spec.ts` — `Logout_ClearsSession` |
+| Consent interstitial skipped when session restore returns consented=true | REQ-FEAUTH-172 | `session-refresh.spec.ts` — `ConsentSkipped_WhenAlreadyConsented` |
+
+| Login page shows Valory logo (`img[alt="Valory"]` with src containing valory.svg) | REQ-FEAUTH-100, REQ-FEAUTH-101, REQ-FEAUTH-102 (closest; no formal branding REQ) | `branding.spec.ts` — `LoginPage_ShowsValoryLogo_AndCorrectTitle` |
+| Document title is "Valory — AI Professor" on login page | (no formal branding REQ) | `branding.spec.ts` — `LoginPage_ShowsValoryLogo_AndCorrectTitle` |
+| Student nav header shows Valory logo after login | REQ-FEAUTH-118 (closest; no formal branding REQ) | `branding.spec.ts` — `StudentNav_ShowsValoryLogoAfterLogin` |
+| Admin sidebar shows Valory logo after login | REQ-FEAUTH-118 (closest; no formal branding REQ) | `branding.spec.ts` — `AdminSidebar_ShowsValoryLogoAfterLogin` |
 
 ---
 
@@ -120,25 +128,44 @@ added in the sprint shown; no code for those specs exists yet.
 
 ---
 
+## Sprint 13 — Specs Added / Updated
+
+| File | Change | Tests |
+|---|---|---|
+| `frontend/e2e/session-refresh.spec.ts` | **NEW** | `SessionPersists_AcrossPageReload`, `SessionPersists_HardNavigation`, `ConsentSkipped_WhenAlreadyConsented`, `Logout_ClearsSession`, `NoTokenInBrowserStorage` |
+| `frontend/e2e/branding.spec.ts` | **NEW** | `LoginPage_ShowsValoryLogo_AndCorrectTitle`, `StudentNav_ShowsValoryLogoAfterLogin`, `AdminSidebar_ShowsValoryLogoAfterLogin` |
+| `frontend/e2e/auth.spec.ts` | **Updated** | Removed post-logout `page.goto()` redirect assertions (were testing memory-only token clearing; now superseded by session-refresh.spec.ts). Renamed logout tests to `AdminLogout_AfterLogin_RedirectsToLogin` / `StudentLogout_AfterLogin_RedirectsToLogin`. |
+| `frontend/e2e/consent-statement.spec.ts` | **Updated** | `loginStopAtConsent` helper removed; test now logs in first then navigates directly to `/consent` (demo_student has consent recorded — session restore returns `consented:true` per REQ-FEAUTH-172, so the guard no longer forces /consent on login). |
+| `frontend/e2e/getting-started.spec.ts` | **Updated** | `AdminGettingStarted` test: scoped nav link assertion to `.sidebar-nav` to avoid strict-mode collision with the new brand logo link in the sidebar (both point to `/admin/users`). |
+| `frontend/e2e/intake-chat.spec.ts` | **Updated** | `IntakeChatHistory` test: unauthenticated check now uses the standalone `request` fixture instead of `page.request`; `page.request` shares the browser's cookie jar which includes the `__Host-session` cookie after login. |
+
+---
+
 ## Planned Spec Summary
 
-| Planned File | Target Sprint | Journeys Covered |
-|---|---|---|
-| `frontend/e2e/session-refresh.spec.ts` | Sprint 13 | Session persistence across SPA navigation |
-| `frontend/e2e/content-rendering.spec.ts` | Sprint 13/15 | Markdown, LaTeX, image rendering in sections |
-| `frontend/e2e/sse-reconnect.spec.ts` | Sprint 14 | SSE reconnect / exponential backoff |
-| `frontend/e2e/admin-api-key.spec.ts` | Sprint 14 | Admin API key entry, config explanations |
-| `frontend/e2e/image-upload.spec.ts` | Sprint 15 | Image upload for course content |
+| Planned File | Target Sprint | Status | Journeys Covered |
+|---|---|---|---|
+| `frontend/e2e/session-refresh.spec.ts` | Sprint 13 | **DELIVERED Sprint 13** | Session persistence across SPA navigation (5 tests) |
+| `frontend/e2e/branding.spec.ts` | Sprint 13 | **DELIVERED Sprint 13** | Valory logo on login/nav/sidebar; document title (3 tests) |
+| `frontend/e2e/content-rendering.spec.ts` | Sprint 13/15 | PLANNED | Markdown, LaTeX, image rendering in sections |
+| `frontend/e2e/sse-reconnect.spec.ts` | Sprint 14 | PLANNED | SSE reconnect / exponential backoff |
+| `frontend/e2e/admin-api-key.spec.ts` | Sprint 14 | PLANNED | Admin API key entry, config explanations |
+| `frontend/e2e/image-upload.spec.ts` | Sprint 15 | PLANNED | Image upload for course content |
 
 ---
 
 ## Notes
 
-- Specs listed as existing are confirmed present in `frontend/e2e/` at Sprint 12.
+- Specs listed as existing are confirmed present in `frontend/e2e/` at Sprint 13.
 - REQ IDs in the "Governing REQ IDs" column point to `REQ-FE-COURSE.json`,
   `REQ-FE-CONTENT.json`, `REQ-FE-ADMIN.json`, and `requirements/l2-requirements.json`.
-- The session-refresh and SSE-reconnect behaviors require live-server e2e fixtures
-  (WebSocket proxy or network-intercept) and are deferred to Sprint 13–14
-  infrastructure work.
+- Session-refresh specs (Sprint 13) use the live production stack with real cookie
+  auth — no mocking. The `request` fixture is used for cookie-free API calls.
 - Content-rendering specs for LaTeX and images depend on Sprint 15 backend
   support for image storage and LaTeX pre-rendering.
+- Branding has no formal requirement (no REQ-BRAND-* IDs). Branding tests are
+  traced to the closest layout/login requirements that share the same Vue component.
+- Sprint 13 auth change: `helpers.ts archiveOpenCourses` pattern continues to
+  use Bearer token (captured from login response body which still includes `token`
+  per `internal/auth/handler.go`). The API accepts both cookie and Bearer header;
+  e2e helpers use the Bearer path so cookie-jar state does not affect API calls.

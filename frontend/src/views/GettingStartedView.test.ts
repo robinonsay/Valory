@@ -30,7 +30,7 @@ describe('GettingStartedView', () => {
   it('renders seven student steps for a student user', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('tok', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(GettingStartedView, {
       global: { plugins: [router] }
@@ -56,7 +56,7 @@ describe('GettingStartedView', () => {
   it('does not render admin steps for a student user', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('tok', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(GettingStartedView, {
       global: { plugins: [router] }
@@ -70,7 +70,7 @@ describe('GettingStartedView', () => {
   it('renders four admin steps for an admin user', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('tok', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(GettingStartedView, {
       global: { plugins: [router] }
@@ -93,7 +93,7 @@ describe('GettingStartedView', () => {
   it('does not render student steps for an admin user', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('tok', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(GettingStartedView, {
       global: { plugins: [router] }
@@ -107,7 +107,7 @@ describe('GettingStartedView', () => {
   it('admin step 2 references docs/guides/admin-configuration.md', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('tok', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(GettingStartedView, {
       global: { plugins: [router] }

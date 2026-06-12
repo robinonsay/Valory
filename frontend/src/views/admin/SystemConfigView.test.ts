@@ -48,7 +48,7 @@ beforeEach(() => {
 
 function mountWithAuth() {
   const auth = useAuthStore()
-  auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+  auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
   return mount(SystemConfigView)
 }
 
@@ -65,7 +65,7 @@ describe('SystemConfigView', () => {
     await flushAll()
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/admin/config', 'test-token')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/admin/config')
 
     const inputs = wrapper.findAll('input.config-input')
     expect(inputs).toHaveLength(13)

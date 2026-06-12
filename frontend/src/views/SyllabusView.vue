@@ -3,7 +3,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { get, post, ApiError } from '@/api/client'
 
 interface SyllabusResponse {
@@ -17,7 +16,6 @@ interface SyllabusResponse {
 
 const router = useRouter()
 const route = useRoute()
-const auth = useAuthStore()
 
 const courseId = route.params.id as string
 
@@ -49,7 +47,6 @@ async function fetchSyllabus() {
   try {
     const response = await get<SyllabusResponse>(
       `/api/v1/courses/${courseId}/syllabus`,
-      auth.token
     )
     syllabusContent.value = response.content_adoc
     stopDraftingPolling()
@@ -96,7 +93,6 @@ function startDraftingPolling(): void {
     try {
       const response = await get<SyllabusResponse>(
         `/api/v1/courses/${courseId}/syllabus`,
-        auth.token
       )
       syllabusContent.value = response.content_adoc
       isDrafting.value = false
@@ -152,7 +148,6 @@ async function submitModification() {
     await post(
       `/api/v1/courses/${courseId}/syllabus/modification`,
       { request: modificationText.value },
-      auth.token
     )
 
     modificationSuccess.value = 'Modification request submitted. Reloading syllabus...'
@@ -182,7 +177,6 @@ async function handleApprove() {
     await post(
       `/api/v1/courses/${courseId}/syllabus/approve`,
       {},
-      auth.token
     )
 
     router.push(`/courses/${courseId}/generating`)

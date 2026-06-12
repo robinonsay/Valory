@@ -19,7 +19,10 @@ const handleLogout = async (): Promise<void> => {
   <div class="student-layout">
     <header class="top-bar">
       <div class="top-bar-content">
-        <div class="brand">Valory</div>
+        <RouterLink to="/courses" class="brand-link">
+          <img src="/valory.svg" alt="Valory" class="logo" />
+          <span class="brand-text">Valory</span>
+        </RouterLink>
         <nav class="nav-links">
           <RouterLink
             to="/courses"
@@ -75,12 +78,29 @@ const handleLogout = async (): Promise<void> => {
   width: 100%;
 }
 
-.brand {
+.brand-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease;
+}
+
+.brand-link:hover {
+  opacity: 0.8;
+}
+
+.logo {
+  height: 32px;
+  width: 32px;
+}
+
+.brand-text {
   font-size: 1.25rem;
   font-weight: 700;
   color: #2c3e50;
   letter-spacing: 0.02em;
-  flex-shrink: 0;
 }
 
 .nav-links {

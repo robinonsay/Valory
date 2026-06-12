@@ -1,4 +1,4 @@
-// @{"verifies", ["REQ-FECOURSE-023", "REQ-FECOURSE-230", "REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
+// @{"verifies": ["REQ-FECOURSE-023", "REQ-FECOURSE-230", "REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
 //
 // seed-smoke.spec.ts — Proves the DB seeding helpers work end-to-end.
 //
@@ -53,7 +53,7 @@ async function archiveOpenCourses(page: Page, bearerToken: string): Promise<void
   }
 }
 
-// @{"verifies", ["REQ-FECOURSE-023", "REQ-FECOURSE-230", "REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
+// @{"verifies": ["REQ-FECOURSE-023", "REQ-FECOURSE-230", "REQ-FECOURSE-260", "REQ-FECOURSE-261"]}
 test('SeedSmoke_SeededAssistantMessageRendersOnIntakePage', async ({ page }) => {
   // ---- Capture bearer token from login ------------------------------------
   let bearerToken: string | null = null

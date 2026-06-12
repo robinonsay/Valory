@@ -55,7 +55,7 @@ describe('CourseOversightView', () => {
     vi.mocked(get).mockResolvedValue(mockResponse)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(CourseOversightView)
 
@@ -63,7 +63,7 @@ describe('CourseOversightView', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses?limit=20', 'test-token')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses?limit=20')
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(2)
@@ -106,7 +106,7 @@ describe('CourseOversightView', () => {
       .mockResolvedValueOnce(mockFilteredResponse)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(CourseOversightView)
 
@@ -114,7 +114,7 @@ describe('CourseOversightView', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses?limit=20', 'test-token')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses?limit=20')
 
     const statusFilter = wrapper.find('#status-filter')
     await statusFilter.setValue('archived')
@@ -124,8 +124,7 @@ describe('CourseOversightView', () => {
     await wrapper.vm.$nextTick()
 
     expect(vi.mocked(get)).toHaveBeenCalledWith(
-      '/api/v1/courses?limit=20&status=archived',
-      'test-token'
+      '/api/v1/courses?limit=20&status=archived'
     )
 
     const rows = wrapper.findAll('tbody tr')
@@ -167,7 +166,7 @@ describe('CourseOversightView', () => {
       .mockResolvedValueOnce(mockMoreResponse)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(CourseOversightView)
 
@@ -190,8 +189,7 @@ describe('CourseOversightView', () => {
     expect(rows[1].text()).toContain('Course 2')
 
     expect(vi.mocked(get)).toHaveBeenCalledWith(
-      '/api/v1/courses?limit=20&cursor=cursor-123',
-      'test-token'
+      '/api/v1/courses?limit=20&cursor=cursor-123'
     )
   })
 
@@ -211,7 +209,7 @@ describe('CourseOversightView', () => {
     )
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(CourseOversightView)
 
@@ -230,7 +228,7 @@ describe('CourseOversightView', () => {
     vi.mocked(get).mockRejectedValue(new clientModule.ApiError(500, { error: 'Internal server error' }))
 
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(CourseOversightView)
 

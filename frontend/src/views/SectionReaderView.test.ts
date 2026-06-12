@@ -72,7 +72,7 @@ describe('SectionReaderView', () => {
     vi.clearAllMocks()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     mockGet = vi.spyOn(clientModule, 'get').mockImplementation((url: string) => {
       if ((url as string).endsWith('/sections')) {
@@ -92,8 +92,7 @@ describe('SectionReaderView', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(mockGet).toHaveBeenCalledWith(
-      `/api/v1/courses/${COURSE_ID}/content/${SECTION_ID}`,
-      'test-token'
+      `/api/v1/courses/${COURSE_ID}/content/${SECTION_ID}`
     )
     expect(wrapper.find('h1').text()).toBe('Introduction to Algorithms')
   })
@@ -206,8 +205,7 @@ describe('SectionReaderView', () => {
 
     expect(mockPost).toHaveBeenCalledWith(
       `/api/v1/courses/${COURSE_ID}/content/${SECTION_ID}/feedback`,
-      { feedback_text: 'This section was confusing.' },
-      'test-token'
+      { feedback_text: 'This section was confusing.' }
     )
 
     // Verify the exact key "feedback_text" was used (not "text" or "feedback")
@@ -288,13 +286,11 @@ describe('SectionReaderView', () => {
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    // Verify fetch was called with correct /content/ path and Authorization header
+    // Verify fetch was called with correct /content/ path and credentials (cookie auth)
     expect(mockFetch).toHaveBeenCalledWith(
       `/api/v1/courses/${COURSE_ID}/content/${SECTION_ID}/export?format=pdf`,
       expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer test-token'
-        })
+        credentials: 'same-origin'
       })
     )
 

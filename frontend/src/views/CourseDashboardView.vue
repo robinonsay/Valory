@@ -18,8 +18,8 @@ const createError = ref<string | null>(null)
 const isCreating = ref(false)
 
 onMounted(async () => {
-  if (auth.token) {
-    await courseStore.fetchCourses(auth.token)
+  if (auth.isAuthenticated) {
+    await courseStore.fetchCourses()
   }
 })
 
@@ -51,7 +51,7 @@ const closeCreateModal = (): void => {
 }
 
 const createNewCourse = async (): Promise<void> => {
-  if (!auth.token) {
+  if (!auth.isAuthenticated) {
     return
   }
 
@@ -61,8 +61,7 @@ const createNewCourse = async (): Promise<void> => {
   try {
     const response = await post<CourseResponse>(
       '/api/v1/courses',
-      { topic: newCourseTopic.value.trim() },
-      auth.token
+      { topic: newCourseTopic.value.trim() }
     )
 
     // The backend returns the created course FLAT (no {course} wrapper).

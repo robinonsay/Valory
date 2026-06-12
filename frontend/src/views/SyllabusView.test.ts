@@ -72,7 +72,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -83,7 +83,7 @@ describe('SyllabusView', () => {
     await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/courses/test-course-id/syllabus', 'test-token')
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/courses/test-course-id/syllabus')
 
     expect(wrapper.text()).toContain('= Syllabus')
     expect(wrapper.text()).toContain('== Introduction to Vue')
@@ -120,7 +120,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -149,8 +149,7 @@ describe('SyllabusView', () => {
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/courses/test-id/syllabus/modification',
-      { request: 'Please make it easier' },
-      'test-token'
+      { request: 'Please make it easier' }
     )
 
     const callArgs = mockPost.mock.calls[0]
@@ -204,7 +203,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -271,7 +270,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -288,7 +287,7 @@ describe('SyllabusView', () => {
     await vi.runAllTimersAsync()
     await wrapper.vm.$nextTick()
 
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses/test-id/syllabus/approve', {}, 'test-token')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses/test-id/syllabus/approve', {})
     expect(router.currentRoute.value.path).toBe('/courses/test-id/generating')
 
     mockGet.mockRestore()
@@ -323,7 +322,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -382,7 +381,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -435,7 +434,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -480,7 +479,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -518,7 +517,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {
@@ -562,7 +561,7 @@ describe('SyllabusView', () => {
     await router.isReady()
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(SyllabusView, {
       global: {

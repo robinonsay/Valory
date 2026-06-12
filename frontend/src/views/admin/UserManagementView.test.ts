@@ -46,7 +46,7 @@ const SAMPLE_USERS = [
 
 function setupAuth() {
   const auth = useAuthStore()
-  auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+  auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
   return auth
 }
 
@@ -71,7 +71,7 @@ describe('UserManagementView', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/users', 'test-token')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/users')
 
     const rows = wrapper.findAll('tbody tr.user-row')
     expect(rows).toHaveLength(2)
@@ -100,8 +100,7 @@ describe('UserManagementView', () => {
 
     expect(vi.mocked(post)).toHaveBeenCalledWith(
       '/api/v1/users/user-1/deactivate',
-      {},
-      'test-token'
+      {}
     )
 
     // After deactivation, the status badge should show Inactive
@@ -130,8 +129,7 @@ describe('UserManagementView', () => {
 
     expect(vi.mocked(post)).toHaveBeenCalledWith(
       '/api/v1/users/user-2/activate',
-      {},
-      'test-token'
+      {}
     )
 
     // After activation, the status badge should show Active
@@ -188,7 +186,7 @@ describe('UserManagementView', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(del)).toHaveBeenCalledWith('/api/v1/users/user-1', 'test-token')
+    expect(vi.mocked(del)).toHaveBeenCalledWith('/api/v1/users/user-1')
 
     rows = wrapper.findAll('tbody tr.user-row')
     expect(rows).toHaveLength(1)
@@ -233,8 +231,7 @@ describe('UserManagementView', () => {
         email: 'carol@example.com',
         password: 'secret123',
         role: 'student'
-      },
-      'test-token'
+      }
     )
 
     const rows = wrapper.findAll('tbody tr.user-row')
@@ -289,8 +286,7 @@ describe('UserManagementView', () => {
     // The fact that post() was intercepted by the vi.mock proves client functions are used
     expect(vi.mocked(post)).toHaveBeenCalledWith(
       expect.stringContaining('/api/v1/users/'),
-      {},
-      'test-token'
+      {}
     )
   })
 
@@ -312,8 +308,7 @@ describe('UserManagementView', () => {
     // The mocked del from @/api/client was called — not raw fetch
     expect(vi.mocked(del)).toHaveBeenCalled()
     expect(vi.mocked(del)).toHaveBeenCalledWith(
-      '/api/v1/users/user-1',
-      'test-token'
+      '/api/v1/users/user-1'
     )
 
     confirmSpy.mockRestore()

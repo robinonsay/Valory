@@ -54,7 +54,7 @@ async function fetchConfig() {
   try {
     loading.value = true
     fetchError.value = null
-    const response = await get<ConfigResponse>('/api/v1/admin/config', auth.token)
+    const response = await get<ConfigResponse>('/api/v1/admin/config')
     const cfg: Record<string, string> = {}
     for (const key of CONFIG_KEYS) {
       cfg[key] = response.config[key] ?? ''
@@ -92,7 +92,7 @@ async function saveConfig() {
 
   try {
     saving.value = true
-    await patch<ConfigResponse>('/api/v1/admin/config', { config: delta }, auth.token)
+    await patch<ConfigResponse>('/api/v1/admin/config', { config: delta })
     originalValues.value = { ...formValues.value }
     saveSuccess.value = true
   } catch (err) {

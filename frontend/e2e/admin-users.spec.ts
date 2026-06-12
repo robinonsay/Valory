@@ -1,4 +1,4 @@
-// @{"verifies", ["REQ-FEADMIN-020", "REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-023", "REQ-FEADMIN-024", "REQ-FEADMIN-025", "REQ-FEADMIN-100", "REQ-FEADMIN-113", "REQ-FEADMIN-114", "REQ-FEADMIN-115", "REQ-FEADMIN-116", "REQ-FEADMIN-120", "REQ-FEADMIN-130", "REQ-FEADMIN-131", "REQ-FEADMIN-132", "REQ-FEADMIN-140", "REQ-FEADMIN-141", "REQ-FEADMIN-150", "REQ-FEADMIN-160"]}
+// @{"verifies": ["REQ-FEADMIN-020", "REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-023", "REQ-FEADMIN-024", "REQ-FEADMIN-025", "REQ-FEADMIN-100", "REQ-FEADMIN-113", "REQ-FEADMIN-114", "REQ-FEADMIN-115", "REQ-FEADMIN-116", "REQ-FEADMIN-120", "REQ-FEADMIN-130", "REQ-FEADMIN-131", "REQ-FEADMIN-132", "REQ-FEADMIN-140", "REQ-FEADMIN-141", "REQ-FEADMIN-150", "REQ-FEADMIN-160"]}
 //
 // admin-users.spec.ts — User management CRUD flows:
 //   • Create a student account with a unique timestamped username.
@@ -9,7 +9,7 @@
 import { test, expect } from '@playwright/test'
 import { login, ADMIN_USER, ADMIN_PASS } from './helpers'
 
-// @{"verifies", ["REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-023", "REQ-FEADMIN-025", "REQ-FEADMIN-113", "REQ-FEADMIN-114", "REQ-FEADMIN-115", "REQ-FEADMIN-116", "REQ-FEADMIN-130", "REQ-FEADMIN-131", "REQ-FEADMIN-132", "REQ-FEADMIN-140", "REQ-FEADMIN-141"]}
+// @{"verifies": ["REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-023", "REQ-FEADMIN-025", "REQ-FEADMIN-113", "REQ-FEADMIN-114", "REQ-FEADMIN-115", "REQ-FEADMIN-116", "REQ-FEADMIN-130", "REQ-FEADMIN-131", "REQ-FEADMIN-132", "REQ-FEADMIN-140", "REQ-FEADMIN-141"]}
 test('AdminUsers_CreateDeactivateDeleteStudent_AppearsAndDisappearsFromTable', async ({ page }) => {
   // Use a timestamp suffix so repeated runs do not collide on the unique-username
   // constraint.  The username carries the prefix "e2e_" to make test accounts

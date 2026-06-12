@@ -22,7 +22,7 @@ const isLoading = ref(false)
 const error = ref<string | null>(null)
 
 const fetchGrades = async (): Promise<void> => {
-  if (!auth.token) {
+  if (!auth.isAuthenticated) {
     error.value = 'Not authenticated'
     return
   }
@@ -32,8 +32,7 @@ const fetchGrades = async (): Promise<void> => {
 
   try {
     summary.value = await get<GradeSummaryResponse>(
-      `/api/v1/courses/${courseId.value}/grade`,
-      auth.token
+      `/api/v1/courses/${courseId.value}/grade`
     )
   } catch (err) {
     if (err instanceof ApiError) {

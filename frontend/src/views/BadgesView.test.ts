@@ -33,7 +33,7 @@ describe('BadgesView', () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue(mockBadges)
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(BadgesView, {
       global: {
@@ -45,7 +45,7 @@ describe('BadgesView', () => {
 
     await flushPromises()
 
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/users/me/badges', 'test-token')
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/users/me/badges')
   })
 
   // @{"req": ["REQ-FECONTENT-051", "REQ-FECONTENT-170"]}
@@ -74,7 +74,7 @@ describe('BadgesView', () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue(badges)
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(BadgesView, {
       global: {
@@ -109,7 +109,7 @@ describe('BadgesView', () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue(badges)
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(BadgesView, {
       global: {
@@ -141,7 +141,7 @@ describe('BadgesView', () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue(badges)
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(BadgesView, {
       global: {
@@ -161,7 +161,7 @@ describe('BadgesView', () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue([])
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(BadgesView, {
       global: {
@@ -182,7 +182,7 @@ describe('BadgesView', () => {
     vi.spyOn(clientModule, 'get').mockRejectedValue(apiError)
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(BadgesView, {
       global: {

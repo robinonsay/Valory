@@ -3,7 +3,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { get, post, ApiError } from '@/api/client'
 import DOMPurify from 'dompurify'
 
@@ -26,7 +25,6 @@ interface SectionListItem {
 
 const route = useRoute()
 const router = useRouter()
-const authStore = useAuthStore()
 
 const courseId = route.params.id as string
 const sectionId = route.params.sectionId as string
@@ -50,8 +48,7 @@ async function fetchSection(): Promise<void> {
   error.value = null
   try {
     const data = await get<SectionContent>(
-      `/api/v1/courses/${courseId}/content/${sectionId}`,
-      authStore.token
+      `/api/v1/courses/${courseId}/content/${sectionId}`
     )
     section.value = data
   } catch (err) {
@@ -73,8 +70,7 @@ async function fetchSection(): Promise<void> {
 async function fetchSectionList(): Promise<void> {
   try {
     const data = await get<SectionListItem[]>(
-      `/api/v1/courses/${courseId}/sections`,
-      authStore.token
+      `/api/v1/courses/${courseId}/sections`
     )
     sectionList.value = data
   } catch {
@@ -151,8 +147,7 @@ async function submitFeedback(): Promise<void> {
   try {
     await post<unknown>(
       `/api/v1/courses/${courseId}/content/${sectionId}/feedback`,
-      { feedback_text: feedbackText.value },
-      authStore.token
+      { feedback_text: feedbackText.value }
     )
     showFeedback.value = false
     feedbackSuccess.value = true
@@ -171,9 +166,8 @@ async function submitFeedback(): Promise<void> {
 async function downloadExport(format: 'pdf' | 'html'): Promise<void> {
   showExportError.value = false
   const url = `/api/v1/courses/${courseId}/content/${sectionId}/export?format=${format}`
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${authStore.token}` }
-  })
+  // credentials: 'same-origin' ensures __Host-session cookie is sent with the fetch
+  const response = await fetch(url, { credentials: 'same-origin' })
   if (!response.ok) {
     showExportError.value = true
     return

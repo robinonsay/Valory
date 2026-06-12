@@ -1,4 +1,4 @@
-// @{"verifies", ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-270", "REQ-FECOURSE-026", "REQ-FECOURSE-027"]}
+// @{"verifies": ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-270", "REQ-FECOURSE-026", "REQ-FECOURSE-027"]}
 //
 // intake-chat.spec.ts — Sprint 11 intake-chat view assertions:
 //
@@ -43,7 +43,7 @@ async function archiveOpenCourses(page: Page, bearerToken: string): Promise<void
   }
 }
 
-// @{"verifies", ["REQ-FECOURSE-270"]}
+// @{"verifies": ["REQ-FECOURSE-270"]}
 test('IntakeChat_InputAndSendButtonFullyInsideViewport_NoScrollRequired', async ({ page }) => {
   // Capture the bearer token from the login response for cleanup.
   let bearerToken: string | null = null
@@ -124,8 +124,8 @@ test('IntakeChat_InputAndSendButtonFullyInsideViewport_NoScrollRequired', async 
   await archiveOpenCourses(page, bearerToken!)
 })
 
-// @{"verifies", ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-026", "REQ-FECOURSE-027"]}
-test('IntakeChatHistory_GetHistoryEndpoint_Returns200WithMessagesArray', async ({ page }) => {
+// @{"verifies": ["REQ-FECOURSE-260", "REQ-FECOURSE-261", "REQ-FECOURSE-026", "REQ-FECOURSE-027"]}
+test('IntakeChatHistory_GetHistoryEndpoint_Returns200WithMessagesArray', async ({ page, request }) => {
   // Capture the bearer token for direct API calls.
   let bearerToken: string | null = null
   page.on('response', async response => {
@@ -186,9 +186,18 @@ test('IntakeChatHistory_GetHistoryEndpoint_Returns200WithMessagesArray', async (
   // ---- History endpoint: unauthenticated request returns 401 -------------
 
   // An unauthenticated caller must not receive a 200.  The backend returns 401
-  // when no bearer token is presented (auth middleware rejects before the
-  // ownership check).
-  const unauthedResp = await page.request.get(`/api/v1/courses/${courseId}/chat/history`)
+  // when no session credential is presented (auth middleware rejects before
+  // the ownership check).
+  //
+  // Sprint 13: page.request shares the browser context's cookie jar, which
+  // after login contains the __Host-session cookie. Using page.request for the
+  // unauthenticated check would therefore send the session cookie and receive
+  // a 200 (authenticated via cookie). We use the standalone `request` fixture
+  // instead — it is a fresh APIRequestContext with no cookies, so the server
+  // sees no credential and correctly returns 401.
+  const unauthedResp = await request.get(`https://localhost/api/v1/courses/${courseId}/chat/history`, {
+    ignoreHTTPSErrors: true
+  })
 
   expect(
     unauthedResp.status(),

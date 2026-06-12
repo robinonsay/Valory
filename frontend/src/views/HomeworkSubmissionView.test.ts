@@ -53,7 +53,7 @@ describe('HomeworkSubmissionView', () => {
     })
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await router.push('/courses/course-1/homework/hw-1')
 
@@ -64,8 +64,7 @@ describe('HomeworkSubmissionView', () => {
     await flushPromises()
 
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/v1/courses/course-1/homework/hw-1',
-      'test-token'
+      '/api/v1/courses/course-1/homework/hw-1'
     )
     expect(wrapper.text()).toContain('Homework 1')
     // Due date must be rendered (formatted value depends on locale; check raw substring)
@@ -130,7 +129,7 @@ describe('HomeworkSubmissionView', () => {
   })
 
   // @{"req": ["REQ-FECONTENT-020", "REQ-FECONTENT-125"]}
-  it('XHR upload sets Authorization header with bearer token', async () => {
+  it('XHR upload uses withCredentials for cookie-based auth, not Authorization header', async () => {
     const mockHomework = {
       id: 'hw-1',
       title: 'Homework 1',
@@ -146,7 +145,7 @@ describe('HomeworkSubmissionView', () => {
     })
 
     const authStore = useAuthStore()
-    authStore.login('xhr-test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await router.push('/courses/course-1/homework/hw-1')
 
@@ -165,6 +164,8 @@ describe('HomeworkSubmissionView', () => {
       addEventListener: vi.fn(),
       open: vi.fn((_method: string, url: string) => { openUrl = url }),
       setRequestHeader: vi.fn((name: string, value: string) => { headersSet[name] = value }),
+      // withCredentials is set directly as a property by the production code
+      withCredentials: false,
       send: vi.fn()
     }
 
@@ -189,7 +190,13 @@ describe('HomeworkSubmissionView', () => {
     await wrapper.vm.$nextTick()
 
     expect(XHRConstructor).toHaveBeenCalled()
-    expect(MockXHR.setRequestHeader).toHaveBeenCalledWith('Authorization', 'Bearer xhr-test-token')
+    // Cookie-based auth: withCredentials must be true so __Host-session cookie is sent
+    expect(MockXHR.withCredentials).toBe(true)
+    // Bearer Authorization header must NOT be set (REQ-FEAUTH-171)
+    const authHeaderSet = MockXHR.setRequestHeader.mock.calls.some(
+      ([name]: [string]) => name === 'Authorization'
+    )
+    expect(authHeaderSet).toBe(false)
     expect(openUrl).toContain('/api/v1/courses/course-1/homework/hw-1/submissions')
 
     vi.unstubAllGlobals()
@@ -212,7 +219,7 @@ describe('HomeworkSubmissionView', () => {
     })
 
     const authStore = useAuthStore()
-    authStore.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    authStore.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await router.push('/courses/course-1/homework/hw-1')
 

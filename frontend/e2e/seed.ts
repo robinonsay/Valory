@@ -98,7 +98,7 @@ function runPsql(sql: string): void {
 // Public API
 // ---------------------------------------------------------------------------
 
-// @{"req", ["REQ-FECOURSE-023", "REQ-FECOURSE-260"]}
+// @{"req": ["REQ-FECOURSE-023", "REQ-FECOURSE-260"]}
 //
 // seedChatMessage inserts a single chat message for the given course.
 //
@@ -123,7 +123,7 @@ export function seedChatMessage(
   runPsql(sql)
 }
 
-// @{"req", ["REQ-FECOURSE-300", "REQ-FECOURSE-301"]}
+// @{"req": ["REQ-FECOURSE-300", "REQ-FECOURSE-301"]}
 //
 // seedSyllabus inserts a syllabus row for the given course.  The version is
 // computed as MAX(version)+1 for that course so successive calls accumulate
@@ -139,7 +139,7 @@ export function seedSyllabus(courseId: string, contentAdoc: string): void {
   runPsql(sql)
 }
 
-// @{"req", ["REQ-FECOURSE-001", "REQ-FECOURSE-002"]}
+// @{"req": ["REQ-FECOURSE-001", "REQ-FECOURSE-002"]}
 //
 // setCourseStatus updates the status column on a course row.
 // Only the canonical course_status enum values are accepted.
@@ -162,7 +162,7 @@ export function setCourseStatus(courseId: string, status: CourseStatus): void {
   runPsql(sql)
 }
 
-// @{"req", ["REQ-FECOURSE-001"]}
+// @{"req": ["REQ-FECOURSE-001"]}
 //
 // cleanupCourse archives the course unconditionally.  Use at the end of every
 // spec that creates a course via DB seeding so the single-active-course
@@ -176,7 +176,7 @@ export function cleanupCourse(courseId: string): void {
   runPsql(sql)
 }
 
-// @{"req", ["REQ-FECOURSE-023", "REQ-FECOURSE-260"]}
+// @{"req": ["REQ-FECOURSE-023", "REQ-FECOURSE-260"]}
 //
 // markKickoffSent sets intake_kickoff_sent=true and intake_kickoff_attempts=3
 // for the given course.  This atomically prevents the background kickoff
@@ -193,5 +193,23 @@ export function markKickoffSent(courseId: string): void {
     `UPDATE courses ` +
     `SET intake_kickoff_sent = true, intake_kickoff_attempts = 3, updated_at = now() ` +
     `WHERE id = ${sqLit(courseId)};`
+  runPsql(sql)
+}
+
+// @{"req": ["REQ-FEAUTH-056"]}
+//
+// revokeConsent deletes a user's AI-processing consent record so a spec can
+// exercise the REAL first-login consent journey deterministically (the router
+// guard sends unconsented students to /consent and bounces consented ones off
+// it).  The spec MUST restore consent before finishing — other specs (e.g.
+// ConsentSkipped_WhenAlreadyConsented) depend on demo_student being consented.
+// Username is restricted to a strict allowlist pattern rather than SQL-escaped.
+export function revokeConsent(username: string): void {
+  if (!/^[a-zA-Z0-9_]{1,64}$/.test(username)) {
+    throw new Error(`revokeConsent: unsafe username ${JSON.stringify(username)}`)
+  }
+  const sql =
+    `DELETE FROM student_consent WHERE student_id = ` +
+    `(SELECT id FROM users WHERE username = ${sqLit(username)});`
   runPsql(sql)
 }

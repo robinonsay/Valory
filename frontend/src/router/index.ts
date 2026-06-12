@@ -197,13 +197,15 @@ const router = createRouter({
   ]
 })
 
-// Export for testing — the guard receives the store's isAuthenticated, isAdmin,
-// isStudent, isConsented, isExpired getters and logout action as parameters
-// so it is testable without a running router instance.
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015"]}
-export function guardFn(
+// Export for testing — the guard receives the store's auth state as parameters
+// so it is testable without a running router instance. The restorePromise
+// parameter (when provided) is awaited before any routing decision is made,
+// which blocks navigation until session restore completes (REQ-FEAUTH-170).
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170"]}
+export async function guardFn(
   to: RouteLocationNormalized,
   auth: {
+    restorePromise?: Promise<void> | null
     isAuthenticated: boolean
     isAdmin: boolean
     isStudent: boolean
@@ -211,8 +213,14 @@ export function guardFn(
     isExpired: boolean
     logout: () => void
   }
-): RouteLocationRaw | undefined {
-  // Returns the redirect target, or undefined to allow navigation
+): Promise<RouteLocationRaw | undefined> {
+  // REQ-FEAUTH-170: await the session-restore promise so navigation BLOCKS
+  // until restoreSession() completes. This guarantees that every guard decision
+  // sees correct auth state — components never mount in a pre-restore limbo
+  // where isAuthenticated is false but a valid session exists.
+  if (auth.restorePromise) {
+    await auth.restorePromise
+  }
 
   // 1. Unauthenticated user trying to reach a protected route
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
@@ -258,16 +266,22 @@ export function guardFn(
   return undefined
 }
 
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015"]}
-router.beforeEach((to, _from, next) => {
-  // useAuthStore is called inside the guard so Pinia is already initialised
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170"]}
+router.beforeEach(async (to, _from) => {
+  // useAuthStore is called inside the guard so Pinia is already initialised.
+  // Awaiting getRestorePromise() blocks this navigation until restoreSession()
+  // completes, so protected components never mount before auth state is known.
   const auth = useAuthStore()
-  const redirect = guardFn(to, auth)
-  if (redirect) {
-    next(redirect)
-  } else {
-    next()
-  }
+  const redirect = await guardFn(to, {
+    restorePromise: auth.getRestorePromise(),
+    isAuthenticated: auth.isAuthenticated,
+    isAdmin: auth.isAdmin,
+    isStudent: auth.isStudent,
+    isConsented: auth.isConsented,
+    isExpired: auth.isExpired,
+    logout: auth.logout
+  })
+  return redirect ?? true
 })
 
 export default router

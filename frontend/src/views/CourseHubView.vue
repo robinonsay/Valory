@@ -43,14 +43,14 @@ onMounted(async () => {
     loading.value = true
     error.value = null
 
-    const courseResponse = await get<CourseDetail>(`/api/v1/courses/${courseId}`, auth.token)
+    const courseResponse = await get<CourseDetail>(`/api/v1/courses/${courseId}`)
     course.value = courseResponse
 
-    const sectionsResponse = await get<Section[]>(`/api/v1/courses/${courseId}/sections`, auth.token)
+    const sectionsResponse = await get<Section[]>(`/api/v1/courses/${courseId}/sections`)
     sections.value = sectionsResponse ?? []
 
     try {
-      const homeworkResponse = await get<HomeworkItem[]>(`/api/v1/courses/${courseId}/homework`, auth.token)
+      const homeworkResponse = await get<HomeworkItem[]>(`/api/v1/courses/${courseId}/homework`)
       homework.value = homeworkResponse ?? []
       hasHomework.value = homework.value.length > 0
     } catch {

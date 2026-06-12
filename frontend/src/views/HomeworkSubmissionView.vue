@@ -3,7 +3,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { get, ApiError } from '@/api/client'
 import {
   ACCEPTED_EXTENSIONS,
@@ -26,7 +25,6 @@ interface Submission {
 }
 
 const route = useRoute()
-const authStore = useAuthStore()
 
 const courseId = route.params.id as string
 const hwId = route.params.hwId as string
@@ -52,8 +50,7 @@ async function fetchHomework(): Promise<void> {
   homeworkError.value = null
   try {
     const data = await get<HomeworkDetail>(
-      `/api/v1/courses/${courseId}/homework/${hwId}`,
-      authStore.token
+      `/api/v1/courses/${courseId}/homework/${hwId}`
     )
     homework.value = data
   } catch (err) {
@@ -73,8 +70,7 @@ async function fetchLatestSubmission(): Promise<void> {
   noSubmission.value = false
   try {
     const data = await get<Submission>(
-      `/api/v1/courses/${courseId}/homework/${hwId}/submissions/latest`,
-      authStore.token
+      `/api/v1/courses/${courseId}/homework/${hwId}/submissions/latest`
     )
     latestSubmission.value = data
   } catch (err) {
@@ -164,7 +160,9 @@ function uploadFile(file: File): void {
   })
 
   xhr.open('POST', `/api/v1/courses/${courseId}/homework/${hwId}/submissions`)
-  xhr.setRequestHeader('Authorization', `Bearer ${authStore.token}`)
+  // withCredentials ensures the __Host-session cookie is sent cross-origin and
+  // that the response Set-Cookie is accepted (same-origin safe by SameSite=Strict).
+  xhr.withCredentials = true
   // Read the CSRF cookie fresh on every mutating request so a rotated value is always used
   const csrfToken = document.cookie
     .split(';')

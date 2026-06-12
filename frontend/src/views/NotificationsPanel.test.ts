@@ -34,13 +34,13 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/notifications', 'test-token')
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/notifications')
     expect(wrapper.vm.notifications).toHaveLength(1)
     expect(wrapper.vm.notifications[0].title).toBe('Test Notification')
 
@@ -54,7 +54,7 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
@@ -99,7 +99,7 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
@@ -125,7 +125,7 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
@@ -160,7 +160,7 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
@@ -195,7 +195,7 @@ describe('NotificationsPanel', () => {
     const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({})
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
@@ -206,7 +206,6 @@ describe('NotificationsPanel', () => {
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/notifications/notif-1/read',
       {},
-      'test-token'
     )
 
     expect(wrapper.vm.notifications[0].read_at).toBeTruthy()
@@ -229,7 +228,7 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
@@ -257,7 +256,7 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 
@@ -277,7 +276,7 @@ describe('NotificationsPanel', () => {
     })
 
     const auth = useAuthStore()
-    auth.token = 'test-token'
+    auth.$patch({ role: 'student', restoreDone: true })
 
     const wrapper = mount(NotificationsPanel)
 

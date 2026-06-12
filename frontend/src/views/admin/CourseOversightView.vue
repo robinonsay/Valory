@@ -51,7 +51,7 @@ async function fetchCourses(status: string = 'all', cursor: string = '') {
       url += `&cursor=${cursor}`
     }
 
-    const response = await get<CoursesResponse>(url, auth.token)
+    const response = await get<CoursesResponse>(url)
     courses.value.push(...(response.courses ?? []))
     nextCursor.value = response.next_cursor
   } catch (err) {

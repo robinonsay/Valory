@@ -40,6 +40,11 @@ describe('ConsentView', () => {
 
     expect(wrapper.text()).toContain('AI Processing Consent Statement')
     expect(wrapper.find('button').text()).toBe('I agree')
+
+    const logo = wrapper.find('.consent-logo')
+    expect(logo.exists()).toBe(true)
+    expect(logo.attributes('src')).toContain('valory.svg')
+    expect(logo.attributes('alt')).toBe('Valory')
   })
 
   // @{"verifies": ["REQ-FEAUTH-165"]}
@@ -72,12 +77,12 @@ describe('ConsentView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await wrapper.find('button').trigger('click')
     await wrapper.vm.$nextTick()
 
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/consent', { version: '1.0' }, 'test-token')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/consent', { version: '1.0' })
   })
 
   // @{"verifies": ["REQ-FEAUTH-035"]}
@@ -91,7 +96,7 @@ describe('ConsentView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     expect(auth.isConsented).toBe(false)
 
@@ -114,7 +119,7 @@ describe('ConsentView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await wrapper.find('button').trigger('click')
     await wrapper.vm.$nextTick()
@@ -135,7 +140,7 @@ describe('ConsentView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await wrapper.find('button').trigger('click')
     await wrapper.vm.$nextTick()
@@ -156,7 +161,7 @@ describe('ConsentView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const button = wrapper.find('button')
 
@@ -216,12 +221,12 @@ describe('ConsentView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await wrapper.find('button').trigger('click')
     await wrapper.vm.$nextTick()
 
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/consent', { version: '1.0' }, 'test-token')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/consent', { version: '1.0' })
   })
 
   // @{"verifies": ["REQ-FEAUTH-056"]}

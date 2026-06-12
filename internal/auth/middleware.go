@@ -95,7 +95,7 @@ func writeConsentError(w http.ResponseWriter, currentVersion string) {
 	})
 }
 
-// @{"req": ["REQ-AUTH-004", "REQ-AUTH-005", "REQ-SYS-002"]}
+// @{"req": ["REQ-AUTH-004", "REQ-AUTH-005", "REQ-AUTH-011", "REQ-SYS-002"]}
 func NewAuthMiddleware(
 	repo *Repository,
 	pool *pgxpool.Pool,
@@ -105,12 +105,20 @@ func NewAuthMiddleware(
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if !strings.HasPrefix(authHeader, "Bearer ") {
-				writeError(w, http.StatusUnauthorized, "unauthorized")
-				return
+			// REQ-AUTH-011: prefer Authorization Bearer; fall back to the
+			// __Host-session cookie so the browser can authenticate without
+			// an explicit header after a page refresh.
+			var rawToken string
+			if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+				rawToken = strings.TrimPrefix(authHeader, "Bearer ")
+			} else {
+				cookie, err := r.Cookie("__Host-session")
+				if err != nil || cookie.Value == "" {
+					writeError(w, http.StatusUnauthorized, "unauthorized")
+					return
+				}
+				rawToken = cookie.Value
 			}
-			rawToken := strings.TrimPrefix(authHeader, "Bearer ")
 
 			tokenHash := HashToken(rawToken)
 			session, err := repo.GetSessionByTokenHash(r.Context(), tokenHash)

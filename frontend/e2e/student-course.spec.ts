@@ -1,4 +1,4 @@
-// @{"verifies", ["REQ-FECOURSE-001", "REQ-FECOURSE-002", "REQ-FECOURSE-003", "REQ-FECOURSE-010", "REQ-FECOURSE-011", "REQ-FECOURSE-012", "REQ-FECOURSE-300", "REQ-FECOURSE-301", "REQ-COURSE-001", "REQ-COURSE-003"]}
+// @{"verifies": ["REQ-FECOURSE-001", "REQ-FECOURSE-002", "REQ-FECOURSE-003", "REQ-FECOURSE-010", "REQ-FECOURSE-011", "REQ-FECOURSE-012", "REQ-FECOURSE-300", "REQ-FECOURSE-301", "REQ-COURSE-001", "REQ-COURSE-003"]}
 //
 // student-course.spec.ts — Course creation and cleanup:
 //   • New course modal opens when "New course" is clicked.
@@ -42,7 +42,7 @@ async function archiveOpenCourses(page: Page, bearerToken: string): Promise<void
   }
 }
 
-// @{"verifies", ["REQ-FECOURSE-001", "REQ-FECOURSE-010", "REQ-FECOURSE-011", "REQ-FECOURSE-012", "REQ-FECOURSE-300", "REQ-FECOURSE-301", "REQ-COURSE-001", "REQ-COURSE-003"]}
+// @{"verifies": ["REQ-FECOURSE-001", "REQ-FECOURSE-010", "REQ-FECOURSE-011", "REQ-FECOURSE-012", "REQ-FECOURSE-300", "REQ-FECOURSE-301", "REQ-COURSE-001", "REQ-COURSE-003"]}
 test('StudentCourse_CreateNewCourse_NavigatesToIntakeAndCleansUp', async ({ page, request }) => {
   // Intercept the login response to capture the bearer token.  We need it to
   // call the withdraw endpoint directly via page.request without going through

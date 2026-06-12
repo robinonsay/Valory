@@ -1,0 +1,361 @@
+= Session Persistence Design
+:revdate: 2026-06-12
+:toc:
+:toclevels: 3
+
+== Overview
+
+=== Problem
+
+When a student refreshes the browser or navigates to the app in a new tab,
+the Vue.js Pinia auth store is re-initialised from a blank JavaScript heap.
+`token`, `role`, and `expiresAt` are all `null`, so `isAuthenticated` is
+`false`, and the router guard immediately redirects the student to `/login`
+even though a perfectly valid server-side session exists in the `sessions`
+table.  PM triage after the Sprint 10 demo confirmed this as the most visible
+student-facing defect.
+
+=== Decision: httpOnly session cookie (Option A)
+
+The three candidate mechanisms and the ruling on each:
+
+*Option C — localStorage persistence of the current bearer token.* Rejected.
+`localStorage` is readable by any JavaScript executing in the same origin.  A
+single reflected or stored XSS vulnerability — in any third-party dependency,
+in generated AsciiDoc content displayed in the reader, or in an admin-entered
+config value — would give an attacker persistent access to the raw bearer
+token with no TTL constraint (the token lives until the session expires on the
+server, up to `AUTH_SESSION_MAX_DURATION`).  The existing CSRF protection
+gives no defence here because the attacker code runs in the same origin.
+`localStorage` is not acceptable for session material in this stack.
+
+*Option B — in-memory access token + httpOnly refresh token rotation.*
+Refresh-token rotation addresses the XSS concern (refresh token is httpOnly,
+short-lived access tokens never touch storage), but it doubles the complexity:
+a new endpoint (`POST /api/v1/auth/refresh`), a second token type in the
+`sessions` table or a parallel `refresh_tokens` table, silent-renewal logic in
+the client, and rotation-under-concurrent-request races that must be handled
+carefully.  The added complexity is not justified when the server already
+stores full session state in PostgreSQL and can validate any single opaque
+token on every request.  Refresh-token rotation exists to reduce server-side
+load on token lookup per request; that concern does not apply to this stack's
+current scale.
+
+*Option A — httpOnly+Secure+SameSite=Strict session cookie.* Chosen.
+The raw session token is placed in a `__Host-session` httpOnly cookie set at
+login.  The browser attaches it automatically on every same-site request.  The
+existing server-side session store, inactivity expiry, and revocation
+logic in `internal/auth` require zero changes.  XSS cannot read the cookie
+value (`HttpOnly`).  The `__Host-` prefix enforces HTTPS-only delivery and
+host binding.  `SameSite=Strict` blocks cross-site request forgery at the
+cookie level — but because the cookie is now the authentication credential,
+CSRF protection via `X-CSRF-Token` becomes mandatory on all state-changing
+routes, not just a belt-and-suspenders measure.  The existing
+`security.CSRFMiddleware` already implements this correctly; the only change is
+that the auth middleware must also accept the token from the cookie when no
+`Authorization` header is present.
+
+This is the smallest design that satisfies the requirement: refresh keeps you
+logged in; logout and inactivity expiry still work unchanged; no new
+cryptographic primitives, no new tables, no new token types.
+
+== Requirements in Scope
+
+Existing requirements satisfied or amended by this design:
+
+* REQ-AUTH-005 — Session inactivity expiry (unchanged semantics, cookie
+  interaction described below)
+* REQ-AUTH-006 — Brute-force lockout (unchanged)
+* REQ-AUTH-007 — TLS-only (cookie `Secure` attribute enforces this)
+* REQ-FEAUTH-001 — Frontend authentication entry point
+* REQ-FEAUTH-010, REQ-FEAUTH-011 — Login flow (extended with cookie receipt)
+* REQ-FEAUTH-019, REQ-FEAUTH-020 — Logout (server revocation unchanged,
+  cookie cleared on logout response)
+* REQ-FEAUTH-040, REQ-FEAUTH-041, REQ-FEAUTH-042, REQ-FEAUTH-043 — Router
+  guards (guard behaviour during restore-in-flight is amended)
+* REQ-FEAUTH-045, REQ-FEAUTH-046 — Bearer token attachment (retained for API
+  clients; cookie is the new default for browser)
+* REQ-FEAUTH-047, REQ-FEAUTH-048, REQ-FEAUTH-049 — CSRF token (unchanged
+  implementation; scope extended — see CSRF section)
+* REQ-FEAUTH-155, REQ-FEAUTH-156 — Inactivity-driven 401 handling (unchanged)
+* REQ-SECURITY-004 — CSRF validation on state-changing requests (scope
+  clarified — cookie auth makes CSRF mandatory, not optional)
+
+New requirements authored for this design:
+
+1. *REQ-AUTH-009* — The auth module shall set a `__Host-session` httpOnly,
+   Secure, SameSite=Strict cookie containing the raw session token on
+   successful login.
+2. *REQ-AUTH-010* — The auth module shall clear the `__Host-session` cookie
+   on successful logout by setting it to an empty value with `Max-Age=0`.
+3. *REQ-AUTH-011* — The auth middleware shall accept the session token from
+   the `__Host-session` cookie when no `Authorization: Bearer` header is
+   present, and shall prefer the header when both are present.
+4. *REQ-AUTH-012* — The auth module shall expose a `GET /api/v1/auth/session`
+   endpoint that returns the caller's current session state including user_id,
+   username, role, and consent status, or 401 when no valid session exists.
+5. *REQ-FEAUTH-169* — The frontend auth store shall attempt to restore session
+   state by calling `GET /api/v1/auth/session` on SPA boot before the router
+   resolves any navigation.
+6. *REQ-FEAUTH-170* — The router guard shall block navigation (await the
+   restore promise) until the session-restore request completes, so that
+   protected components never mount before auth state is known.
+7. *REQ-FEAUTH-171* — The frontend login action shall not write the raw token
+   into the Pinia store; auth state shall be derived exclusively from the
+   `GET /api/v1/auth/session` response after login.
+8. *REQ-FEAUTH-172* — The session restore response shall include the user's
+   consent status so a previously-consented student is not re-prompted on
+   reload (consent-skip on restore).
+
+== Data Model
+
+No new tables or columns are required.  The existing `sessions` table stores
+the token hash and all session state.  The cookie carries the raw token; the
+server derives the hash on each request to look up the session row, exactly as
+it does today with the `Authorization` header.
+
+No migration is needed for this feature.
+
+== API Contract
+
+=== POST /api/v1/auth/login (amended)
+
+Existing behaviour: returns `{"token", "role", "expires_at"}` in JSON body.
+
+Amended behaviour: additionally sets two cookies on 200 OK:
+
+`__Host-session`::
+  Raw session token (the same value returned in the JSON body today).
+  `HttpOnly=true`, `Secure=true`, `SameSite=Strict`, `Path=/`.
+  `Max-Age` is set to `AUTH_SESSION_MAX_DURATION` in seconds (default 86400).
+
+`__Host-csrf`::
+  Already set today (see `security.SetCSRFCookie`).  No change.
+
+The JSON body continues to include `token`, `role`, and `expires_at` so that
+existing API clients (e2e suite, future mobile clients) that read the body are
+not broken.  Browser clients should ignore the body token and rely on the
+cookie path described below.
+
+*Compat note:* frontend login code currently calls
+`authStore.login(token, role, expiresAt)` to write the raw token into reactive
+state.  After this change, the login call should discard the token from the
+body and immediately call `GET /api/v1/auth/session` to populate the store (or
+the store's `login()` function is simplified to accept only role and
+expires_at, with the token field removed from reactive state entirely — the
+recommended approach described in the Frontend Changes section).
+
+=== POST /api/v1/auth/logout (amended)
+
+Existing behaviour: reads `Authorization: Bearer <token>` header to identify
+the session to delete.
+
+Amended behaviour: when no `Authorization` header is present, read the token
+from the `__Host-session` cookie instead.  After deleting the session row,
+set the `__Host-session` cookie to empty with `Max-Age=0` to clear it from
+the browser.  Behaviour when both header and cookie are present: use the
+header (consistent with auth middleware precedence rule).
+
+=== GET /api/v1/auth/session (new endpoint)
+
+This endpoint is the SPA boot restore point.  It also folds in the
+Sprint-10 backlog item "GET /consent/status": rather than a separate endpoint,
+consent state is included in the session response so one round-trip restores
+all auth state the frontend needs.
+
+*Authentication:* uses the same dual-source auth middleware (cookie or bearer
+header).  No separate auth is needed; if the session is invalid or absent the
+middleware returns 401 before the handler runs.
+
+*Method:* `GET`
+
+*Path:* `/api/v1/auth/session`
+
+*Auth required:* yes (session cookie or `Authorization: Bearer` header)
+
+*Consent gate:* no — this endpoint must be reachable before consent is
+accepted so the frontend can determine whether to send the user to `/consent`.
+It is registered under `authOnlyMW` (which skips the consent gate), not
+`authMW`.
+
+*Response 200 OK*
+
+[source,json]
+----
+{
+  "user_id":    "a1b2c3d4-...",
+  "username":   "alice",
+  "role":       "student",
+  "consented":  true,
+  "expires_at": "2026-06-13T10:00:00Z"
+}
+----
+
+Fields:
+
+* `user_id` — UUID string, the authenticated user's ID.
+* `username` — the user's username; needed for display in the nav bar without
+  a separate `/users/me` call on boot.
+* `role` — `"student"` or `"admin"`.
+* `consented` — boolean; `true` when `student_consent.consent_version` equals
+  the current `system_config.consent_version`.  Always `true` for admins
+  (admins are exempt from the consent gate per REQ-SECURITY-005).
+* `expires_at` — RFC3339 timestamp of session absolute expiry.
+
+*Response 401 Unauthorized*
+
+[source,json]
+----
+{"error": "unauthorized"}
+----
+
+No session exists, the session has expired absolutely, or the inactivity
+period has elapsed.  The frontend interprets this as "not logged in" and sets
+`isAuthenticated = false`.
+
+*Implementation note:* the handler reads `UserIDFromContext`,
+`RoleFromContext`, and the username from a single
+`SELECT username FROM users WHERE id = $1` query (or from a JOIN on the
+sessions lookup the middleware already does — the username can be returned from
+`GetSessionByTokenHash` if the repository query is extended to join `users`).
+The consent check is a re-use of the existing inline query in `authMW`.  The
+handler itself is a thin wrapper; no new service layer is needed.
+
+=== Route registration (main.go)
+
+`GET /api/v1/auth/session` is registered in the `/api/v1/auth` sub-router
+alongside `/login` and `/logout`, but under `authOnlyMW` so the consent gate
+does not block the call:
+
+[source,go]
+----
+// Inside the r.Route("/api/v1", ...) block, in the auth sub-router:
+r.Group(func(r chi.Router) {
+    r.Use(authOnlyMW)
+    r.Get("/auth/session", authHandler.GetSession)
+})
+----
+
+This mirrors the existing pattern used for `POST /api/v1/consent`.
+
+== Auth Middleware Changes
+
+=== Dual-source token extraction
+
+The middleware currently does:
+
+[source,go]
+----
+authHeader := r.Header.Get("Authorization")
+if !strings.HasPrefix(authHeader, "Bearer ") {
+    writeError(w, http.StatusUnauthorized, "unauthorized")
+    return
+}
+rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+----
+
+It is amended to fall back to the `__Host-session` cookie when no header is
+present:
+
+[source,go]
+----
+var rawToken string
+if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+    rawToken = strings.TrimPrefix(authHeader, "Bearer ")
+} else {
+    cookie, err := r.Cookie("__Host-session")
+    if err != nil || cookie.Value == "" {
+        writeError(w, http.StatusUnauthorized, "unauthorized")
+        return
+    }
+    rawToken = cookie.Value
+}
+----
+
+The header takes precedence.  This is the only change to `middleware.go`.
+
+=== Inactivity expiry interaction with the cookie
+
+REQ-AUTH-005 inactivity expiry is server-enforced: the middleware checks
+`NOW() - last_active_at > AUTH_INACTIVITY_PERIOD` on every request and deletes
+the session row when exceeded.  The cookie's `Max-Age` is set to
+`AUTH_SESSION_MAX_DURATION` (the absolute ceiling), which is always greater
+than or equal to the inactivity period.  This means the cookie will still be
+present in the browser after an inactivity expiry, but the next request will
+receive a 401 from the middleware (the session row is gone), which the frontend
+interprets as "session expired — redirect to /login".  The cookie does not
+need to reflect inactivity expiry; the server is the authority.
+
+On a 401 from the session-restore call at boot, the frontend simply does not
+set `isAuthenticated = true` and the router guard proceeds to redirect to
+`/login` as today.
+
+=== CSRF coverage
+
+Cookie-based authentication elevates CSRF from belt-and-suspenders to the
+primary cross-site request forgery defence.  The existing
+`security.CSRFMiddleware` is already applied to all routes that need it (see
+`main.go`); no new route needs to be added to the middleware stack.
+
+The routes that currently rely on bearer-token-only authentication and
+therefore had CSRF as a secondary defence are listed here for audit
+completeness:
+
+* All routes under the `r.Group` that uses `authMW` and `security.CSRFMiddleware` in `main.go` — already covered.
+* `POST /api/v1/consent` — already under `authOnlyMW` + `security.CSRFMiddleware` — already covered.
+* `POST /api/v1/auth/logout` — currently under no CSRF middleware because it is in the public `auth` sub-router.  After this change, logout carries a cookie credential, so a cross-site POST to `/logout` could sign out the user.  Resolution: add CSRF validation to the logout handler explicitly (read `__Host-csrf` cookie and `X-CSRF-Token` header; reject if mismatched).  The frontend already reads and sends the CSRF cookie on all mutating requests via `getCsrfToken()` in `client.ts`, so no frontend change is needed.
+* `POST /api/v1/auth/login` — no session credential exists at login time, so CSRF does not apply.  No change.
+
+Summary of CSRF changes required:
+
+1. `POST /api/v1/auth/logout` — add inline CSRF check (header vs cookie) or register this route under `security.CSRFMiddleware`.  This is a backend-only change.
+2. No other route changes are needed; all other protected routes already have `security.CSRFMiddleware` in their middleware chain.
+
+include::16-session-persistence-flows.adoc[]
+
+== Migration and Compatibility Plan
+
+No database migration is required.
+
+Deployment compatibility:
+
+* Old browser with old cookie (no `__Host-session`): first request after
+  deploy has no cookie; the middleware falls through to the `Authorization`
+  header.  If neither is present, it returns 401 (user must log in again —
+  this is the current behaviour and is acceptable for a one-time transition).
+* New browser client after deploy: login sets the cookie; subsequent requests
+  use the cookie automatically.
+* Existing e2e suite: unaffected — bearer header path is preserved.
+* Future API clients (e.g. mobile): unaffected — bearer header path is
+  preserved.
+
+No dual-version compatibility shim is needed beyond the dual-source token
+extraction in the middleware, which is already specified above.
+
+== Alternatives Considered
+
+* *Refresh-token rotation (Option B):* Ruled out. Adds a new token type, a
+  new DB table or extra columns, a `/refresh` endpoint, and client-side
+  silent-renewal logic.  Unnecessary complexity for a server-side session
+  store that already does all lookups on every request.
+* *localStorage (Option C):* Ruled out explicitly.  XSS leaks the raw token
+  with no mitigation path.  See decision rationale in Overview.
+* *sessionStorage:* Same XSS exposure as `localStorage`.  Additionally, does
+  not survive a new tab (same origin, different browsing context), which
+  reproduces a subset of the original complaint.  Rejected.
+* *`SameSite=Lax` instead of `Strict`:* Lax allows GET requests from external
+  navigation (e.g. clicking a link from an email) to carry the cookie, which
+  is benign for GET.  However, `Strict` is simpler and consistent with the
+  existing CSRF cookie.  The app does not rely on cookie carriage from external
+  navigation; users are expected to navigate to the login page directly.
+  `SameSite=Strict` retained.
+* *Folding consent into a separate GET /consent/status endpoint:* Ruled out in
+  favour of including `consented` in the session restore response.  One
+  round-trip at boot is better than two, and all three fields (role, identity,
+  consent) are needed simultaneously before the router can make any routing
+  decision.
+
+== Open Questions
+
+No open questions remain.  All decisions have been resolved with rationale
+above.  PM input is not required before implementation begins.

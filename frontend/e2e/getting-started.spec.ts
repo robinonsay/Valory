@@ -1,4 +1,4 @@
-// @{"verifies", ["REQ-FEONBOARD-001", "REQ-FEONBOARD-002", "REQ-FEONBOARD-003", "REQ-FEONBOARD-004", "REQ-FEONBOARD-010", "REQ-FEONBOARD-011", "REQ-FEONBOARD-012", "REQ-FEONBOARD-013", "REQ-FEONBOARD-014", "REQ-FEONBOARD-015", "REQ-FEONBOARD-016", "REQ-FEONBOARD-020", "REQ-FEONBOARD-021", "REQ-FEONBOARD-022", "REQ-FEONBOARD-023"]}
+// @{"verifies": ["REQ-FEONBOARD-001", "REQ-FEONBOARD-002", "REQ-FEONBOARD-003", "REQ-FEONBOARD-004", "REQ-FEONBOARD-010", "REQ-FEONBOARD-011", "REQ-FEONBOARD-012", "REQ-FEONBOARD-013", "REQ-FEONBOARD-014", "REQ-FEONBOARD-015", "REQ-FEONBOARD-016", "REQ-FEONBOARD-020", "REQ-FEONBOARD-021", "REQ-FEONBOARD-022", "REQ-FEONBOARD-023"]}
 //
 // getting-started.spec.ts — Getting Started view for each role:
 //   • Student /getting-started renders inside StudentLayout (nav links visible)
@@ -13,7 +13,7 @@ import { login, ADMIN_USER, ADMIN_PASS, STUDENT_USER, STUDENT_PASS } from './hel
 // Student Getting Started
 // ---------------------------------------------------------------------------
 
-// @{"verifies", ["REQ-FEONBOARD-001", "REQ-FEONBOARD-002", "REQ-FEONBOARD-003", "REQ-FEONBOARD-010", "REQ-FEONBOARD-011", "REQ-FEONBOARD-012", "REQ-FEONBOARD-013", "REQ-FEONBOARD-014", "REQ-FEONBOARD-015", "REQ-FEONBOARD-016"]}
+// @{"verifies": ["REQ-FEONBOARD-001", "REQ-FEONBOARD-002", "REQ-FEONBOARD-003", "REQ-FEONBOARD-010", "REQ-FEONBOARD-011", "REQ-FEONBOARD-012", "REQ-FEONBOARD-013", "REQ-FEONBOARD-014", "REQ-FEONBOARD-015", "REQ-FEONBOARD-016"]}
 test('StudentGettingStarted_ViewRendersInsideStudentLayoutWithSevenSteps', async ({ page }) => {
   await login(page, STUDENT_USER, STUDENT_PASS)
   // In-SPA navigation: the token lives only in memory (by requirement), so a
@@ -47,7 +47,7 @@ test('StudentGettingStarted_ViewRendersInsideStudentLayoutWithSevenSteps', async
 // Admin Getting Started
 // ---------------------------------------------------------------------------
 
-// @{"verifies", ["REQ-FEONBOARD-002", "REQ-FEONBOARD-004", "REQ-FEONBOARD-020", "REQ-FEONBOARD-021", "REQ-FEONBOARD-022", "REQ-FEONBOARD-023"]}
+// @{"verifies": ["REQ-FEONBOARD-002", "REQ-FEONBOARD-004", "REQ-FEONBOARD-020", "REQ-FEONBOARD-021", "REQ-FEONBOARD-022", "REQ-FEONBOARD-023"]}
 test('AdminGettingStarted_ViewRendersInsideAdminLayoutWithFourSteps', async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASS)
   // In-SPA navigation (see student test above for why goto() is not usable).
@@ -56,14 +56,18 @@ test('AdminGettingStarted_ViewRendersInsideAdminLayoutWithFourSteps', async ({ p
 
   // AdminLayout renders a sidebar with the navigation links defined in
   // AdminLayout.vue.  Assert that the sidebar nav is present and contains
-  // the expected links.
+  // the expected links.  Use .sidebar-nav to scope to the navigation block
+  // rather than the full sidebar — the brand link (.sidebar-brand) also
+  // points to /admin/users and would trip strict-mode if we query the full
+  // sidebar for that href (Sprint 13: brand logo added to AdminLayout).
   const sidebar = page.locator('aside.sidebar')
   await expect(sidebar).toBeVisible()
-  await expect(sidebar.locator('a[href="/admin/users"]')).toBeVisible()
-  await expect(sidebar.locator('a[href="/admin/audit"]')).toBeVisible()
-  await expect(sidebar.locator('a[href="/admin/config"]')).toBeVisible()
-  await expect(sidebar.locator('a[href="/admin/courses"]')).toBeVisible()
-  await expect(sidebar.locator('a[href="/admin/getting-started"]')).toBeVisible()
+  const sidebarNav = sidebar.locator('.sidebar-nav')
+  await expect(sidebarNav.locator('a[href="/admin/users"]')).toBeVisible()
+  await expect(sidebarNav.locator('a[href="/admin/audit"]')).toBeVisible()
+  await expect(sidebarNav.locator('a[href="/admin/config"]')).toBeVisible()
+  await expect(sidebarNav.locator('a[href="/admin/courses"]')).toBeVisible()
+  await expect(sidebarNav.locator('a[href="/admin/getting-started"]')).toBeVisible()
 
   // The heading identifies the admin variant.
   await expect(page.locator('h1')).toContainText('Getting Started — Admin Guide')

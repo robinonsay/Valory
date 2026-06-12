@@ -1462,5 +1462,46 @@
     "uses": [
       "REQ-FEAUTH-057"
     ]
+  },
+  {
+    "id": "REQ-FEAUTH-169",
+    "title": "Session Restore Before First Routing Decision",
+    "description": "The auth frontend module shall restore auth state from the server before the router resolves any navigation on SPA boot.",
+    "rationale": "Without a server-side session check on boot, the router guard evaluates against a blank in-memory store and redirects authenticated users to /login on every page load or refresh.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEAUTH-006"
+    ]
+  },
+  {
+    "id": "REQ-FEAUTH-170",
+    "title": "Router Redirect Deferred Until Session Restore Completes",
+    "description": "The auth frontend module shall not redirect to /login while a session-restore request is in flight.",
+    "rationale": "Evaluating the route guard before the restore response arrives always yields isAuthenticated=false, producing a flash-redirect to /login for valid sessions; deferring the redirect eliminates this race condition.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEAUTH-006",
+      "REQ-FEAUTH-169"
+    ]
+  },
+  {
+    "id": "REQ-FEAUTH-171",
+    "title": "Session Token Never Written to Client Storage",
+    "description": "The auth frontend module shall not write the session token to localStorage, sessionStorage, IndexedDB, or any non-httpOnly cookie.",
+    "rationale": "Any client-readable storage location is accessible to same-origin JavaScript; persisting the raw token there re-introduces the XSS token-theft risk that the httpOnly cookie architecture is designed to eliminate.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-FEAUTH-045"
+    ]
+  },
+  {
+    "id": "REQ-FEAUTH-172",
+    "title": "Consent Interstitial Skipped When Session Shows Consent",
+    "description": "The auth frontend module shall not redirect a student to /consent when the restored session indicates consent is already recorded.",
+    "rationale": "The session restore endpoint now returns the student's consent state; re-prompting a student whose consent is already on record is incorrect behaviour that disrupts their workflow after every page refresh.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FEAUTH-037"
+    ]
   }
 ]

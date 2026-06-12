@@ -52,7 +52,7 @@ describe('CourseHubView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -71,8 +71,8 @@ describe('CourseHubView', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await wrapper.vm.$nextTick()
 
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses/course-1', 'test-token')
-    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses/course-1/sections', 'test-token')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses/course-1')
+    expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/courses/course-1/sections')
   })
 
   it('renders section list with completion indicators', async () => {
@@ -100,7 +100,7 @@ describe('CourseHubView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -149,7 +149,7 @@ describe('CourseHubView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -197,7 +197,7 @@ describe('CourseHubView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -251,7 +251,7 @@ describe('CourseHubView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -302,7 +302,7 @@ describe('CourseHubView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const router = createRouter({
       history: createMemoryHistory(),

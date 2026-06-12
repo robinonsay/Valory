@@ -48,7 +48,7 @@
 //   afterEach archives the course via API regardless of pass/fail so the
 //   single-active-course constraint never blocks subsequent runs.
 
-// @{"verifies", ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057"]}
+// @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057"]}
 
 import { test, expect, type Page } from '@playwright/test'
 import { login, STUDENT_USER, STUDENT_PASS } from '../helpers'
@@ -90,7 +90,7 @@ let activeCourseId: string | null = null
 // Test: full intake-to-syllabus journey
 // ---------------------------------------------------------------------------
 
-// @{"verifies", ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057"]}
+// @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-262", "REQ-AGENT-018", "REQ-AGENT-001", "REQ-AGENT-019", "REQ-FECOURSE-024", "REQ-FECOURSE-056", "REQ-FECOURSE-057"]}
 test('IntakeToSyllabus_FullJourney_PreparingThenChatThenSyllabusRendered', async ({ page }) => {
   // -------------------------------------------------------------------------
   // Step 0: set up event listeners BEFORE any navigation so we capture

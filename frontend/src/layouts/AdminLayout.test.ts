@@ -40,7 +40,7 @@ describe('AdminLayout', () => {
   it('renders navigation links for Users, Audit Log, Config, Course Oversight, Getting Started', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -62,13 +62,18 @@ describe('AdminLayout', () => {
 
     const links = wrapper.findAll('a')
     expect(links.length).toBeGreaterThanOrEqual(5)
+
+    const logo = wrapper.find('.sidebar-logo')
+    expect(logo.exists()).toBe(true)
+    expect(logo.attributes('src')).toContain('valory.svg')
+    expect(logo.attributes('alt')).toBe('Valory')
   })
 
   // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-118", "REQ-FEAUTH-119"]}
   it('logout button calls auth.logoutServer() and navigates to /login', async () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     // Mock logoutServer so the test does not make real fetch calls; we verify
     // that logoutServer is invoked (it clears state internally) and navigation occurs.
@@ -85,7 +90,7 @@ describe('AdminLayout', () => {
       }
     })
 
-    expect(auth.token).not.toBeNull()
+    expect(auth.isAuthenticated).toBe(true)
 
     const logoutButton = wrapper.find('.logout-button')
     expect(logoutButton.exists()).toBe(true)
@@ -102,7 +107,7 @@ describe('AdminLayout', () => {
   it('RouterView is rendered', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -120,16 +125,16 @@ describe('AdminLayout', () => {
     expect(routerView.exists()).toBe(true)
   })
 
-  it('displays admin username from API response', async () => {
+  it('displays admin username from auth store (populated by restoreSession on boot)', async () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
-
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ username: 'john_doe' })
+    // username is populated by restoreSession(); seed it directly to simulate that
+    auth.$patch({
+      role: 'admin',
+      username: 'john_doe',
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      restoreDone: true
     })
-    vi.stubGlobal('fetch', fetchMock)
 
     const wrapper = mount(AdminLayout, {
       global: {
@@ -137,18 +142,16 @@ describe('AdminLayout', () => {
       }
     })
 
-    await new Promise(resolve => setTimeout(resolve, 50))
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('john_doe')
   })
 
-  it('displays default Admin username when API call fails', () => {
+  it('displays default "Admin" fallback when username is not yet in store', () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
-
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')))
+    // username is null (restoreSession not yet called or user has no username)
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AdminLayout, {
       global: {
@@ -159,15 +162,10 @@ describe('AdminLayout', () => {
     expect(wrapper.text()).toContain('Admin')
   })
 
-  it('displays default Admin username when API response is not ok', async () => {
+  it('displays username once store is populated', async () => {
     const router = createTestRouter()
     const auth = useAuthStore()
-    auth.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
-
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      status: 500
-    }))
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const wrapper = mount(AdminLayout, {
       global: {
@@ -175,8 +173,10 @@ describe('AdminLayout', () => {
       }
     })
 
+    // Simulate restoreSession populating username
+    auth.$patch({ username: 'mary_admin' })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('Admin')
+    expect(wrapper.text()).toContain('mary_admin')
   })
 })

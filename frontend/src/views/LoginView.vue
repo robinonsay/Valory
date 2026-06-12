@@ -1,16 +1,10 @@
-// @{"req": ["REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-012", "REQ-FEAUTH-100", "REQ-FEAUTH-101", "REQ-FEAUTH-102", "REQ-FEAUTH-110", "REQ-FEAUTH-115", "REQ-FEAUTH-120"]}
+// @{"req": ["REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-012", "REQ-FEAUTH-100", "REQ-FEAUTH-101", "REQ-FEAUTH-102", "REQ-FEAUTH-110", "REQ-FEAUTH-115", "REQ-FEAUTH-120", "REQ-FEAUTH-171"]}
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { post, ApiError } from '@/api/client'
-
-interface LoginResponse {
-  token: string
-  role: 'student' | 'admin'
-  expires_at: string
-}
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -26,18 +20,18 @@ async function handleSubmit() {
 
   try {
     // The API authenticates by username (POST /api/v1/auth/login expects
-    // {username, password} — see internal/auth/handler.go). This form
-    // previously sent {email} and could never log anyone in.
-    const response = await post<LoginResponse>('/api/v1/auth/login', {
+    // {username, password} — see internal/auth/handler.go). The server sets
+    // the __Host-session cookie on success; we do not read the token from the
+    // body (REQ-FEAUTH-171). auth.login() calls restoreSession() which
+    // populates the store from GET /api/v1/auth/session via the cookie.
+    await post<void>('/api/v1/auth/login', {
       username: username.value,
       password: password.value
     })
 
-    const expiresAtSeconds = new Date(response.expires_at).getTime() / 1000
-    auth.login(response.token, response.role, expiresAtSeconds)
-    auth.registerUnauthorizedHandler()
+    await auth.login()
 
-    if (response.role === 'admin') {
+    if (auth.isAdmin) {
       router.push('/admin/users')
     } else {
       router.push('/courses')
@@ -67,6 +61,11 @@ function clearError() {
 <template>
   <div class="login-container">
     <form @submit.prevent="handleSubmit">
+      <div class="logo-section">
+        <img src="/valory.svg" alt="Valory" class="login-logo" />
+        <h1 class="logo-title">Valory</h1>
+      </div>
+
       <div v-if="error" class="error-message">
         {{ error }}
       </div>
@@ -118,6 +117,27 @@ form {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 400px;
+}
+
+.logo-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.login-logo {
+  height: 64px;
+  width: 64px;
+  margin-bottom: 1rem;
+}
+
+.logo-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0;
+  letter-spacing: 0.02em;
 }
 
 .error-message {

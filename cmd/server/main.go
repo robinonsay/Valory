@@ -102,7 +102,10 @@ func main() {
 	// --- Auth wiring ---
 	authRepo := auth.NewRepository(pool)
 	authSvc := auth.NewService(authRepo, lockoutDuration, sessionMaxDuration)
-	authHandler := auth.NewHandler(authSvc)
+	// NewHandlerFull wires the additional dependencies (repo, pool, sessionMaxDuration,
+	// consentProvider) needed by the login cookie (REQ-AUTH-009) and the
+	// GET /auth/session restore endpoint (REQ-AUTH-012).
+	authHandler := auth.NewHandlerFull(authSvc, authRepo, pool, sessionMaxDuration, configSvc)
 	// authMW enforces session validity AND the consent gate (REQ-SECURITY-005).
 	authMW := auth.NewAuthMiddleware(authRepo, pool, inactivityPeriod, configSvc)
 	// authOnlyMW enforces session validity only — no consent gate. Used for the
@@ -216,6 +219,15 @@ func main() {
 		// --- Public password-reset routes (no authentication required) ---
 		r.Route("/password-reset", func(r chi.Router) {
 			userHandler.PublicRoutes(r)
+		})
+
+		// @{"req": ["REQ-AUTH-012", "REQ-FEAUTH-169"]}
+		// GET /auth/session is registered under authOnlyMW (no consent gate) so the
+		// frontend can call it before consent has been accepted. The consent field
+		// in the response tells the router whether to redirect to /consent.
+		r.Group(func(r chi.Router) {
+			r.Use(authOnlyMW)
+			r.Get("/auth/session", authHandler.GetSession)
 		})
 
 		// @{"req": ["REQ-SECURITY-005"]}

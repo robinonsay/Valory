@@ -1,4 +1,4 @@
-// @{"verifies", ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-210", "REQ-FEADMIN-215", "REQ-FEADMIN-240", "REQ-FEADMIN-250", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330"]}
+// @{"verifies": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-210", "REQ-FEADMIN-215", "REQ-FEADMIN-240", "REQ-FEADMIN-250", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330"]}
 //
 // admin-config.spec.ts — System configuration page:
 //   • All 13 labeled config fields render with non-empty values.
@@ -28,7 +28,7 @@ const CONFIG_LABELS: Record<string, string> = {
   consent_version: 'Consent Version'
 }
 
-// @{"verifies", ["REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312"]}
+// @{"verifies": ["REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312"]}
 test('AdminConfig_AllThirteenFieldsRenderWithNonEmptyValues', async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASS)
   // In-SPA navigation: the token lives only in memory, so a goto() hard
@@ -48,7 +48,7 @@ test('AdminConfig_AllThirteenFieldsRenderWithNonEmptyValues', async ({ page }) =
   }
 })
 
-// @{"verifies", ["REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324"]}
+// @{"verifies": ["REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324"]}
 test('AdminConfig_ChangeAgentRetryLimitAndSave_ValuePersistsAfterReload', async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASS)
   // In-SPA navigation: the token lives only in memory, so a goto() hard
@@ -91,7 +91,7 @@ test('AdminConfig_ChangeAgentRetryLimitAndSave_ValuePersistsAfterReload', async 
   await expect(page.locator('.success-banner')).toContainText('Configuration saved.', { timeout: 10_000 })
 })
 
-// @{"verifies", ["REQ-FEADMIN-043", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330"]}
+// @{"verifies": ["REQ-FEADMIN-043", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330"]}
 test('AdminConfig_InvalidWeightSum_ShowsClientSideErrorAndBlocksSave', async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASS)
   // In-SPA navigation: the token lives only in memory, so a goto() hard

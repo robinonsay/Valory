@@ -35,7 +35,7 @@ describe('GradesView', () => {
     const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue(mockSummary)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await router.push('/courses/test-course-id/grades')
 
@@ -49,8 +49,7 @@ describe('GradesView', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(mockGet).toHaveBeenCalledWith(
-      '/api/v1/courses/test-course-id/grade',
-      'test-token'
+      '/api/v1/courses/test-course-id/grade'
     )
   })
 
@@ -58,7 +57,7 @@ describe('GradesView', () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue(mockSummary)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await router.push('/courses/test-course-id/grades')
 
@@ -80,7 +79,7 @@ describe('GradesView', () => {
     vi.spyOn(clientModule, 'get').mockResolvedValue(null)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await router.push('/courses/test-course-id/grades')
 
@@ -102,7 +101,7 @@ describe('GradesView', () => {
     )
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     await router.push('/courses/test-course-id/grades')
 

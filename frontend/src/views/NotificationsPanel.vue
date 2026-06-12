@@ -31,7 +31,7 @@ const unreadCount = computed(() => {
 
 async function fetchNotifications() {
   try {
-    const response = await get<NotificationsResponse>('/api/v1/notifications', auth.token || undefined)
+    const response = await get<NotificationsResponse>('/api/v1/notifications')
     notifications.value = response.notifications ?? []
     error.value = ''
   } catch (err) {
@@ -46,7 +46,7 @@ async function markNotificationRead(notificationId: string) {
   if (!notification) return
 
   try {
-    await post(`/api/v1/notifications/${notificationId}/read`, {}, auth.token || undefined)
+    await post(`/api/v1/notifications/${notificationId}/read`, {})
     notification.read_at = new Date().toISOString()
     error.value = ''
   } catch (err) {

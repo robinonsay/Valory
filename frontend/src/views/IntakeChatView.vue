@@ -58,8 +58,7 @@ async function loadChatHistory(isInitialLoad = false): Promise<void> {
   try {
     const courseId = route.params.id as string
     const response = await get<ChatHistoryResponse>(
-      `/api/v1/courses/${courseId}/chat/history`,
-      auth.token
+      `/api/v1/courses/${courseId}/chat/history`
     )
 
     if (response.messages && Array.isArray(response.messages)) {
@@ -214,8 +213,7 @@ async function sendMessage(): Promise<void> {
     const courseId = route.params.id as string
     const response = await post<ChatReplyResponse>(
       `/api/v1/courses/${courseId}/chat`,
-      { message: content },
-      auth.token
+      { message: content }
     )
 
     // Append the agent's reply from the response body
@@ -253,8 +251,8 @@ function dismissSendError(): void {
   sendErrorMessage.value = ''
 }
 
+// REQ-AUTH-011: token omitted; browser sends __Host-session cookie automatically.
 const sse = useSSE(`/api/v1/courses/${route.params.id}/events`, {
-  token: auth.token!,
   onEvent,
   onError
 })

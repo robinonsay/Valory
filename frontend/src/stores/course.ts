@@ -28,11 +28,15 @@ export const useCourseStore = defineStore('course', () => {
   })
 
   // @{"req": ["REQ-FECOURSE-001", "REQ-FECOURSE-002", "REQ-FECOURSE-003", "REQ-FECOURSE-004", "REQ-FECOURSE-005"]}
-  async function fetchCourses(token: string): Promise<void> {
+  // Token parameter removed — the __Host-session cookie carries auth credentials
+  // after a page refresh (REQ-AUTH-011). The client.ts get() function omits the
+  // Authorization header when no token is provided, letting the browser send the
+  // cookie automatically.
+  async function fetchCourses(): Promise<void> {
     loading.value = true
     error.value = null
     try {
-      const response = await get<CourseListResponse>('/api/v1/courses', token)
+      const response = await get<CourseListResponse>('/api/v1/courses')
       courses.value = response.courses ?? []
     } catch (err) {
       if (err instanceof ApiError) {
@@ -46,12 +50,12 @@ export const useCourseStore = defineStore('course', () => {
   }
 
   // @{"req": ["REQ-FECOURSE-001", "REQ-FECOURSE-002", "REQ-FECOURSE-003", "REQ-FECOURSE-004", "REQ-FECOURSE-005"]}
-  async function fetchCourse(id: string, token: string): Promise<void> {
+  async function fetchCourse(id: string): Promise<void> {
     loading.value = true
     error.value = null
     try {
       // CourseResponse is the FLAT course object (no wrapper) — see types/course.ts.
-      const response = await get<CourseResponse>(`/api/v1/courses/${id}`, token)
+      const response = await get<CourseResponse>(`/api/v1/courses/${id}`)
       currentCourse.value = response
     } catch (err) {
       if (err instanceof ApiError) {

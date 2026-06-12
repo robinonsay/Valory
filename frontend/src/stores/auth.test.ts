@@ -1,82 +1,162 @@
-// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156"]}
+// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-169", "REQ-FEAUTH-170", "REQ-FEAUTH-171"]}
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from './auth'
 import * as clientModule from '@/api/client'
 
+// seedStore is a helper that populates auth state by resolving restoreSession
+// with a mock GET /auth/session response, mirroring the real boot flow.
+async function seedStore(
+  store: ReturnType<typeof useAuthStore>,
+  overrides: {
+    userId?: string
+    username?: string
+    role?: 'student' | 'admin'
+    consented?: boolean
+    expiresAt?: number
+  } = {}
+) {
+  const future = Math.floor(Date.now() / 1000) + 3600
+  vi.spyOn(clientModule, 'get').mockResolvedValueOnce({
+    user_id: overrides.userId ?? 'user-uuid-1',
+    username: overrides.username ?? 'testuser',
+    role: overrides.role ?? 'student',
+    consented: overrides.consented ?? false,
+    expires_at: new Date((overrides.expiresAt ?? future) * 1000).toISOString()
+  })
+  await store.restoreSession()
+}
+
 describe('useAuthStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.restoreAllMocks()
   })
 
-  it('should initialize with empty state', () => {
+  it('should initialize with empty state and restoreDone=false', () => {
     const store = useAuthStore()
-    expect(store.token).toBeNull()
+    expect(store.userId).toBeNull()
+    expect(store.username).toBeNull()
     expect(store.role).toBeNull()
     expect(store.expiresAt).toBeNull()
     expect(store.isConsented).toBe(false)
+    expect(store.restoreDone).toBe(false)
   })
 
-  it('should set token, role, and expiresAt on login', () => {
+  // @{"verifies": ["REQ-FEAUTH-169"]}
+  // Regression: the boot-time restore (401, logged-out visitor) memoizes
+  // restorePromise; login() must force a FRESH restore or the user is stuck
+  // on /login with a valid session cookie. Caught live by the e2e tier.
+  it('login after a failed boot restore performs a fresh session fetch', async () => {
     const store = useAuthStore()
-    const now = Math.floor(Date.now() / 1000)
-    const expiresAt = now + 3600
-
-    store.login('test-token', 'student', expiresAt)
-
-    expect(store.token).toBe('test-token')
+    // Boot: restore 401s (logged out)
+    vi.spyOn(clientModule, 'get').mockRejectedValueOnce(new clientModule.ApiError(401, {}))
+    await store.restoreSession()
+    expect(store.isAuthenticated).toBe(false)
+    // Login succeeds server-side; login() must refetch the session
+    vi.spyOn(clientModule, 'get').mockResolvedValueOnce({
+      user_id: 'u1', username: 'demo_student', role: 'student',
+      consented: true, expires_at: new Date(Date.now() + 3600_000).toISOString()
+    })
+    await store.login()
+    expect(store.isAuthenticated).toBe(true)
     expect(store.role).toBe('student')
-    expect(store.expiresAt).toBe(expiresAt)
-    expect(store.isConsented).toBe(false)
   })
 
-  it('should clear all state on logout', () => {
+  // REQ-FEAUTH-169: restoreSession populates state on 200
+  it('restoreSession: populates state from GET /auth/session on 200', async () => {
     const store = useAuthStore()
-    const now = Math.floor(Date.now() / 1000)
-    store.login('test-token', 'admin', now + 3600)
+    const future = Math.floor(Date.now() / 1000) + 3600
+
+    vi.spyOn(clientModule, 'get').mockResolvedValueOnce({
+      user_id: 'abc-123',
+      username: 'alice',
+      role: 'student',
+      consented: true,
+      expires_at: new Date(future * 1000).toISOString()
+    })
+
+    await store.restoreSession()
+
+    expect(store.userId).toBe('abc-123')
+    expect(store.username).toBe('alice')
+    expect(store.role).toBe('student')
+    expect(store.isConsented).toBe(true)
+    expect(store.isAuthenticated).toBe(true)
+    expect(store.restoreDone).toBe(true)
+  })
+
+  // REQ-FEAUTH-169: restoreSession clears state on 401
+  it('restoreSession: clears state on 401 and sets restoreDone=true', async () => {
+    const store = useAuthStore()
+
+    vi.spyOn(clientModule, 'get').mockRejectedValueOnce(
+      new clientModule.ApiError(401, { error: 'unauthorized' })
+    )
+
+    await store.restoreSession()
+
+    expect(store.userId).toBeNull()
+    expect(store.username).toBeNull()
+    expect(store.role).toBeNull()
+    expect(store.isAuthenticated).toBe(false)
+    expect(store.restoreDone).toBe(true)
+  })
+
+  // REQ-FEAUTH-170: restoreDone starts false and is set to true after the call
+  it('restoreDone transitions false → true after restoreSession completes', async () => {
+    const store = useAuthStore()
+    expect(store.restoreDone).toBe(false)
+
+    vi.spyOn(clientModule, 'get').mockRejectedValueOnce(
+      new clientModule.ApiError(401, { error: 'unauthorized' })
+    )
+
+    await store.restoreSession()
+    expect(store.restoreDone).toBe(true)
+  })
+
+  it('should clear all state on logout', async () => {
+    const store = useAuthStore()
+    await seedStore(store, { role: 'admin' })
     store.setConsented()
 
-    expect(store.token).not.toBeNull()
     expect(store.role).not.toBeNull()
     expect(store.isConsented).toBe(true)
 
     store.logout()
 
-    expect(store.token).toBeNull()
+    expect(store.userId).toBeNull()
+    expect(store.username).toBeNull()
     expect(store.role).toBeNull()
     expect(store.expiresAt).toBeNull()
     expect(store.isConsented).toBe(false)
   })
 
-  it('should set isConsented to true without changing other state', () => {
+  it('should set isConsented to true without changing other state', async () => {
     const store = useAuthStore()
-    const now = Math.floor(Date.now() / 1000)
-    const expiresAt = now + 3600
-    store.login('test-token', 'student', expiresAt)
+    await seedStore(store, { role: 'student', consented: false })
 
     store.setConsented()
 
     expect(store.isConsented).toBe(true)
-    expect(store.token).toBe('test-token')
     expect(store.role).toBe('student')
-    expect(store.expiresAt).toBe(expiresAt)
   })
 
-  it('isAuthenticated getter should be false when token is null', () => {
+  it('isAuthenticated getter should be false when role is null', () => {
     const store = useAuthStore()
     expect(store.isAuthenticated).toBe(false)
   })
 
-  it('isAuthenticated getter should be true when token is set', () => {
+  it('isAuthenticated getter should be true after restoreSession succeeds', async () => {
     const store = useAuthStore()
-    store.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    await seedStore(store)
     expect(store.isAuthenticated).toBe(true)
   })
 
-  it('isStudent getter should return true only for student role', () => {
+  it('isStudent getter should return true only for student role', async () => {
     const store = useAuthStore()
-
-    store.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    await seedStore(store, { role: 'student' })
     expect(store.isStudent).toBe(true)
     expect(store.isAdmin).toBe(false)
 
@@ -84,10 +164,9 @@ describe('useAuthStore', () => {
     expect(store.isStudent).toBe(false)
   })
 
-  it('isAdmin getter should return true only for admin role', () => {
+  it('isAdmin getter should return true only for admin role', async () => {
     const store = useAuthStore()
-
-    store.login('test-token', 'admin', Math.floor(Date.now() / 1000) + 3600)
+    await seedStore(store, { role: 'admin' })
     expect(store.isAdmin).toBe(true)
     expect(store.isStudent).toBe(false)
 
@@ -100,22 +179,22 @@ describe('useAuthStore', () => {
     expect(store.isExpired).toBe(false)
   })
 
-  it('isExpired getter should return false when expiresAt is in the future', () => {
+  it('isExpired getter should return false when expiresAt is in the future', async () => {
     const store = useAuthStore()
-    const futureTime = Math.floor(Date.now() / 1000) + 3600
-    store.login('test-token', 'student', futureTime)
+    await seedStore(store, { expiresAt: Math.floor(Date.now() / 1000) + 3600 })
     expect(store.isExpired).toBe(false)
   })
 
-  it('isExpired getter should return true when expiresAt is in the past', () => {
+  it('isExpired getter should return true when expiresAt is in the past', async () => {
     const store = useAuthStore()
-    const pastTime = Math.floor(Date.now() / 1000) - 1
-    store.login('test-token', 'student', pastTime)
+    const past = Math.floor(Date.now() / 1000) - 1
+    await seedStore(store, { expiresAt: past })
     expect(store.isExpired).toBe(true)
   })
 
-  it('registerUnauthorizedHandler should register a handler that calls logout', () => {
+  it('registerUnauthorizedHandler should register a handler that calls logout', async () => {
     const store = useAuthStore()
+    await seedStore(store)
     const setSpy = vi.spyOn(clientModule, 'setUnauthorizedHandler')
 
     store.registerUnauthorizedHandler()
@@ -123,24 +202,19 @@ describe('useAuthStore', () => {
     expect(setSpy).toHaveBeenCalledWith(expect.any(Function))
 
     const handler = setSpy.mock.calls[0][0] as () => void
-    store.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
-    expect(store.token).not.toBeNull()
-
     handler()
 
-    expect(store.token).toBeNull()
     expect(store.role).toBeNull()
-    expect(store.expiresAt).toBeNull()
     expect(store.isConsented).toBe(false)
 
     setSpy.mockRestore()
   })
 
-  it('logout should call setUnauthorizedHandler(null)', () => {
+  it('logout should call setUnauthorizedHandler(null)', async () => {
     const store = useAuthStore()
+    await seedStore(store)
     const setSpy = vi.spyOn(clientModule, 'setUnauthorizedHandler')
 
-    store.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
     store.logout()
 
     expect(setSpy).toHaveBeenCalledWith(null)
@@ -148,36 +222,40 @@ describe('useAuthStore', () => {
     setSpy.mockRestore()
   })
 
-  it('should not write to localStorage on login', () => {
+  // REQ-FEAUTH-171: no token in localStorage/sessionStorage on login
+  it('should not write to localStorage after login/restoreSession', async () => {
     const store = useAuthStore()
-    // Spy on the prototype: in newer jsdom versions setItem is not an own
-    // property of the localStorage instance, and spying on the instance
-    // throws "setItem does not exist".
     const setItemSpy = vi.spyOn(Storage.prototype, 'setItem')
 
-    store.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    await seedStore(store)
 
     expect(setItemSpy).not.toHaveBeenCalled()
-
     setItemSpy.mockRestore()
+  })
+
+  // REQ-FEAUTH-171: no raw token in store state after login
+  it('store has no token field after restoreSession — token is cookie-only', async () => {
+    const store = useAuthStore()
+    await seedStore(store)
+    // The store must not expose a raw token string.
+    expect((store as unknown as Record<string, unknown>)['token']).toBeUndefined()
   })
 
   // logoutServer tests — REQ-FEAUTH-019, REQ-FEAUTH-020, REQ-FEAUTH-118, REQ-FEAUTH-119
   describe('logoutServer', () => {
     // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-118", "REQ-FEAUTH-119"]}
-    it('POSTs to /api/v1/auth/logout with the bearer token then clears local state', async () => {
+    it('POSTs to /api/v1/auth/logout without a token (cookie path) then clears local state', async () => {
       const store = useAuthStore()
-      store.login('my-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+      await seedStore(store, { role: 'student' })
       store.setConsented()
 
       const postSpy = vi.spyOn(clientModule, 'post').mockResolvedValue(undefined)
 
       await store.logoutServer()
 
-      expect(postSpy).toHaveBeenCalledWith('/api/v1/auth/logout', {}, 'my-token')
-      expect(store.token).toBeNull()
+      // Called with no token argument — browser sends the cookie automatically.
+      expect(postSpy).toHaveBeenCalledWith('/api/v1/auth/logout', {})
       expect(store.role).toBeNull()
-      expect(store.expiresAt).toBeNull()
       expect(store.isConsented).toBe(false)
 
       postSpy.mockRestore()
@@ -186,16 +264,13 @@ describe('useAuthStore', () => {
     // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020"]}
     it('clears local state even when the server POST fails', async () => {
       const store = useAuthStore()
-      store.login('my-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+      await seedStore(store, { role: 'student' })
       store.setConsented()
 
       const postSpy = vi.spyOn(clientModule, 'post').mockRejectedValue(new Error('Network error'))
 
       await store.logoutServer()
 
-      // The user must never be stranded in a logged-in state after a network
-      // failure; local state is cleared regardless of server response.
-      expect(store.token).toBeNull()
       expect(store.role).toBeNull()
       expect(store.isConsented).toBe(false)
 
@@ -203,15 +278,16 @@ describe('useAuthStore', () => {
     })
 
     // @{"req": ["REQ-FEAUTH-020"]}
-    it('does not POST when there is no current token', async () => {
+    it('still POSTs even when unauthenticated (cookie may still be present)', async () => {
       const store = useAuthStore()
-      // token is null — no server call should be made
+      // Do not seed — role is null. Cookie may still be in the browser, so the
+      // POST is still sent to ensure the server clears its session.
       const postSpy = vi.spyOn(clientModule, 'post').mockResolvedValue(undefined)
 
       await store.logoutServer()
 
-      expect(postSpy).not.toHaveBeenCalled()
-      expect(store.token).toBeNull()
+      // POST is sent unconditionally so any residual server session is revoked.
+      expect(postSpy).toHaveBeenCalledWith('/api/v1/auth/logout', {})
 
       postSpy.mockRestore()
     })

@@ -20,7 +20,7 @@ const handleAgree = async (): Promise<void> => {
   errorMessage.value = null
 
   try {
-    await post('/api/v1/consent', { version: CONSENT_VERSION }, auth.token)
+    await post('/api/v1/consent', { version: CONSENT_VERSION })
     auth.setConsented()
     // Admins are exempt from the consent gate but can still land here;
     // send each role to its own home.
@@ -40,6 +40,9 @@ const handleAgree = async (): Promise<void> => {
 <template>
   <div class="consent-container">
     <div class="consent-content">
+      <div class="consent-logo-section">
+        <img src="/valory.svg" alt="Valory" class="consent-logo" />
+      </div>
       <h1 class="consent-title">AI Processing Consent Statement — Version {{ CONSENT_VERSION }}</h1>
 
       <div class="consent-statement-panel">
@@ -255,6 +258,17 @@ const handleAgree = async (): Promise<void> => {
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.consent-logo-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.consent-logo {
+  height: 40px;
+  width: 40px;
 }
 
 .consent-title {

@@ -1,4 +1,4 @@
-// @{"verifies", ["REQ-FECOURSE-028", "REQ-FECOURSE-056", "REQ-FECOURSE-057",
+// @{"verifies": ["REQ-FECOURSE-028", "REQ-FECOURSE-056", "REQ-FECOURSE-057",
 //                "REQ-FECOURSE-221", "REQ-FECOURSE-223", "REQ-FECOURSE-225",
 //                "REQ-FECOURSE-490", "REQ-FECOURSE-491", "REQ-FECOURSE-590"]}
 //
@@ -116,7 +116,7 @@ async function createCourseViaUI(page: Page, topicSuffix: string): Promise<strin
 // Test 1: IntakePreparingIndicator_VisibleWhileHistoryEmpty
 // ---------------------------------------------------------------------------
 //
-// @{"verifies", ["REQ-FECOURSE-028"]}
+// @{"verifies": ["REQ-FECOURSE-028"]}
 //
 // Verifies REQ-FECOURSE-028: the frontend shall indicate that course
 // preparation is in progress while the intake conversation is empty.
@@ -137,7 +137,7 @@ async function createCourseViaUI(page: Page, topicSuffix: string): Promise<strin
 //
 // AI cost per run: 1 course creation kickoff call (accepted).
 
-// @{"verifies", ["REQ-FECOURSE-028"]}
+// @{"verifies": ["REQ-FECOURSE-028"]}
 test('IntakePreparingIndicator_VisibleWhileHistoryEmpty', async ({ page }) => {
   const bearerToken = await loginAndClean(page)
   let courseId: string | null = null
@@ -177,7 +177,7 @@ test('IntakePreparingIndicator_VisibleWhileHistoryEmpty', async ({ page }) => {
 // Test 2: IntakeSendFailure_ErrorBannerShownAndDismissible
 // ---------------------------------------------------------------------------
 //
-// @{"verifies", ["REQ-FECOURSE-225", "REQ-FECOURSE-221", "REQ-FECOURSE-223"]}
+// @{"verifies": ["REQ-FECOURSE-225", "REQ-FECOURSE-221", "REQ-FECOURSE-223"]}
 //
 // Verifies:
 //   REQ-FECOURSE-225: display an error message and re-enable input when the
@@ -200,7 +200,7 @@ test('IntakePreparingIndicator_VisibleWhileHistoryEmpty', async ({ page }) => {
 //
 // markKickoffSent is called after course creation per the README rule.
 
-// @{"verifies", ["REQ-FECOURSE-225", "REQ-FECOURSE-221", "REQ-FECOURSE-223"]}
+// @{"verifies": ["REQ-FECOURSE-225", "REQ-FECOURSE-221", "REQ-FECOURSE-223"]}
 test('IntakeSendFailure_ErrorBannerShownAndDismissible', async ({ page }) => {
   const bearerToken = await loginAndClean(page)
   let courseId: string | null = null
@@ -288,7 +288,7 @@ test('IntakeSendFailure_ErrorBannerShownAndDismissible', async ({ page }) => {
 // Test 3: SyllabusDrafting_IndicatorThenAutoRender
 // ---------------------------------------------------------------------------
 //
-// @{"verifies", ["REQ-FECOURSE-056", "REQ-FECOURSE-057",
+// @{"verifies": ["REQ-FECOURSE-056", "REQ-FECOURSE-057",
 //                "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
 //
 // Verifies:
@@ -316,7 +316,7 @@ test('IntakeSendFailure_ErrorBannerShownAndDismissible', async ({ page }) => {
 //
 // AI cost: 1 kickoff call from course creation (accepted).
 
-// @{"verifies", ["REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
+// @{"verifies": ["REQ-FECOURSE-056", "REQ-FECOURSE-057", "REQ-FECOURSE-490", "REQ-FECOURSE-491"]}
 test('SyllabusDrafting_IndicatorThenAutoRender', async ({ page }) => {
   const bearerToken = await loginAndClean(page)
   let courseId: string | null = null
@@ -430,7 +430,7 @@ test('SyllabusDrafting_IndicatorThenAutoRender', async ({ page }) => {
 // Test 4: SyllabusFetchFailure_NonDraftErrorStillShown
 // ---------------------------------------------------------------------------
 //
-// @{"verifies", ["REQ-FECOURSE-490", "REQ-FECOURSE-590"]}
+// @{"verifies": ["REQ-FECOURSE-490", "REQ-FECOURSE-590"]}
 //
 // Verifies:
 //   REQ-FECOURSE-490: when a non-404 error occurs (e.g. 500), the error
@@ -446,7 +446,7 @@ test('SyllabusDrafting_IndicatorThenAutoRender', async ({ page }) => {
 //
 // AI cost: 1 kickoff call from course creation (accepted).
 
-// @{"verifies", ["REQ-FECOURSE-490", "REQ-FECOURSE-590"]}
+// @{"verifies": ["REQ-FECOURSE-490", "REQ-FECOURSE-590"]}
 test('SyllabusFetchFailure_NonDraftErrorStillShown', async ({ page }) => {
   const bearerToken = await loginAndClean(page)
   let courseId: string | null = null

@@ -1,0 +1,193 @@
+= Session Persistence — Frontend Flow Walkthroughs
+:revdate: 2026-06-12
+
+== Frontend Changes
+
+=== Auth store (`frontend/src/stores/auth.ts`)
+
+The `token` ref is removed from the store's public interface.  Auth state is
+derived entirely from the `GET /api/v1/auth/session` response.
+
+New state shape:
+
+[source,typescript]
+----
+const userId   = ref<string | null>(null)
+const username = ref<string | null>(null)
+const role     = ref<'student' | 'admin' | null>(null)
+const expiresAt = ref<number | null>(null)
+const isConsented = ref(false)
+
+// True only after restoreSession() has completed (success or failure).
+const restoreDone = ref(false)
+
+// Set the moment restoreSession() starts; the router guard awaits this
+// promise to block navigation until auth state is known (REQ-FEAUTH-170).
+let restorePromise: Promise<void> | null = null
+----
+
+New action:
+
+[source,typescript]
+----
+function restoreSession(): Promise<void> {
+  if (restorePromise !== null) return restorePromise
+  restorePromise = (async () => {
+    try {
+      const data = await get<SessionResponse>('/api/v1/auth/session')
+      userId.value    = data.user_id
+      username.value  = data.username
+      role.value      = data.role
+      expiresAt.value = new Date(data.expires_at).getTime() / 1000
+      isConsented.value = data.consented
+      registerUnauthorizedHandler()
+    } catch {
+      // 401 or network error — not logged in.
+      userId.value    = null
+      username.value  = null
+      role.value      = null
+      expiresAt.value = null
+      isConsented.value = false
+    } finally {
+      restoreDone.value = true
+    }
+  })()
+  return restorePromise
+}
+----
+
+The `login()` function is simplified: after a successful `POST /login`, the
+frontend does NOT write the token into local state.  Instead it calls
+`restoreSession()` which populates the store from `GET /api/v1/auth/session`.
+This means the login flow makes two round-trips (POST login + GET session),
+which is acceptable — the alternative of duplicating session-parsing logic in
+the frontend is worse.
+
+The `logoutServer()` function sends `POST /api/v1/auth/logout` without a body.
+The token is now in the cookie; the server reads it there.  No token in the
+request header.  After a successful or failed server call, the store clears all
+reactive state and `restoreDone` remains `true` (already past boot).
+
+The `isAuthenticated` computed is based on `role !== null` (unchanged
+semantics, different backing field).
+
+=== Router guard (`frontend/src/router/index.ts`)
+
+Sprint 13.2 design (restoreDone flag + App.vue router.replace hack):
+
+The original design added a `restoreDone` boolean to the guard signature and
+returned `undefined` while it was false.  `App.vue` then called
+`router.replace()` after `restoreSession()` completed to re-trigger the guard.
+This introduced a race: while `restoreDone=false`, protected components mounted
+and fired API calls, producing spurious 401s.
+
+Sprint 13 fix (restorePromise + async guard):
+
+The guard is now `async`.  The auth store exposes a `getRestorePromise()`
+method that returns the in-flight (or completed) promise set by
+`restoreSession()`.  The guard awaits this promise before making any routing
+decision:
+
+[source,typescript]
+----
+export async function guardFn(
+  to: RouteLocationNormalized,
+  auth: {
+    restorePromise?: Promise<void> | null
+    isAuthenticated: boolean
+    isAdmin: boolean
+    isStudent: boolean
+    isConsented: boolean
+    isExpired: boolean
+    logout: () => void
+  }
+): Promise<RouteLocationRaw | undefined> {
+  // REQ-FEAUTH-170: block navigation until session restore completes.
+  if (auth.restorePromise) {
+    await auth.restorePromise
+  }
+  // ... existing rules 1–7 unchanged ...
+}
+----
+
+The `router.beforeEach` registration is now also async:
+
+[source,typescript]
+----
+router.beforeEach(async (to, _from) => {
+  const auth = useAuthStore()
+  const redirect = await guardFn(to, {
+    restorePromise: auth.getRestorePromise(),
+    isAuthenticated: auth.isAuthenticated,
+    // ...
+  })
+  return redirect ?? true
+})
+----
+
+Because the guard blocks, components never mount before auth state is known.
+The `App.vue` `router.replace()` correction hack is removed — the guard
+decides correctly the first time.
+
+=== SPA boot (`frontend/src/App.vue`)
+
+`restoreSession()` is called once at SPA boot from `App.vue onMounted`.
+No `router.replace()` call is needed:
+
+[source,typescript]
+----
+onMounted(() => {
+  auth.restoreSession()
+})
+----
+
+The router guard's async `await` on `getRestorePromise()` handles the
+sequencing.  `onMounted` does not need to `await` the result; the promise is
+captured inside the store and the guard reads it via `getRestorePromise()`.
+
+=== Finding-1 fix: CSRF re-issue on session restore
+
+During Sprint 13 systems review, Finding-1 was identified: the `__Host-csrf`
+cookie is a browser-session cookie (no `Max-Age`) but `__Host-session` persists
+for 24 h.  After a browser restart, the user is authenticated (session cookie
+survives) but the CSRF cookie does not.  Every mutation then returns 403
+`csrf_token_missing`.
+
+Fix: `GetSession` now generates a fresh CSRF token and calls
+`security.SetCSRFCookie` before writing the 200 response, exactly as `login`
+does.  This guarantees that any successful `GET /api/v1/auth/session` call
+(including SPA boot session restore after a browser restart) leaves the browser
+with a valid CSRF cookie.
+
+=== API client (`frontend/src/api/client.ts`)
+
+The `request()` function currently attaches `Authorization: Bearer <token>`
+when `options.token` is non-null.  Because the session cookie is sent
+automatically by the browser, no explicit header is required for browser
+requests.  The `token` parameter remains in the function signature for
+backwards compatibility with API clients and e2e helpers, but browser callers
+pass `undefined`.
+
+The `getCsrfToken()` function and the `X-CSRF-Token` header attachment logic
+are unchanged.  The CSRF cookie (`__Host-csrf`) is already set at login and
+read on every mutating request.
+
+== e2e Suite Impact
+
+Current helpers authenticate by reading the `token` from the login response
+body and attaching `Authorization: Bearer <token>` to subsequent requests.
+This path continues to work unchanged: the amended middleware accepts the
+header when present and the cookie when absent.
+
+After cookies are in place, `page.reload()` and `page.goto()` in Playwright
+tests will preserve the session cookie automatically, so helpers that currently
+re-login after a reload can be simplified.  This simplification is deferred to
+Sprint 13.4.
+
+Sprint 13.4 deliverable: audit e2e helpers for redundant re-login calls and
+remove them where `page.reload()` now suffices.
+
+Post-logout navigation assertion (`session-refresh.spec.ts`): after logout,
+`page.goto('/courses')` (hard navigation) must end at `/login`.  The async
+guard makes this deterministic — the restore fetch returns 401 (server session
+is deleted), the guard sees `isAuthenticated=false`, and redirects to `/login`.

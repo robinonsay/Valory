@@ -1,12 +1,29 @@
-// @{"req": ["REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-012", "REQ-FEAUTH-100", "REQ-FEAUTH-101", "REQ-FEAUTH-102", "REQ-FEAUTH-110", "REQ-FEAUTH-115", "REQ-FEAUTH-120"]}
+// @{"req": ["REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-012", "REQ-FEAUTH-100", "REQ-FEAUTH-101", "REQ-FEAUTH-102", "REQ-FEAUTH-110", "REQ-FEAUTH-115", "REQ-FEAUTH-120", "REQ-FEAUTH-171"]}
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import LoginView from './LoginView.vue'
 import * as clientModule from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+
+// sessionResponse is the shape returned by GET /api/v1/auth/session (restoreSession)
+const studentSession = {
+  user_id: 'user-123',
+  username: 'student1',
+  role: 'student',
+  consented: true,
+  expires_at: new Date(Date.now() + 3600000).toISOString()
+}
+
+const adminSession = {
+  user_id: 'admin-456',
+  username: 'admin1',
+  role: 'admin',
+  consented: true,
+  expires_at: new Date(Date.now() + 3600000).toISOString()
+}
 
 describe('LoginView', () => {
   beforeEach(() => {
@@ -40,14 +57,19 @@ describe('LoginView', () => {
     expect(passwordInput.exists()).toBe(true)
     expect(passwordInput.attributes('required')).toBeDefined()
     expect(submitButton.exists()).toBe(true)
+
+    const logo = wrapper.find('.login-logo')
+    expect(logo.exists()).toBe(true)
+    expect(logo.attributes('src')).toContain('valory.svg')
+    expect(logo.attributes('alt')).toBe('Valory')
   })
 
-  it('should submit with valid credentials (200 response) and call auth.login, then redirect to /courses for student', async () => {
-    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({
-      token: 'test-token',
-      role: 'student',
-      expires_at: new Date(Date.now() + 3600000).toISOString()
-    })
+  it('should submit with valid credentials (200 response) and redirect to /courses for student', async () => {
+    // POST /api/v1/auth/login — server sets cookie, returns void
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue(undefined)
+    // GET /api/v1/auth/session — restoreSession() call from auth.login()
+    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue(studentSession)
+
     const routerPushSpy = vi.fn()
 
     const router = createRouter({
@@ -71,26 +93,28 @@ describe('LoginView', () => {
     await wrapper.find('input[type="password"]').setValue('password123')
     await wrapper.find('form').trigger('submit')
 
-    await Promise.resolve()
+    await flushPromises()
     await wrapper.vm.$nextTick()
 
     expect(mockPost).toHaveBeenCalledWith('/api/v1/auth/login', {
       username: 'test@example.com',
       password: 'password123'
     })
-    expect(auth.token).toBe('test-token')
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/auth/session')
     expect(auth.role).toBe('student')
+    expect(auth.isAuthenticated).toBe(true)
+    // REQ-FEAUTH-171: token must NOT be stored in reactive state
+    expect((auth as Record<string, unknown>).token).toBeUndefined()
     expect(routerPushSpy).toHaveBeenCalledWith('/courses')
 
     mockPost.mockRestore()
+    mockGet.mockRestore()
   })
 
   it('should submit with admin credentials (200 response) and redirect to /admin/users', async () => {
-    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue({
-      token: 'admin-token',
-      role: 'admin',
-      expires_at: new Date(Date.now() + 3600000).toISOString()
-    })
+    const mockPost = vi.spyOn(clientModule, 'post').mockResolvedValue(undefined)
+    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue(adminSession)
+
     const routerPushSpy = vi.fn()
 
     const router = createRouter({
@@ -114,14 +138,15 @@ describe('LoginView', () => {
     await wrapper.find('input[type="password"]').setValue('adminpass')
     await wrapper.find('form').trigger('submit')
 
-    await Promise.resolve()
+    await flushPromises()
     await wrapper.vm.$nextTick()
 
-    expect(auth.token).toBe('admin-token')
     expect(auth.role).toBe('admin')
+    expect(auth.isAdmin).toBe(true)
     expect(routerPushSpy).toHaveBeenCalledWith('/admin/users')
 
     mockPost.mockRestore()
+    mockGet.mockRestore()
   })
 
   it('should show inline error "Invalid credentials" on 401 response', async () => {
@@ -152,7 +177,8 @@ describe('LoginView', () => {
     const errorElement = wrapper.find('.error-message')
     expect(errorElement.exists()).toBe(true)
     expect(errorElement.text()).toBe('Invalid credentials')
-    expect(auth.token).toBeNull()
+    // No session — store should remain unauthenticated
+    expect(auth.isAuthenticated).toBe(false)
 
     mockPost.mockRestore()
   })
@@ -188,16 +214,14 @@ describe('LoginView', () => {
   })
 
   it('should disable submit button while request is in flight', async () => {
-    let resolvePromise: (() => void) | null = null
+    let resolvePost: (() => void) | null = null
     const mockPost = vi.spyOn(clientModule, 'post').mockImplementation(
       () => new Promise(resolve => {
-        resolvePromise = () => resolve({
-          token: 'test-token',
-          role: 'student',
-          expires_at: new Date(Date.now() + 3600000).toISOString()
-        })
+        resolvePost = () => resolve(undefined)
       })
     )
+    // restoreSession resolves immediately after post resolves
+    const mockGet = vi.spyOn(clientModule, 'get').mockResolvedValue(studentSession)
 
     const router = createRouter({
       history: createMemoryHistory(),
@@ -224,18 +248,18 @@ describe('LoginView', () => {
     expect(submitButton.text()).toBe('Signing in...')
     expect(submitButton.element.hasAttribute('disabled')).toBe(true)
 
-    if (resolvePromise) {
-      resolvePromise()
+    if (resolvePost) {
+      resolvePost()
     }
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-    await wrapper.vm.$nextTick()
+    // Flush: post resolves → auth.login() → restoreSession() → get() resolves
+    // → store updated → finally block → isLoading = false
+    await flushPromises()
     await wrapper.vm.$nextTick()
     expect(submitButton.text()).toBe('Sign in')
     expect(submitButton.element.hasAttribute('disabled')).toBe(false)
 
     mockPost.mockRestore()
+    mockGet.mockRestore()
   })
 
   it('should clear error when user starts typing', async () => {

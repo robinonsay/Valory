@@ -48,8 +48,11 @@ export async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = { ...options?.headers }
 
-  // REQ-FEAUTH-045, REQ-FEAUTH-046: attach bearer token when provided.
-  if (options?.token) {
+  // REQ-FEAUTH-045, REQ-FEAUTH-046: attach bearer token when provided and
+  // non-null. After a page refresh the store operates token-less (cookie path),
+  // so token may be null/undefined — omitting the header lets the browser send
+  // the __Host-session cookie instead (REQ-AUTH-011).
+  if (options?.token != null) {
     headers['Authorization'] = `Bearer ${options.token}`
   }
 

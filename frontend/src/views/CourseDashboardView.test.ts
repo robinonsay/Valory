@@ -194,7 +194,7 @@ describe('CourseDashboardView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const createBtn = wrapper.find('.create-button')
     await createBtn.trigger('click')
@@ -209,7 +209,7 @@ describe('CourseDashboardView', () => {
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses', { topic: 'Linear Algebra' }, 'test-token')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses', { topic: 'Linear Algebra' })
     expect(pushSpy).toHaveBeenCalledWith('/courses/new-course-id/intake')
   })
 
@@ -240,7 +240,7 @@ describe('CourseDashboardView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const createBtn = wrapper.find('.create-button')
     await createBtn.trigger('click')
@@ -323,7 +323,7 @@ describe('CourseDashboardView', () => {
     ]
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const createBtn = wrapper.find('.create-button')
     await createBtn.trigger('click')
@@ -442,7 +442,7 @@ describe('CourseDashboardView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     const createBtn = wrapper.find('.create-button')
     await createBtn.trigger('click')
@@ -457,7 +457,7 @@ describe('CourseDashboardView', () => {
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses', { topic: 'Linear Algebra' }, 'test-token')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/courses', { topic: 'Linear Algebra' })
   })
 
   it('course card renders topic when title is empty', async () => {

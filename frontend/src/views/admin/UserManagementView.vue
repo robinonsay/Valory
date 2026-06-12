@@ -39,7 +39,7 @@ async function fetchUsers(): Promise<void> {
   try {
     loading.value = true
     error.value = null
-    const response = await get<UsersResponse>('/api/v1/users', auth.token)
+    const response = await get<UsersResponse>('/api/v1/users')
     users.value = response.users ?? []
   } catch (err) {
     if (err instanceof ApiError) {
@@ -59,7 +59,7 @@ async function deactivateUser(user: UserItem): Promise<void> {
   }
   try {
     error.value = null
-    await post<void>(`/api/v1/users/${user.id}/deactivate`, {}, auth.token)
+    await post<void>(`/api/v1/users/${user.id}/deactivate`, {})
     const target = users.value.find(u => u.id === user.id)
     if (target) {
       target.is_active = false
@@ -77,7 +77,7 @@ async function deactivateUser(user: UserItem): Promise<void> {
 async function activateUser(user: UserItem): Promise<void> {
   try {
     error.value = null
-    await post<void>(`/api/v1/users/${user.id}/activate`, {}, auth.token)
+    await post<void>(`/api/v1/users/${user.id}/activate`, {})
     const target = users.value.find(u => u.id === user.id)
     if (target) {
       target.is_active = true
@@ -98,7 +98,7 @@ async function deleteUser(user: UserItem): Promise<void> {
   }
   try {
     error.value = null
-    await del<void>(`/api/v1/users/${user.id}`, auth.token)
+    await del<void>(`/api/v1/users/${user.id}`)
     users.value = users.value.filter(u => u.id !== user.id)
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
@@ -139,7 +139,7 @@ async function createUser(): Promise<void> {
 
   try {
     createSubmitting.value = true
-    const newUser = await post<UserItem>('/api/v1/users', body, auth.token)
+    const newUser = await post<UserItem>('/api/v1/users', body)
     users.value.unshift(newUser)
     createForm.value = { username: '', email: '', password: '', role: '' }
   } catch (err) {

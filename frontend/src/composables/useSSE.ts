@@ -1,7 +1,10 @@
 // @{"req": ["REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-072", "REQ-FECOURSE-073", "REQ-FECOURSE-700", "REQ-FECOURSE-701", "REQ-FECOURSE-710", "REQ-FECOURSE-720", "REQ-FECOURSE-730"]}
 
 export interface SSEOptions {
-  token: string
+  // token is optional: when present it is sent as Authorization Bearer (e2e
+  // helpers and bearer-only API clients). When absent the browser sends the
+  // __Host-session cookie automatically (REQ-AUTH-011 cookie fallback path).
+  token?: string | null
   onEvent: (eventType: string, data: string, lastEventId: string) => void
   onError?: (err: Error) => void
 }
@@ -33,10 +36,18 @@ export function useSSE(url: string, options: SSEOptions): { close: () => void } 
 
     controller = new AbortController()
 
+    // Build headers: include Authorization only when a token is provided. When
+    // token is absent (post-refresh cookie path), the browser sends the
+    // __Host-session cookie automatically on same-origin fetch calls.
+    const fetchHeaders: Record<string, string> = {}
+    if (options.token != null) {
+      fetchHeaders['Authorization'] = `Bearer ${options.token}`
+    }
+
     let response: Response
     try {
       response = await fetch(connectUrl, {
-        headers: { Authorization: `Bearer ${options.token}` },
+        headers: fetchHeaders,
         signal: controller.signal
       })
     } catch (err) {

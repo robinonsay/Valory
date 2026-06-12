@@ -588,5 +588,37 @@
     "rationale": "The frontend relies on SSE status_change events to navigate the student to the correct view after each lifecycle transition; without this emission the frontend cannot detect that intake has completed.",
     "verification_method": "Test",
     "uses": ["REQ-AGENT-006", "REQ-AGENT-019"]
+  },
+  {
+    "id": "REQ-AUTH-009",
+    "title": "Session Cookie Set on Login",
+    "description": "The auth module shall set a __Host-session httpOnly, Secure, SameSite=Strict cookie on successful login.",
+    "rationale": "An httpOnly cookie with host-binding and strict same-site policy carries the session credential to the browser without exposing it to JavaScript, satisfying XSS and CSRF-origin constraints simultaneously.",
+    "verification_method": "Test",
+    "uses": ["REQ-AUTH-002", "REQ-AUTH-005"]
+  },
+  {
+    "id": "REQ-AUTH-010",
+    "title": "Session Cookie Cleared on Logout",
+    "description": "The auth module shall clear the __Host-session cookie by setting it to an empty value with Max-Age=0 on logout.",
+    "rationale": "Clearing the cookie on logout ensures the browser discards the session credential immediately, preventing the cookie from being replayed after the server-side session is revoked.",
+    "verification_method": "Test",
+    "uses": ["REQ-AUTH-002"]
+  },
+  {
+    "id": "REQ-AUTH-011",
+    "title": "Cookie-Fallback Session Token Extraction",
+    "description": "The auth module shall accept the session token from the __Host-session cookie when no Authorization header is present.",
+    "rationale": "Browser clients no longer store the raw token in JavaScript; the middleware must fall back to the cookie so browser and API-client authentication paths both work without requiring code changes to existing API clients.",
+    "verification_method": "Test",
+    "uses": ["REQ-AUTH-002", "REQ-SECURITY-004"]
+  },
+  {
+    "id": "REQ-AUTH-012",
+    "title": "Session Restore Endpoint",
+    "description": "The auth module shall expose a GET /api/v1/auth/session endpoint returning user identity, role, and consent state, or 401.",
+    "rationale": "The SPA needs a single authenticated call at boot to restore user identity, role, and consent state without persisting any token in JavaScript; a dedicated endpoint eliminates multiple round-trips and enables the router guard to make correct decisions before the first navigation.",
+    "verification_method": "Test",
+    "uses": ["REQ-AUTH-002", "REQ-AUTH-005", "REQ-SECURITY-005"]
   }
 ]

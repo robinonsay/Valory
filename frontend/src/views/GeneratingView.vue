@@ -44,8 +44,9 @@ function onError(err: Error): void {
 }
 
 onMounted(() => {
+  // REQ-AUTH-011: token is omitted; the browser sends the __Host-session cookie
+  // automatically on same-origin fetch requests made by useSSE.
   sse = useSSE(`/api/v1/courses/${route.params.id}/events`, {
-    token: auth.token!,
     onEvent,
     onError
   })

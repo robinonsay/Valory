@@ -2,7 +2,6 @@
 // @{"req": ["REQ-FECONTENT-050", "REQ-FECONTENT-051", "REQ-FECONTENT-052", "REQ-FECONTENT-053", "REQ-FECONTENT-165", "REQ-FECONTENT-170", "REQ-FECONTENT-175", "REQ-FECONTENT-180"]}
 import { ref, onMounted } from 'vue'
 import { get, ApiError } from '@/api/client'
-import { useAuthStore } from '@/stores/auth'
 
 interface StudentBadge {
   id: string
@@ -14,8 +13,6 @@ interface StudentBadge {
   badge_reward_value: number
 }
 
-const authStore = useAuthStore()
-
 const badges = ref<StudentBadge[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -24,7 +21,7 @@ onMounted(async () => {
   try {
     loading.value = true
     error.value = null
-    badges.value = (await get<StudentBadge[]>('/api/v1/users/me/badges', authStore.token)) ?? []
+    badges.value = (await get<StudentBadge[]>('/api/v1/users/me/badges')) ?? []
   } catch (err) {
     if (err instanceof ApiError) {
       error.value = 'Failed to load badges. Please try again.'

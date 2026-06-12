@@ -35,7 +35,7 @@ describe('GeneratingView', () => {
     vi.spyOn(useSSEModule, 'useSSE').mockImplementation(mockUseSSE)
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     router.push('/courses/test-course-id/generating')
     await router.isReady()
@@ -51,7 +51,8 @@ describe('GeneratingView', () => {
     expect(mockUseSSE).toHaveBeenCalled()
     const callArgs = mockUseSSE.mock.calls[0]
     expect(callArgs[0]).toBe('/api/v1/courses/test-course-id/events')
-    expect(callArgs[1].token).toBe('test-token')
+    // Cookie-based auth: token is not passed; SSE uses __Host-session cookie automatically
+    expect(callArgs[1].token == null).toBe(true)
   })
 
   it('updates progress percentage on progress event', async () => {
@@ -64,7 +65,7 @@ describe('GeneratingView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     router.push('/courses/test-course-id/generating')
     await router.isReady()
@@ -95,7 +96,7 @@ describe('GeneratingView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     router.push('/courses/test-course-id/generating')
     await router.isReady()
@@ -122,7 +123,7 @@ describe('GeneratingView', () => {
     vi.spyOn(useSSEModule, 'useSSE').mockReturnValue({ close: mockClose })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     router.push('/courses/test-course-id/generating')
     await router.isReady()
@@ -151,7 +152,7 @@ describe('GeneratingView', () => {
     })
 
     const auth = useAuthStore()
-    auth.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
+    auth.$patch({ role: 'student', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
 
     router.push('/courses/test-course-id/generating')
     await router.isReady()

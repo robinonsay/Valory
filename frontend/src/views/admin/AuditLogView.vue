@@ -42,7 +42,7 @@ async function fetchAuditLog(before?: number): Promise<void> {
       url += `&before=${before}`
     }
 
-    const response = await get<AuditResponse>(url, auth.token)
+    const response = await get<AuditResponse>(url)
     entries.value.push(...(response.entries ?? []))
     nextBefore.value = response.next_before
   } catch (err) {

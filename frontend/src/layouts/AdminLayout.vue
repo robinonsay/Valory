@@ -1,30 +1,16 @@
 // @{"req": ["REQ-FEADMIN-010", "REQ-FEADMIN-011", "REQ-FEADMIN-012", "REQ-FEADMIN-013", "REQ-FEADMIN-100", "REQ-FEADMIN-101", "REQ-FEADMIN-102", "REQ-FEADMIN-110"]}
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-const username = ref<string>('Admin')
-
-onMounted(async () => {
-  try {
-    const response = await fetch('/api/v1/users/me', {
-      headers: {
-        'Authorization': `Bearer ${auth.token}`
-      }
-    })
-    if (response.ok) {
-      const data = await response.json() as { username: string }
-      username.value = data.username
-    }
-  } catch {
-    username.value = 'Admin'
-  }
-})
+// Use the username already present in the auth store (populated by restoreSession
+// on SPA boot or by login). Falls back to 'Admin' if not yet available.
+const username = computed(() => auth.username ?? 'Admin')
 
 // @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-118", "REQ-FEAUTH-119"]}
 const handleLogout = async (): Promise<void> => {
@@ -36,6 +22,10 @@ const handleLogout = async (): Promise<void> => {
 <template>
   <div class="admin-layout">
     <aside class="sidebar">
+      <RouterLink to="/admin/users" class="sidebar-brand">
+        <img src="/valory.svg" alt="Valory" class="sidebar-logo" />
+        <span class="sidebar-brand-text">Valory</span>
+      </RouterLink>
       <nav class="sidebar-nav">
         <div class="nav-links">
           <RouterLink
@@ -118,6 +108,32 @@ const handleLogout = async (): Promise<void> => {
   top: 0;
   bottom: 0;
   overflow-y: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-brand:hover {
+  opacity: 0.9;
+}
+
+.sidebar-logo {
+  height: 28px;
+  width: 28px;
+}
+
+.sidebar-brand-text {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ecf0f1;
+  letter-spacing: 0.02em;
 }
 
 .sidebar-nav {

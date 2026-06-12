@@ -150,7 +150,10 @@ describe('useAuthStore', () => {
 
   it('should not write to localStorage on login', () => {
     const store = useAuthStore()
-    const setItemSpy = vi.spyOn(localStorage, 'setItem')
+    // Spy on the prototype: in newer jsdom versions setItem is not an own
+    // property of the localStorage instance, and spying on the instance
+    // throws "setItem does not exist".
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem')
 
     store.login('test-token', 'student', Math.floor(Date.now() / 1000) + 3600)
 

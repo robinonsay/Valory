@@ -1,4 +1,5 @@
 // @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015"]}
+import { h } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import LoginView from '@/views/LoginView.vue'
@@ -30,6 +31,15 @@ declare module 'vue-router' {
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    {
+      // The root path is every user's entry point. Send it to /login: the
+      // guard's rule 3 immediately forwards already-authenticated users to
+      // their role home (/courses or /admin/users), so this is correct for
+      // both fresh and returning sessions. Without this route, "/" fell
+      // through to the catch-all and rendered a blank page.
+      path: '/',
+      redirect: '/login'
+    },
     {
       path: '/login',
       name: 'login',
@@ -138,7 +148,10 @@ const router = createRouter({
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
-      component: { template: '<div>Page not found</div>' },
+      // Must be a render function, not a `template:` string — the production
+      // bundle ships the runtime-only Vue build (no template compiler), where
+      // a string template silently renders nothing (a blank page).
+      component: { render: () => h('div', 'Page not found') },
       meta: {}
     }
   ]

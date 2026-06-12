@@ -131,7 +131,8 @@ cp .env.example .env
 docker compose up
 
 # 4. Open your browser
-# Navigate to http://localhost:3000
+# Navigate to https://localhost — in development a self-signed certificate is
+# generated automatically, so accept the browser's certificate warning.
 ```
 
 ---

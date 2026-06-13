@@ -178,21 +178,37 @@ func NewAuthMiddleware(
 			ctx = context.WithValue(ctx, contextKeyRole, session.Role)
 			ctx = context.WithValue(ctx, contextKeyConn, conn)
 
-			// @{"req": ["REQ-SECURITY-005"]}
+			// @{"req": ["REQ-SECURITY-005", "REQ-AUTH-014"]}
 			// Students must have accepted the current consent version before they can
 			// access any protected endpoint. Admins are exempt so they can always
 			// manage the system regardless of consent state.
+			//
+			// A newly-created student with must_change_password=true is forced to
+			// change their password BEFORE the consent step (the SPA router gates
+			// change-password ahead of consent). The change-password endpoint sits
+			// behind this middleware, so without an exemption a not-yet-consented
+			// student is blocked from the very endpoint they are required to call
+			// first — the 403 CONSENT_REQUIRED then surfaces in the UI as a bogus
+			// "current password is incorrect". Exempt the same minimal set the
+			// must-change gate allows (change own password / read self / logout) so
+			// the forced-change-then-consent onboarding order works end to end.
 			if consentProvider != nil && session.Role == "student" {
-				currentVersion := consentProvider.GetString("consent_version")
-				var storedVersion string
-				// pgx.ErrNoRows leaves storedVersion as "", which is always < any
-				// real version string, so both missing and stale rows are rejected.
-				_ = pool.QueryRow(r.WithContext(ctx).Context(),
-					`SELECT consent_version FROM student_consent WHERE student_id = $1`,
-					session.UserID).Scan(&storedVersion)
-				if semverLess(storedVersion, currentVersion) {
-					writeConsentError(w, currentVersion)
-					return
+				p := r.URL.Path
+				m := r.Method
+				consentExempt := (m == http.MethodPost && (p == "/api/v1/users/me/password" || p == "/api/v1/auth/logout")) ||
+					(m == http.MethodGet && p == "/api/v1/users/me")
+				if !consentExempt {
+					currentVersion := consentProvider.GetString("consent_version")
+					var storedVersion string
+					// pgx.ErrNoRows leaves storedVersion as "", which is always < any
+					// real version string, so both missing and stale rows are rejected.
+					_ = pool.QueryRow(r.WithContext(ctx).Context(),
+						`SELECT consent_version FROM student_consent WHERE student_id = $1`,
+						session.UserID).Scan(&storedVersion)
+					if semverLess(storedVersion, currentVersion) {
+						writeConsentError(w, currentVersion)
+						return
+					}
 				}
 			}
 

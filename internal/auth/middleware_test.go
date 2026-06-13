@@ -488,6 +488,59 @@ func TestAuthMiddleware_StudentWithoutConsent_Returns403(t *testing.T) {
 	}
 }
 
+// Regression: a not-yet-consented student must still reach the forced
+// change-password endpoint. The SPA gates change-password ahead of consent, so
+// putting POST /api/v1/users/me/password behind the consent gate left a
+// temp-password student unable to change their password — the 403
+// CONSENT_REQUIRED surfaced in the UI as a bogus "current password is
+// incorrect". The exempt set must mirror the must-change gate.
+// @{"verifies": ["REQ-SECURITY-005", "REQ-AUTH-014"]}
+func TestAuthMiddleware_StudentWithoutConsent_ChangePasswordExempt(t *testing.T) {
+	if pool == nil {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	createTestUserWithPassword(ctx, t, pool, "consent_cp_exempt", "pass", "student")
+
+	svc := newTestService(30*time.Minute, 24*time.Hour)
+	rawToken, err := loginGetRawToken(t, svc, ctx, "consent_cp_exempt", "pass")
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	provider := &mockConsentProvider{values: map[string]string{"consent_version": "1.0"}}
+	repo := NewRepository(pool)
+	mw := NewAuthMiddleware(repo, pool, 30*time.Minute, provider)
+	srv := httptest.NewServer(mw(newInnerHandler()))
+	defer srv.Close()
+
+	// POST /api/v1/users/me/password must bypass the consent gate (reach the
+	// inner handler → 200) even though this student has no consent row.
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/users/me/password", nil)
+	req.Header.Set("Authorization", "Bearer "+rawToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("change-password request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected change-password endpoint to bypass the consent gate (200), got %d", resp.StatusCode)
+	}
+
+	// A non-exempt path for the same un-consented student must STILL be blocked,
+	// so the exemption did not weaken the consent gate generally.
+	req2, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/courses", nil)
+	req2.Header.Set("Authorization", "Bearer "+rawToken)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("non-exempt request failed: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected a non-exempt path to remain consent-gated (403), got %d", resp2.StatusCode)
+	}
+}
+
 // @{"verifies": ["REQ-SECURITY-005"]}
 func TestAuthMiddleware_StudentWithMatchingConsent_Passes(t *testing.T) {
 	if pool == nil {

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/plan-state.schema.json",
+  "title": "PlanState",
+  "description": "Live coordination state for the Valory orchestrator. Mirrors the work-decomposition tree's runtime: the task DAG, per-task status, dispatched workers, and result-file pointers. Persisted at plan/state.json so a long-running orchestrator survives compaction. See docs/agentic-architecture.md.",
+  "type": "object",
+  "required": ["mission", "current_phase", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "mission": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-line statement of the root ask this effort serves (mirror of plan/root.md)."
+    },
+    "current_phase": {
+      "type": "string",
+      "description": "The sprint or phase currently being executed (e.g. 'G1-S1 (Sprint 25)')."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the last reconciliation of this state against the plan tree."
+    },
+    "tasks": {
+      "type": "array",
+      "description": "The task DAG. Each entry is a level-3 task with its scheduling and acceptance state.",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "sprint", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^G[0-9]+-S[0-9]+-T[0-9]+$",
+            "description": "Canonical task id in the form G<goal>-S<sprint>-T<task> (e.g. G1-S1-T1)."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 3,
+            "description": "Short description of the deliverable."
+          },
+          "sprint": {
+            "type": "string",
+            "pattern": "^G[0-9]+-S[0-9]+$",
+            "description": "The sprint this task belongs to (e.g. G1-S1)."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in-progress", "done", "blocked", "failed"],
+            "description": "Lifecycle status. A task with unresolved depends_on is not dispatchable."
+          },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^G[0-9]+-S[0-9]+-T[0-9]+$" },
+            "uniqueItems": true,
+            "description": "Task ids that must reach status 'done' before this task is dispatchable."
+          },
+          "assigned_worker": {
+            "type": ["string", "null"],
+            "description": "The contributor agent dispatched against this task (e.g. senior-engineer), or null if unassigned."
+          },
+          "verifier": {
+            "type": "string",
+            "description": "The acceptance gate(s) for this task (e.g. 'SQE + Systems Engineer')."
+          },
+          "artifact_path": {
+            "type": ["string", "null"],
+            "description": "Pointer to the worker's result — an artifact directory or the source paths touched. Null until produced."
+          },
+          "acceptance": {
+            "type": "string",
+            "enum": ["pending", "pass", "fail"],
+            "description": "Verdict from the review pipeline (the level-4 acceptance facet)."
+          },
+          "requirements": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^REQ-[A-Z]+-[0-9]{3}$" },
+            "uniqueItems": true,
+            "description": "Requirement IDs this task implements, for traceability."
+          },
+          "blockers": {
+            "type": "string",
+            "description": "Why this task is blocked or failed, if applicable."
+          }
+        }
+      }
+    }
+  }
+}

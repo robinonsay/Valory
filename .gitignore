@@ -46,3 +46,6 @@ node_modules/
 # Claude Code local state — agents/ and commands/ are shared and stay tracked
 .claude/worktrees/
 .claude/settings.local.json
+
+# Orchestrator compaction snapshots — the .gitkeep keeps the dir; the backups are transient
+plan/.snapshots/*.json

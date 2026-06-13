@@ -1,0 +1,55 @@
+{
+  "mission": "Give admins real oversight of student learning and re-architect course generation as an interactive, human-in-the-loop knowledge tree. See plan/root.md.",
+  "current_phase": "G1-S1 (Sprint 25) — active frontier; no contributor workers dispatched until an explicit go",
+  "updated_at": "2026-06-13T00:00:00Z",
+  "tasks": [
+    {
+      "id": "G1-S1-T1",
+      "title": "Fix Repository.DeleteStudent: delete agent_runs before courses in-tx",
+      "sprint": "G1-S1",
+      "status": "pending",
+      "depends_on": [],
+      "assigned_worker": null,
+      "verifier": "SQE + Systems Engineer",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-USER-007"]
+    },
+    {
+      "id": "G1-S1-T2",
+      "title": "Regression test: seed agent_runs + pipeline_events, delete student, assert full cascade",
+      "sprint": "G1-S1",
+      "status": "pending",
+      "depends_on": ["G1-S1-T1"],
+      "assigned_worker": null,
+      "verifier": "SQE",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-USER-007"]
+    },
+    {
+      "id": "G1-S1-T3",
+      "title": "Backend: admin ListCourses returns student_username + email via users join",
+      "sprint": "G1-S1",
+      "status": "pending",
+      "depends_on": [],
+      "assigned_worker": null,
+      "verifier": "SQE + Systems Engineer",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-FEADMIN-701"]
+    },
+    {
+      "id": "G1-S1-T4",
+      "title": "Frontend: CourseOversightView shows student name (ID secondary)",
+      "sprint": "G1-S1",
+      "status": "pending",
+      "depends_on": ["G1-S1-T3"],
+      "assigned_worker": null,
+      "verifier": "SQE",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-FEADMIN-701"]
+    }
+  ]
+}

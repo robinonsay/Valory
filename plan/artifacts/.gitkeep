@@ -1,0 +1,2 @@
+# Worker artifacts land here, one directory per task: plan/artifacts/<task-id>/
+# Each holds the implementation output and acceptance results for that leaf.

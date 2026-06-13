@@ -1,0 +1,2 @@
+# PreCompact backups of state.json land here as state-<timestamp>.json.
+# The .json snapshots themselves are gitignored; this .gitkeep keeps the dir tracked.

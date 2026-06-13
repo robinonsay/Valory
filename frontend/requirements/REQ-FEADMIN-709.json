@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-709",
+  "title": "Shared Interactive Knowledge-Tree UI Components",
+  "description": "The frontend module shall provide shared, actor-agnostic components for interactive knowledge-tree node review and live status updates.",
+  "rationale": "Both the student build flow and the admin draft authoring flow must render knowledge-tree nodes grouped by layer with live SSE status, HITL approve/feedback/regenerate controls, per-node chat, and layer-expand prompts. Sharing a single component set (Vue 3 TreeView, NodeCard, LayerExpandControl, and the useNodeEvents composable backed by the G2-S3 HTTP/SSE API) eliminates duplication and ensures both flows behave consistently.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-073", "REQ-SYS-077"]
+}

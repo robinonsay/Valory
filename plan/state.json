@@ -305,14 +305,14 @@
       "id": "G2-S4-T1",
       "title": "Shared interactive-tree UI foundation: tree/layer view + per-node card (approve/feedback/regenerate + chat) + expand control + useNodeEvents SSE composable + API-client tree methods + TS types",
       "sprint": "G2-S4",
-      "status": "in-progress",
+      "status": "done",
       "depends_on": [],
       "assigned_worker": "senior-engineer",
       "verifier": "SQE + Systems Engineer",
-      "artifact_path": null,
-      "acceptance": "pending",
-      "requirements": ["REQ-SYS-073", "REQ-SYS-077"],
-      "blockers": "DISPATCHED 2026-06-13. Frontier opener for G2-S4 (Sprint 30, FINAL Phase B sprint). Frontend only. Files: frontend/src/components/tree/* (new), composables/useNodeEvents.ts (new), api/* (tree methods), types/* (node/draft). NO router, NO top-level views (T2/T3). Consumes G2-S3 API/SSE."
+      "artifact_path": "frontend/src/types/tree.ts ; frontend/src/api/tree.ts ; frontend/src/composables/useNodeEvents.ts ; frontend/src/components/tree/{TreeView,NodeCard,LayerExpandControl}.vue ; frontend/requirements/REQ-FEADMIN-709.json",
+      "acceptance": "pass",
+      "requirements": ["REQ-SYS-073", "REQ-SYS-077", "REQ-FEADMIN-709"],
+      "blockers": "ACCEPTED (gate 1 after 1 rework). NOTE: gate-1 first round FAILED on two 'scope violations' (router + CourseDetailView/admin views) that were MIS-ATTRIBUTION - the dirty working tree held uncommitted ALREADY-ACCEPTED Sprint-26/28/29 work that both gates blamed on this leaf. Resolved by committing the accepted baseline to HEAD 4baee4b (+push) so each leaf's git delta now stands alone; re-ran both gates clean. Real defect was only REQ-FEADMIN-709 description (43 words+HOW) -> reworked to 17-word WHAT-only, schema-valid. Re-review: SQE PASS + Systems PASS (build clean, vue-tsc 0 errors, vitest 595/595; types match Go handlers field-for-field; CSRF on mutating/GET bare; v-html only via renderAsciidoc->DOMPurify; useNodeEvents all 6 node_*/layer_* events + onUnmounted cleanup; actor-agnostic; all 6 409 codes surfaced; cost guards disabled-while-pending). DEFERRED backlog (non-blocking): REQ-709 rationale names impl artifacts (schema-OK); NodeCard chat 2 round-trips/msg (optimistic-append opt); NodeCard empty-renderAsciidoc -> stuck 'Generating' placeholder (UX edge); useNodeEvents nodeStatuses unbounded growth (scalability); SystemConfigView.test.ts inject() warn pre-existing. Gate-2 Senior SQE batched at final delivery. Unblocks G2-S4-T2."
     },
     {
       "id": "G2-S4-T2",

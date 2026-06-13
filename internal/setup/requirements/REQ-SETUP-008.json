@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-008",
+  "title": "First Admin Password Stored as Hash Only",
+  "description": "The setup module shall store the first administrator password exclusively as an argon2id hash.",
+  "rationale": "Storing the password in any form other than an argon2id hash would expose the most privileged credential in plaintext in the database; consistent use of the established hash function is required to maintain the same security guarantee as all other accounts.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-071", "REQ-SYS-041"],
+  "implements": ["REQ-SETUP-003"]
+}

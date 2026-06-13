@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FESETUP-005",
+  "title": "Setup Wizard Admin Account Form",
+  "description": "The frontend module shall present a form collecting username, optional email, password, and password confirmation in the setup wizard.",
+  "rationale": "The create-first-admin endpoint requires a username and password; offering an optional email field lets the operator configure password-reset capability from the start without making email mandatory on a minimal install.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-071", "REQ-SETUP-003"]
+}

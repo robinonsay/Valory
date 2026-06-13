@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-006",
+  "title": "Setup Password Minimum Length Enforcement",
+  "description": "The setup module shall reject a create-first-admin request whose password is fewer than eight characters.",
+  "rationale": "The first admin password must meet the same minimum-length policy as all other password changes in the system; a weaker policy at setup would leave the most privileged account with a weaker credential guarantee than ordinary users.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-SETUP-003"]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FESETUP-007",
+  "title": "Setup Wizard Success Confirmation and Login Redirect",
+  "description": "The frontend module shall display a success confirmation and navigate to the login route after the setup form submits successfully.",
+  "rationale": "After the admin account is created the operator must log in to access the system; an explicit confirmation message acknowledges completion and the automatic redirect to login removes ambiguity about the next step.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-071", "REQ-SETUP-003"],
+  "implements": ["REQ-FESETUP-005"]
+}

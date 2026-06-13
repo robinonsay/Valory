@@ -1,0 +1,9 @@
+{
+  "id": "REQ-EMAIL-013",
+  "title": "SMTP Send Overall Deadline",
+  "description": "The email module shall bound every outbound SMTP send operation with a finite overall deadline.",
+  "rationale": "Even after a successful TCP connection a slow or throttled SMTP server can stall the DATA or QUIT phase indefinitely; an overall send deadline ensures the entire send operation — including authentication, data transfer, and completion — fails fast rather than blocking the HTTP request path for an unbounded duration. The concrete bound is an implementation detail recorded in the design; the requirement mandates only that a finite deadline exists.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-061"],
+  "implements": ["REQ-EMAIL-012"]
+}

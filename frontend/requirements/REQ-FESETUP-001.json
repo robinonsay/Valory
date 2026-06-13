@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FESETUP-001",
+  "title": "Boot-Time Setup Status Check",
+  "description": "The frontend module shall query the setup status endpoint on application boot before rendering any route.",
+  "rationale": "The wizard must appear before anything else on a fresh install; delaying or skipping the status check allows the SPA to render authenticated routes that require a non-existent admin account.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071", "REQ-SETUP-001"]
+}

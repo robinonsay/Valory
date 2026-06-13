@@ -1,0 +1,8 @@
+{
+  "id": "REQ-SETUP-001",
+  "title": "Setup Status Endpoint",
+  "description": "The setup module shall expose an unauthenticated GET endpoint that returns whether first-run setup is required.",
+  "rationale": "The frontend and operators need a machine-readable signal to determine whether an admin account has been created yet so the setup wizard can be shown or suppressed at boot.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"]
+}

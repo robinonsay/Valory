@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FESETUP-003",
+  "title": "Setup Route Redirects to Login When Setup Is Not Required",
+  "description": "The frontend module shall redirect the setup route to the login route when needs_setup is false.",
+  "rationale": "The setup wizard must not remain accessible after an admin account exists; leaving it open would allow an attacker to probe the endpoint or confuse operators who navigate to /setup by mistake.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-FESETUP-001"]
+}

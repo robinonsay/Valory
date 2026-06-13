@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-012",
+  "title": "SMTP Dial Timeout",
+  "description": "The email module shall bound every outbound SMTP connection attempt with a finite dial timeout.",
+  "rationale": "The current mailer uses net.Dialer with no Timeout field, so a non-responsive SMTP server blocks the dialing goroutine indefinitely; a finite dial timeout ensures the TCP connection attempt fails fast and the calling HTTP request is not held open waiting for a server that will never respond. A dial timeout of approximately 10 seconds is the target operational bound.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-061"]
+}

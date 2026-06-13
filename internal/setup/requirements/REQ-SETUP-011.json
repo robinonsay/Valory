@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-011",
+  "title": "Setup Endpoint Exempt from CSRF Protection",
+  "description": "The setup module shall process the create-first-admin request without requiring a CSRF token.",
+  "rationale": "CSRF tokens are bound to an existing session cookie; no session exists before the first admin is created, so requiring a CSRF token would make the endpoint permanently inaccessible and prevent installation from completing.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-SETUP-003"]
+}

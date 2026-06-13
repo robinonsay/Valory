@@ -1,0 +1,8 @@
+{
+  "id": "REQ-SETUP-003",
+  "title": "Create First Administrator Endpoint",
+  "description": "The setup module shall expose an unauthenticated POST endpoint that creates the first administrator account.",
+  "rationale": "A fresh install has no users and therefore no credentials with which to authenticate; the creation endpoint must itself be public so an operator can bootstrap the system without a pre-existing account.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"]
+}

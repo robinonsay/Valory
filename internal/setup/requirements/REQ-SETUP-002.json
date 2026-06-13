@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-002",
+  "title": "Setup Status Reflects Zero-User Condition",
+  "description": "The setup module shall return needs_setup true if and only if the users table contains zero rows.",
+  "rationale": "The needs_setup flag must precisely reflect the absence of any user account; returning true after an account exists would expose the setup endpoint after installation, and returning false before any account exists would silently prevent the wizard from appearing.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-SETUP-001"]
+}

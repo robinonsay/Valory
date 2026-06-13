@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FEAUTH-170", "REQ-FEPROFILE-004"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FEAUTH-170", "REQ-FEPROFILE-004", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003"]}
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -337,6 +337,38 @@ describe('router beforeEach guard', () => {
     expect(result).toBeUndefined()
   })
 
+  // Regression: a flagged student who has NOT yet consented must still be allowed to
+  // sit on /change-password. Before the rule-3 hard-gate fix, rule 8 (consent) bounced
+  // /change-password -> /consent and rule 3 bounced /consent -> /change-password, an
+  // infinite redirect loop that froze the SPA on the first login of an admin-created
+  // student with a temporary password.
+  // @{"req": ["REQ-FEUSER-002"]}
+  it('allows flagged UNCONSENTED student to stay on /change-password (no consent loop)', async () => {
+    const result = await guardFn(
+      makeRoute('/change-password', { requiresAuth: true }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: false,
+        mustChangePassword: true
+      })
+    )
+    expect(result).toBeUndefined()
+  })
+
+  it('redirects flagged unconsented student from /consent back to /change-password', async () => {
+    const result = await guardFn(
+      makeRoute('/consent', { requiresAuth: true }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: false,
+        mustChangePassword: true
+      })
+    )
+    expect(result).toBe('/change-password')
+  })
+
   it('allows unflagged user to navigate normally', async () => {
     const result = await guardFn(
       makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
@@ -455,5 +487,99 @@ describe('router beforeEach guard', () => {
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     const headers = init.headers as Record<string, string>
     expect(headers['Authorization']).toBeUndefined()
+  })
+
+  // Setup guard — rule 0 cases (REQ-FESETUP-002, REQ-FESETUP-003)
+  // @{"req": ["REQ-FESETUP-002"]}
+  it('redirects any route to /setup when needsSetup is true', async () => {
+    const result = await guardFn(
+      makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({ isAuthenticated: false }),
+      { needsSetup: true }
+    )
+    expect(result).toBe('/setup')
+  })
+
+  // @{"req": ["REQ-FESETUP-002"]}
+  it('redirects /login to /setup when needsSetup is true', async () => {
+    const result = await guardFn(
+      makeRoute('/login', {}),
+      makeAuth({ isAuthenticated: false }),
+      { needsSetup: true }
+    )
+    expect(result).toBe('/setup')
+  })
+
+  // @{"req": ["REQ-FESETUP-002"]}
+  it('allows /setup when needsSetup is true (no redirect loop)', async () => {
+    const result = await guardFn(
+      makeRoute('/setup', {}),
+      makeAuth({ isAuthenticated: false }),
+      { needsSetup: true }
+    )
+    expect(result).toBeUndefined()
+  })
+
+  // @{"req": ["REQ-FESETUP-003"]}
+  it('redirects /setup to /login when needsSetup is false', async () => {
+    const result = await guardFn(
+      makeRoute('/setup', {}),
+      makeAuth({ isAuthenticated: false }),
+      { needsSetup: false }
+    )
+    expect(result).toBe('/login')
+  })
+
+  // @{"req": ["REQ-FESETUP-003"]}
+  it('does not interfere with other routes when needsSetup is false', async () => {
+    const result = await guardFn(
+      makeRoute('/login', {}),
+      makeAuth({ isAuthenticated: false }),
+      { needsSetup: false }
+    )
+    // /login with unauthenticated user and needsSetup=false — falls through to existing rules
+    expect(result).toBeUndefined()
+  })
+
+  // Regression: omitting setupState entirely preserves existing behavior (no setup redirect)
+  it('existing 2-arg call with no setupState does not redirect to /setup', async () => {
+    const result = await guardFn(
+      makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({ isAuthenticated: false })
+      // setupState intentionally omitted
+    )
+    // Should fall through to existing rule 1 (unauthenticated → /login), NOT /setup
+    expect(result).toBe('/login')
+  })
+
+  // Regression: existing 2-arg call for unauthenticated to /login still allowed
+  it('existing 2-arg call allows unauthenticated to /login', async () => {
+    const result = await guardFn(
+      makeRoute('/login', {}),
+      makeAuth({ isAuthenticated: false })
+      // setupState omitted
+    )
+    expect(result).toBeUndefined()
+  })
+
+  // @{"req": ["REQ-FESETUP-001"]}
+  // Setup state awaits setupPromise before routing decision
+  it('awaits setupPromise before applying setup rule 0', async () => {
+    let resolveSetup!: () => void
+    const pendingSetup = new Promise<void>(res => { resolveSetup = res })
+    // Setup will resolve to needsSetup=true after promise resolves
+    const setupState = { setupPromise: pendingSetup, needsSetup: null as boolean | null }
+    // Simulate the promise resolving and setting state
+    setTimeout(() => {
+      setupState.needsSetup = false
+      resolveSetup()
+    }, 0)
+    const result = await guardFn(
+      makeRoute('/setup', {}),
+      makeAuth({ isAuthenticated: false }),
+      setupState
+    )
+    // needsSetup is false after promise resolves → /setup redirected to /login
+    expect(result).toBe('/login')
   })
 })

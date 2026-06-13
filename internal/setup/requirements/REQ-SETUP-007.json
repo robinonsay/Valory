@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-007",
+  "title": "Setup Blank Username Rejection",
+  "description": "The setup module shall reject a create-first-admin request whose username is blank or whitespace-only.",
+  "rationale": "A blank username cannot be used to authenticate and would produce a corrupt account record; rejecting it at the boundary prevents the only admin account from being created in an unusable state.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-SETUP-003"]
+}

@@ -534,5 +534,13 @@
     "rationale": "Without a structured first-login interaction, students would need to re-explain their learning style in every course intake chat; onboarding captures preferences once and makes them available to all subsequent course generation.",
     "verification_method": "Test",
     "implements": ["REQ-PROFILE-011", "REQ-PROFILE-012", "REQ-PROFILE-013", "REQ-PROFILE-014", "REQ-PROFILE-015", "REQ-PROFILE-016", "REQ-FEPROFILE-001", "REQ-FEPROFILE-002", "REQ-FEPROFILE-003", "REQ-FEPROFILE-004"]
+  },
+  {
+    "id": "REQ-SYS-071",
+    "title": "First-Run Administrator Setup Wizard",
+    "description": "The system shall provide an unauthenticated setup flow that creates the first administrator account when no users exist.",
+    "rationale": "A fresh install has no users and no mechanism to create the first admin; without a dedicated setup path the system cannot be bootstrapped and operators are left with no way to log in or administer the platform.",
+    "verification_method": "Test",
+    "implements": ["REQ-SETUP-001", "REQ-SETUP-002", "REQ-SETUP-003", "REQ-SETUP-004", "REQ-SETUP-005", "REQ-SETUP-006", "REQ-SETUP-007", "REQ-SETUP-008", "REQ-SETUP-009", "REQ-SETUP-010", "REQ-SETUP-011", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003", "REQ-FESETUP-004", "REQ-FESETUP-005", "REQ-FESETUP-006", "REQ-FESETUP-007"]
   }
 ]

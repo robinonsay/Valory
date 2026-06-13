@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-009",
+  "title": "Setup Audit Entry Written on First Admin Creation",
+  "description": "The setup module shall write an audit entry with action setup.initial_admin after the first administrator account is created.",
+  "rationale": "The creation of the first privileged account is a significant security event; an audit record provides a verifiable trace that the account was created at a specific time, enabling post-installation security review.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071", "REQ-SYS-042"],
+  "implements": ["REQ-SETUP-003"]
+}

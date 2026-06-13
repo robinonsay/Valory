@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-005",
+  "title": "Atomic One-Shot Setup Guard",
+  "description": "The setup module shall reject the create-first-admin request with HTTP 409 if any user already exists.",
+  "rationale": "Without an atomically enforced one-shot guard, a race between two concurrent setup requests or a replay after installation could create a second admin account, enabling unauthorized privilege escalation.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-SETUP-003"]
+}

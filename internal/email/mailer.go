@@ -18,6 +18,19 @@ import (
 	"net/smtp"
 	"strconv"
 	"strings"
+	"time"
+)
+
+const (
+	// smtpDialTimeout bounds the TCP/TLS dial phase (REQ-EMAIL-012).
+	// A non-responsive SMTP server that never completes the TCP handshake will fail
+	// fast rather than blocking the calling HTTP request indefinitely.
+	smtpDialTimeout = 10 * time.Second
+	// smtpSendTimeout bounds the entire Send operation including dial, auth, and
+	// data transfer (REQ-EMAIL-013). Even after a successful dial, a slow or
+	// throttled SMTP server can stall in the DATA or QUIT phase; this deadline
+	// ensures the HTTP request path is not held open past 15 seconds.
+	smtpSendTimeout = 15 * time.Second
 )
 
 // sanitizeHeader strips CR and LF characters from an SMTP header value.
@@ -183,11 +196,18 @@ func (m *SMTPMailer) IsConfigured() bool {
 // Send connects to the configured SMTP server using the resolved encryption
 // mode, optionally authenticates, and delivers one message.
 //
-// @{"req": ["REQ-EMAIL-001", "REQ-EMAIL-002", "REQ-EMAIL-003", "REQ-EMAIL-004", "REQ-EMAIL-005", "REQ-EMAIL-007"]}
+// @{"req": ["REQ-EMAIL-001", "REQ-EMAIL-002", "REQ-EMAIL-003", "REQ-EMAIL-004", "REQ-EMAIL-005", "REQ-EMAIL-007", "REQ-EMAIL-012", "REQ-EMAIL-013"]}
 func (m *SMTPMailer) Send(ctx context.Context, to, subject, body string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
+	// @{"req": ["REQ-EMAIL-013"]}
+	// Bound the entire send operation with a finite deadline so a misconfigured or
+	// slow SMTP server cannot hold the HTTP request goroutine open indefinitely.
+	// This protects request handlers (login, user creation) that wait on email sends.
+	ctx, cancel := context.WithTimeout(ctx, smtpSendTimeout)
+	defer cancel()
 
 	cfg := m.resolve(ctx)
 	if cfg.host == "" {
@@ -210,11 +230,22 @@ func (m *SMTPMailer) Send(ctx context.Context, to, subject, body string) error {
 // sendSTARTTLS dials a plain TCP connection and upgrades it to TLS via
 // SMTP STARTTLS. This is the default and recommended mode for external providers.
 //
-// @{"req": ["REQ-EMAIL-002"]}
+// @{"req": ["REQ-EMAIL-002", "REQ-EMAIL-012"]}
 func (m *SMTPMailer) sendSTARTTLS(ctx context.Context, addr string, cfg resolvedConfig, to, subject, body string) error {
-	netConn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	// @{"req": ["REQ-EMAIL-012"]}
+	// Dial with a finite timeout so a non-responsive SMTP server fails fast.
+	netConn, err := (&net.Dialer{Timeout: smtpDialTimeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
+	}
+
+	// @{"req": ["REQ-EMAIL-013"]}
+	// Set a write/read deadline on the connection so SMTP protocol steps
+	// (EHLO, STARTTLS, AUTH, MAIL, RCPT, DATA) cannot block past the overall
+	// context deadline. This guards against slow SMTP servers that accept the
+	// connection but stall in subsequent phases.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = netConn.SetDeadline(deadline)
 	}
 
 	conn, err := smtp.NewClient(netConn, cfg.host)
@@ -238,15 +269,26 @@ func (m *SMTPMailer) sendSTARTTLS(ctx context.Context, addr string, cfg resolved
 // sendImplicitTLS dials a TLS connection from the first byte (SMTPS, port 465).
 // Required by some providers. Uses tls.DialWithDialer so ctx deadline is honoured.
 //
-// @{"req": ["REQ-EMAIL-002"]}
+// @{"req": ["REQ-EMAIL-002", "REQ-EMAIL-012"]}
 func (m *SMTPMailer) sendImplicitTLS(ctx context.Context, addr string, cfg resolvedConfig, to, subject, body string) error {
+	// @{"req": ["REQ-EMAIL-012"]}
+	// Dial with a finite timeout so a non-responsive SMTP server fails fast.
 	dialer := &tls.Dialer{
-		NetDialer: &net.Dialer{},
+		NetDialer: &net.Dialer{Timeout: smtpDialTimeout},
 		Config:    &tls.Config{ServerName: cfg.host},
 	}
 	tlsConn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
+	}
+
+	// @{"req": ["REQ-EMAIL-013"]}
+	// Set a write/read deadline on the connection so SMTP protocol steps
+	// (AUTH, MAIL, RCPT, DATA) cannot block past the overall context deadline.
+	// This guards against slow SMTP servers that accept the connection but stall
+	// in subsequent phases.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = tlsConn.SetDeadline(deadline)
 	}
 
 	conn, err := smtp.NewClient(tlsConn, cfg.host)
@@ -269,11 +311,22 @@ func (m *SMTPMailer) sendImplicitTLS(ctx context.Context, addr string, cfg resol
 // between Valory and the relay — operators using this mode over a routable
 // network accept that exposure.
 //
-// @{"req": ["REQ-EMAIL-002"]}
+// @{"req": ["REQ-EMAIL-002", "REQ-EMAIL-012"]}
 func (m *SMTPMailer) sendPlain(ctx context.Context, addr string, cfg resolvedConfig, to, subject, body string) error {
-	netConn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	// @{"req": ["REQ-EMAIL-012"]}
+	// Dial with a finite timeout so a non-responsive SMTP server fails fast.
+	netConn, err := (&net.Dialer{Timeout: smtpDialTimeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
+	}
+
+	// @{"req": ["REQ-EMAIL-013"]}
+	// Set a write/read deadline on the connection so SMTP protocol steps
+	// (AUTH, MAIL, RCPT, DATA) cannot block past the overall context deadline.
+	// This guards against slow SMTP servers that accept the connection but stall
+	// in subsequent phases.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = netConn.SetDeadline(deadline)
 	}
 
 	conn, err := smtp.NewClient(netConn, cfg.host)

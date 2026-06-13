@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-004",
+  "title": "First Administrator Role Assignment",
+  "description": "The setup module shall assign the admin role to the account created via the setup endpoint.",
+  "rationale": "The purpose of the setup wizard is to provision the first privileged operator; creating the account with any role other than admin would immediately lock the operator out of all administrative functions.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-SETUP-003"]
+}

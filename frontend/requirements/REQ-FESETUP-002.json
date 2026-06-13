@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FESETUP-002",
+  "title": "All Navigation Redirected to Setup When Setup Is Required",
+  "description": "The frontend module shall redirect all navigation to the setup route when needs_setup is true.",
+  "rationale": "Allowing navigation to any other route before setup completes would expose pages that depend on an admin account that does not yet exist, producing broken or misleading UI states.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071"],
+  "implements": ["REQ-FESETUP-001"]
+}

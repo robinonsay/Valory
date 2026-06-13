@@ -30,6 +30,7 @@ import (
 	"github.com/valory/valory/internal/notify"
 	profilepkg "github.com/valory/valory/internal/profile"
 	"github.com/valory/valory/internal/security"
+	"github.com/valory/valory/internal/setup"
 	"github.com/valory/valory/internal/submission"
 	"github.com/valory/valory/internal/user"
 	"github.com/valory/valory/migrations"
@@ -236,9 +237,18 @@ func main() {
 		log.Printf("server: WARN: SMTP is not configured; email features will be unavailable")
 	}
 
+	// --- Setup module wiring (REQ-SETUP-001..011, REQ-SYS-071) ---
+	// Constructed before the router so setupHandler is available when routes are
+	// registered. auditRepo is constructed below alongside the user module; we
+	// construct it here early so setup can share the same instance.
+	setupAuditRepo := audit.NewRepository(pool)
+	setupRepo := setup.NewRepository(pool)
+	setupSvc := setup.NewService(pool, setupRepo, setupAuditRepo)
+	setupHandler := setup.NewHandler(setupSvc)
+
 	// --- User module wiring ---
 	userRepo := user.NewRepository(pool)
-	auditRepo := audit.NewRepository(pool)
+	auditRepo := setupAuditRepo // reuse the instance already created above
 	// mailerAdapter wraps the email.Mailer so it satisfies the legacy
 	// EmailTransport interface consumed by user.Service (REQ-USER-005).
 	emailTransport := user.NewMailerAdapter(mailer)
@@ -356,6 +366,15 @@ func main() {
 			// outside the auth middleware group so they are reachable before a full
 			// session exists. The handler itself returns 404 when 2FA is globally off.
 			authHandler.TwoFARoutes(r)
+		})
+
+		// @{"req": ["REQ-SETUP-001", "REQ-SETUP-003", "REQ-SETUP-011", "REQ-SYS-071"]}
+		// Setup routes are public: no auth, no CSRF. They must remain reachable on
+		// a fresh install before any user account exists. Mounted alongside /auth
+		// and /password-reset, outside every middleware group that carries
+		// authentication or CSRF middleware.
+		r.Route("/setup", func(r chi.Router) {
+			setupHandler.Routes(r)
 		})
 
 		// @{"req": ["REQ-USER-005", "REQ-USER-006"]}

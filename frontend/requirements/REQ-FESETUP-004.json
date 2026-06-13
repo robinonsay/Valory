@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FESETUP-004",
+  "title": "Setup Wizard Welcome Step",
+  "description": "The frontend module shall display a welcome and explanation step as the first step of the setup wizard.",
+  "rationale": "Operators encountering the wizard for the first time need context about what the wizard does and why it exists before being asked to supply credentials; a welcome step reduces confusion and support requests.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-071"]
+}

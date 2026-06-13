@@ -1,0 +1,9 @@
+{
+  "id": "REQ-SETUP-010",
+  "title": "Setup Audit Actor Is the Newly Created Admin",
+  "description": "The setup module shall record the newly created administrator's id as the actor in the setup audit entry.",
+  "rationale": "No prior admin exists at setup time, so there is no external actor to attribute the action to; using the new admin's own id is the only self-consistent attribution and preserves a meaningful audit trail.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071", "REQ-SYS-042"],
+  "implements": ["REQ-SETUP-009"]
+}

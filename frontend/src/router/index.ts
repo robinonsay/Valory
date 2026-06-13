@@ -1,7 +1,8 @@
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003"]}
 import { h } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useSetupStore } from '@/stores/setup'
 import LoginView from '@/views/LoginView.vue'
 import OtpVerifyView from '@/views/OtpVerifyView.vue'
 import ConsentView from '@/views/ConsentView.vue'
@@ -35,7 +36,7 @@ declare module 'vue-router' {
   }
 }
 
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FEAUTH-202"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FEAUTH-202", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003"]}
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -238,6 +239,14 @@ const router = createRouter({
       ]
     },
     {
+      // @{"req": ["REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003", "REQ-SYS-071"]}
+      // No requiresAuth — guard rule 0 controls access in both directions.
+      path: '/setup',
+      name: 'setup',
+      component: () => import('@/views/SetupView.vue'),
+      meta: {}
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       // Must be a render function, not a `template:` string — the production
@@ -253,7 +262,11 @@ const router = createRouter({
 // so it is testable without a running router instance. The restorePromise
 // parameter (when provided) is awaited before any routing decision is made,
 // which blocks navigation until session restore completes (REQ-FEAUTH-170).
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170", "REQ-FEUSER-002", "REQ-FEAUTH-202", "REQ-FEPROFILE-004"]}
+// The optional setupState parameter (when provided) enables rule 0: redirect
+// all navigation to /setup when needs_setup is true, and redirect /setup to
+// /login when needs_setup is false. When setupState is omitted, rule 0 does
+// not fire and existing call sites continue to behave as before.
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170", "REQ-FEUSER-002", "REQ-FEAUTH-202", "REQ-FEPROFILE-004", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003"]}
 export async function guardFn(
   to: RouteLocationNormalized,
   auth: {
@@ -267,6 +280,10 @@ export async function guardFn(
     onboardingPrompted: boolean
     pendingTwoFactor: { token: string; expiresAt: number } | null
     logout: () => void
+  },
+  setupState?: {
+    setupPromise?: Promise<void> | null
+    needsSetup: boolean | null
   }
 ): Promise<RouteLocationRaw | undefined> {
   // REQ-FEAUTH-170: await the session-restore promise so navigation BLOCKS
@@ -276,6 +293,27 @@ export async function guardFn(
   if (auth.restorePromise) {
     await auth.restorePromise
   }
+
+  // REQ-FESETUP-001: await setup status before any routing decision — mirrors
+  // the auth restorePromise pattern.
+  if (setupState?.setupPromise) {
+    await setupState.setupPromise
+  }
+
+  // @{"req": ["REQ-FESETUP-002"]}
+  // Rule 0a: setup required — hard-redirect everything to /setup.
+  if (setupState?.needsSetup === true && to.path !== '/setup') {
+    return '/setup'
+  }
+
+  // @{"req": ["REQ-FESETUP-003"]}
+  // Rule 0b: setup complete — /setup is not reachable.
+  if (setupState !== undefined && setupState.needsSetup === false && to.path === '/setup') {
+    return '/login'
+  }
+
+  // Rule 0c: needsSetup is null (check failed or setupState omitted) — allow
+  // navigation to proceed. This edge case is rare and self-corrects on next navigation.
 
   // @{"req": ["REQ-FEAUTH-202"]}
   // 1a. User with pending 2FA: redirect to /login/verify unless already there or navigating to /login
@@ -296,8 +334,19 @@ export async function guardFn(
 
   // 3. REQ-FEUSER-002: flagged users cannot navigate anywhere except /change-password,
   // /logout (implicitly allowed via no requiresAuth), and GET /users/me (no route).
-  if (auth.mustChangePassword && to.path !== '/change-password') {
-    return '/change-password'
+  // must_change_password is a HARD gate that supersedes the consent (rule 8) and
+  // onboarding (rule 3a) gates. The early return below is load-bearing: an
+  // admin-created student logs in with mustChangePassword=true AND isConsented=false,
+  // so without it rule 8 bounces /change-password -> /consent while this rule bounces
+  // /consent -> /change-password — an infinite redirect loop that starves the event
+  // loop and freezes the SPA with the login button stuck on "Signing in...". Returning
+  // here keeps the flagged user on /change-password until they change their password,
+  // which clears the flag and re-enables the consent/onboarding gates on the next nav.
+  if (auth.mustChangePassword) {
+    if (to.path !== '/change-password') {
+      return '/change-password'
+    }
+    return undefined
   }
 
   // 4. Already authenticated user navigating to /login or /login/verify — send to their home
@@ -353,24 +402,32 @@ export async function guardFn(
   return undefined
 }
 
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170", "REQ-FEUSER-002", "REQ-FEAUTH-202", "REQ-FEPROFILE-004"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170", "REQ-FEUSER-002", "REQ-FEAUTH-202", "REQ-FEPROFILE-004", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003"]}
 router.beforeEach(async (to, _from) => {
   // useAuthStore is called inside the guard so Pinia is already initialised.
   // Awaiting getRestorePromise() blocks this navigation until restoreSession()
   // completes, so protected components never mount before auth state is known.
   const auth = useAuthStore()
-  const redirect = await guardFn(to, {
-    restorePromise: auth.getRestorePromise(),
-    isAuthenticated: auth.isAuthenticated,
-    isAdmin: auth.isAdmin,
-    isStudent: auth.isStudent,
-    isConsented: auth.isConsented,
-    isExpired: auth.isExpired,
-    mustChangePassword: auth.mustChangePassword,
-    onboardingPrompted: auth.onboardingPrompted,
-    pendingTwoFactor: auth.pendingTwoFactor,
-    logout: auth.logout
-  })
+  const setup = useSetupStore()
+  const redirect = await guardFn(
+    to,
+    {
+      restorePromise: auth.getRestorePromise(),
+      isAuthenticated: auth.isAuthenticated,
+      isAdmin: auth.isAdmin,
+      isStudent: auth.isStudent,
+      isConsented: auth.isConsented,
+      isExpired: auth.isExpired,
+      mustChangePassword: auth.mustChangePassword,
+      onboardingPrompted: auth.onboardingPrompted,
+      pendingTwoFactor: auth.pendingTwoFactor,
+      logout: auth.logout
+    },
+    {
+      setupPromise: setup.getSetupPromise(),
+      needsSetup: setup.needsSetup
+    }
+  )
   return redirect ?? true
 })
 

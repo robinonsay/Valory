@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FESETUP-006",
+  "title": "Setup Wizard Client-Side Validation",
+  "description": "The frontend module shall block setup form submission when the username, password, or password confirmation fails client-side validation.",
+  "rationale": "Client-side validation provides immediate feedback without a round-trip; catching empty usernames and mismatched passwords before submission prevents confusing server-error messages during the critical first-run experience.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-071", "REQ-SETUP-006", "REQ-SETUP-007"],
+  "implements": ["REQ-FESETUP-005"]
+}

@@ -54,9 +54,16 @@ CREATE INDEX IF NOT EXISTS student_badges_badge_id_idx   ON student_badges (badg
 ALTER TABLE student_badges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE student_badges FORCE ROW LEVEL SECURITY;
 
+-- NULLIF guard: the migration/server connection runs with app.current_user_id
+-- set to the empty string (pool AfterRelease baseline). A bare ''::uuid raises
+-- "invalid input syntax for type uuid" when this policy is evaluated during an
+-- FK-validation scan on a fresh database (e.g. 007's ADD CONSTRAINT). NULLIF
+-- maps '' to NULL so the cast yields NULL (no match) instead of erroring.
+-- DROP+CREATE so databases created before this fix converge to the safe policy.
+DROP POLICY IF EXISTS student_badges_student_policy ON student_badges;
 DO $$ BEGIN
     CREATE POLICY student_badges_student_policy ON student_badges
-        USING (student_id = (current_setting('app.current_user_id', true))::uuid);
+        USING (student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

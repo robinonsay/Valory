@@ -55,17 +55,22 @@ END $$;
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE submissions FORCE ROW LEVEL SECURITY;
 
+-- NULLIF guard on the empty-string GUC (see 006_badge.sql for the rationale):
+-- a bare ''::uuid errors when the policy is evaluated under the migration/server
+-- connection. DROP+CREATE so pre-fix databases converge to the safe policy.
+DROP POLICY IF EXISTS submissions_student_select_policy ON submissions;
 DO $$ BEGIN
     CREATE POLICY submissions_student_select_policy ON submissions
         FOR SELECT
-        USING (student_id = (current_setting('app.current_user_id', true))::uuid);
+        USING (student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+DROP POLICY IF EXISTS submissions_student_insert_policy ON submissions;
 DO $$ BEGIN
     CREATE POLICY submissions_student_insert_policy ON submissions
         FOR INSERT
-        WITH CHECK (student_id = (current_setting('app.current_user_id', true))::uuid);
+        WITH CHECK (student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

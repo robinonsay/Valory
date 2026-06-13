@@ -28,10 +28,13 @@ CREATE INDEX IF NOT EXISTS grades_homework_id_idx ON grades (homework_id);
 ALTER TABLE grades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE grades FORCE ROW LEVEL SECURITY;
 
+-- NULLIF guard on the empty-string GUC (see 006_badge.sql for the rationale).
+-- DROP+CREATE so pre-fix databases converge to the safe policy.
+DROP POLICY IF EXISTS grades_student_select_policy ON grades;
 DO $$ BEGIN
     CREATE POLICY grades_student_select_policy ON grades
         FOR SELECT
-        USING (student_id = (current_setting('app.current_user_id', true))::uuid);
+        USING (student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-051",
+  "title": "Node Feedback Stored in node_chats and payload.feedback",
+  "description": "The agent module shall persist node feedback to the chat history and node payload before marking the node rejected.",
+  "rationale": "The regeneration prompt must include prior feedback context so the agent does not repeat the same output; storing in both locations ensures the Chair has the full conversation history and the LayeredRunner has the feedback text without a separate join.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-034", "REQ-AGENT-050"]
+}

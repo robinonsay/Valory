@@ -33,6 +33,15 @@ type CourseRow struct {
 	AssignmentID *uuid.UUID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	// TreeMode is true when the course uses the layered knowledge-tree
+	// generation pipeline (REQ-SYS-073). Added in migration 022; defaults to
+	// false for all existing flat courses so this is backward-compatible.
+	TreeMode bool
+	// StudentUsername and StudentEmail are populated by the admin path of
+	// ListCourses (REQ-FEADMIN-708) via a JOIN on users. Student path
+	// (studentID != nil) leaves these empty.
+	StudentUsername *string
+	StudentEmail    *string
 }
 
 type SyllabusRow struct {
@@ -136,11 +145,11 @@ func (r *CourseRepository) CreateCourse(ctx context.Context, studentID uuid.UUID
 	return course, nil
 }
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-SYS-073", "REQ-SYS-077"]}
 func (r *CourseRepository) GetCourseByID(ctx context.Context, id uuid.UUID) (CourseRow, error) {
 	var course CourseRow
 	err := r.conn(ctx).QueryRow(ctx,
-		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at
+		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at, tree_mode
 		 FROM courses WHERE id = $1`,
 		id).
 		Scan(
@@ -153,6 +162,7 @@ func (r *CourseRepository) GetCourseByID(ctx context.Context, id uuid.UUID) (Cou
 			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
+			&course.TreeMode,
 		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -163,19 +173,32 @@ func (r *CourseRepository) GetCourseByID(ctx context.Context, id uuid.UUID) (Cou
 	return course, nil
 }
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-FEADMIN-708", "REQ-SYS-073", "REQ-SYS-077"]}
 func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID, statusFilter string, cursor string, limit int) ([]CourseRow, string, error) {
 	var query string
 	var args []interface{}
 
-	baseQuery := `SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at
-	             FROM courses
-	             WHERE ($1::uuid IS NULL OR student_id = $1)
-	               AND ($2 = '' OR status::text = $2)`
+	// Admin path (studentID == nil): join users to include student_username and
+	// student_email. Student path: no join, StudentUsername/StudentEmail remain nil.
+	var baseQuery string
+	if studentID == nil {
+		// Admin path: include username and email via join on users table.
+		baseQuery = `SELECT c.id, c.student_id, c.title, c.topic, c.status, c.pre_withdrawal_status, c.assignment_id, c.created_at, c.updated_at, c.tree_mode, u.username, u.email
+		             FROM courses c
+		             LEFT JOIN users u ON u.id = c.student_id
+		             WHERE ($1::uuid IS NULL OR c.student_id = $1)
+		               AND ($2 = '' OR c.status::text = $2)`
+	} else {
+		// Student path: no join, unchanged response shape.
+		baseQuery = `SELECT c.id, c.student_id, c.title, c.topic, c.status, c.pre_withdrawal_status, c.assignment_id, c.created_at, c.updated_at, c.tree_mode, NULL::text, NULL::text
+		             FROM courses c
+		             WHERE ($1::uuid IS NULL OR c.student_id = $1)
+		               AND ($2 = '' OR c.status::text = $2)`
+	}
 
 	if cursor == "" {
 		query = baseQuery + `
-	             ORDER BY created_at DESC, id DESC
+	             ORDER BY c.created_at DESC, c.id DESC
 	             LIMIT $3`
 		args = []interface{}{studentID, statusFilter, limit + 1}
 	} else {
@@ -198,8 +221,8 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 		}
 
 		query = baseQuery + `
-	               AND (created_at, id) < ($4, $5)
-	               ORDER BY created_at DESC, id DESC
+	               AND (c.created_at, c.id) < ($4, $5)
+	               ORDER BY c.created_at DESC, c.id DESC
 	               LIMIT $3`
 		args = []interface{}{studentID, statusFilter, limit + 1, createdAt, cursorID}
 	}
@@ -223,6 +246,9 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
+			&course.TreeMode,
+			&course.StudentUsername,
+			&course.StudentEmail,
 		); err != nil {
 			return nil, "", err
 		}
@@ -251,7 +277,7 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 	return courses, nextCursor, nil
 }
 
-// @{"req": ["REQ-COURSE-003", "REQ-COURSE-004"]}
+// @{"req": ["REQ-COURSE-003", "REQ-COURSE-004", "REQ-SYS-073", "REQ-SYS-077"]}
 func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowedFrom []string, newStatus string, preWithdrawalStatus *string) (CourseRow, error) {
 	var course CourseRow
 	err := r.conn(ctx).QueryRow(ctx,
@@ -261,7 +287,7 @@ func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowed
 		     updated_at = now()
 		 WHERE id = $1
 		   AND status::text = ANY($3::text[])
-		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at`,
+		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at, tree_mode`,
 		id, newStatus, allowedFrom, preWithdrawalStatus).
 		Scan(
 			&course.ID,
@@ -273,6 +299,7 @@ func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowed
 			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
+			&course.TreeMode,
 		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -401,11 +428,11 @@ func (r *CourseRepository) InsertSyllabusTx(ctx context.Context, tx pgx.Tx, cour
 
 // getCourseByIDTx fetches a course by ID within a transaction.
 //
-// @{"req": ["REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006"]}
+// @{"req": ["REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-SYS-073", "REQ-SYS-077"]}
 func (r *CourseRepository) getCourseByIDTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (CourseRow, error) {
 	var course CourseRow
 	err := tx.QueryRow(ctx,
-		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at
+		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at, tree_mode
 		 FROM courses WHERE id = $1`,
 		id).
 		Scan(
@@ -418,6 +445,7 @@ func (r *CourseRepository) getCourseByIDTx(ctx context.Context, tx pgx.Tx, id uu
 			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
+			&course.TreeMode,
 		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -428,7 +456,7 @@ func (r *CourseRepository) getCourseByIDTx(ctx context.Context, tx pgx.Tx, id uu
 	return course, nil
 }
 
-// @{"req": ["REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006"]}
+// @{"req": ["REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-SYS-073", "REQ-SYS-077"]}
 func (r *CourseRepository) TransitionTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, allowedFrom []string, newStatus string, preWithdrawalStatus *string) (CourseRow, error) {
 	var course CourseRow
 	err := tx.QueryRow(ctx,
@@ -438,7 +466,7 @@ func (r *CourseRepository) TransitionTx(ctx context.Context, tx pgx.Tx, id uuid.
 		     updated_at = now()
 		 WHERE id = $1
 		   AND status::text = ANY($3::text[])
-		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at`,
+		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at, tree_mode`,
 		id, newStatus, allowedFrom, preWithdrawalStatus).
 		Scan(
 			&course.ID,
@@ -450,6 +478,7 @@ func (r *CourseRepository) TransitionTx(ctx context.Context, tx pgx.Tx, id uuid.
 			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
+			&course.TreeMode,
 		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

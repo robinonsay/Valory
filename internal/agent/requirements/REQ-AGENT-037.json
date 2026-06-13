@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-037",
+  "title": "Tree-Mode Flag Controls Pipeline Dispatch",
+  "description": "The agent module shall route a course through the layered generation path only when the course's tree_mode flag is true.",
+  "rationale": "All existing courses have tree_mode false by default; the dispatch branch on tree_mode is the sole mechanism that keeps the flat and tree pipelines independent, protecting in-flight flat courses from being disrupted by tree-mode code.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-072"]
+}

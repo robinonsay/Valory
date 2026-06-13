@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-048",
+  "title": "course_drafts Status Columns: TEXT draft|published Plus current_layer",
+  "description": "The agent module shall track a draft's publication state separately from its active generation layer.",
+  "rationale": "T3 §10.6 identified a latent inconsistency: §5.1.11 implied the draft status field would hold generating/awaiting values, but §4.1 defines only draft|published. Keeping status as draft|published and adding a separate current_layer column mirrors the courses table design (courses.status + courses.current_layer) and makes the G2-S2 migration unambiguous without colliding the lifecycle and generation-progress concerns.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-AGENT-047"]
+}

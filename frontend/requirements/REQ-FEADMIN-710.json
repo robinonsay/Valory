@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-710",
+  "title": "Admin Draft Authoring and Publish-to-Assign Flow",
+  "description": "The frontend module shall provide an admin interface to interactively author course draft trees before assigning them.",
+  "rationale": "Admins must be able to curate and quality-control course content together with the Chair before it reaches students. A draft-then-publish model ensures only admin-approved course trees are ever assigned, preventing unreviewed content from being exposed to students.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-FEADMIN-709", "REQ-SYS-077"]
+}

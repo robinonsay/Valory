@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-056",
+  "title": "Admin Draft SSE Event Stream Per Draft",
+  "description": "The agent module shall stream real-time pipeline events scoped to a single admin draft.",
+  "rationale": "Admin drafts are not associated with any course_id, so the existing course-scoped SSE endpoint cannot serve them; a separate draft-scoped stream using the draft_id anchor on agent_runs is required for real-time node status updates during admin co-development.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-AGENT-036", "REQ-AGENT-006", "REQ-SYS-077"]
+}

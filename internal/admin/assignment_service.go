@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/valory/valory/internal/db"
 )
 
 // maxBatchSize is the maximum number of students per POST .../students call.
@@ -35,13 +37,29 @@ type StudentAssignResult struct {
 //
 // @{"req": ["REQ-ASSIGN-001", "REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-006", "REQ-ASSIGN-007", "REQ-ASSIGN-011"]}
 type AssignmentService struct {
-	repo  *AssignmentRepository
-	chair syllabusGenerator
+	repo *AssignmentRepository
+	// serverPool is the server-role pool used for the draft-copy tx path (D13):
+	// writes to course_nodes require the server_write RLS policy which fires on
+	// connections where app.current_role='server'.
+	serverPool *pgxpool.Pool
+	chair      syllabusGenerator
 }
 
+// NewAssignmentService constructs an AssignmentService. serverPool is used only
+// for the draft-backed student assignment path (api-sse §7.2); it may be nil for
+// callers that only use the non-draft path (tests, legacy callers).
+//
 // @{"req": ["REQ-ASSIGN-001", "REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-006", "REQ-ASSIGN-007", "REQ-ASSIGN-011"]}
 func NewAssignmentService(repo *AssignmentRepository, chair syllabusGenerator) *AssignmentService {
 	return &AssignmentService{repo: repo, chair: chair}
+}
+
+// SetServerPool injects the server-role pool required for the draft-copy path
+// (api-sse §7.2). Called from main.go after both pools are created.
+//
+// @{"req": ["REQ-ASSIGN-003", "REQ-ASSIGN-005", "REQ-AGENT-047", "REQ-SYS-077"]}
+func (s *AssignmentService) SetServerPool(pool *pgxpool.Pool) {
+	s.serverPool = pool
 }
 
 // CreateAssignment creates a new course assignment record.
@@ -81,12 +99,24 @@ func (s *AssignmentService) ListAssignments(ctx context.Context, adminID uuid.UU
 // one student are recorded in the errors slice without aborting successful
 // assignments for the remaining students (REQ-ASSIGN-011).
 //
-// Processing order per student (SDD-022 §6.4):
-//  1. Verify student exists and is active → STUDENT_NOT_FOUND on failure
-//  2. INSERT courses row at syllabus_approved → COURSE_ALREADY_ACTIVE on 23505
-//  3. GenerateSyllabusFromParams → SYLLABUS_GENERATION_FAILED on failure;
-//     compensating DELETE courses row on generation failure
-//  4. INSERT syllabi row with approved_at = now()
+// When the assignment has a draft_id (published from an admin-authored draft),
+// assignOneStudent copies draft_nodes → course_nodes (tree_mode=true) instead of
+// calling GenerateSyllabusFromParams. Non-draft assignments use the existing
+// synchronous syllabus path unchanged (coexistence per api-sse §7.2).
+//
+// Processing order per student (SDD-022 §6.4 / api-sse §7.2):
+//
+//	Non-draft path:
+//	  1. Verify student exists and is active → STUDENT_NOT_FOUND on failure
+//	  2. INSERT courses row at syllabus_approved → COURSE_ALREADY_ACTIVE on 23505
+//	  3. GenerateSyllabusFromParams → SYLLABUS_GENERATION_FAILED on failure;
+//	     compensating DELETE courses row on generation failure
+//	  4. INSERT syllabi row with approved_at = now()
+//
+//	Draft path (assignment.DraftID != nil):
+//	  1. Verify student exists and is active → STUDENT_NOT_FOUND on failure
+//	  2+3. Tx-wrapped: INSERT courses row (tree_mode=true) + copy draft_nodes
+//	     → course_nodes (status=pending) → COURSE_ALREADY_ACTIVE / TREE_COPY_FAILED
 //
 // @{"req": ["REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-011"]}
 func (s *AssignmentService) AssignStudents(ctx context.Context, assignmentID uuid.UUID, studentIDs []uuid.UUID) ([]StudentAssignResult, []StudentAssignResult) {
@@ -106,7 +136,14 @@ func (s *AssignmentService) AssignStudents(ctx context.Context, assignmentID uui
 	var errs []StudentAssignResult
 
 	for _, studentID := range studentIDs {
-		result := s.assignOneStudent(ctx, assignment, studentID)
+		var result StudentAssignResult
+		if assignment.DraftID != nil && s.serverPool != nil {
+			// Draft-backed path: copy draft_nodes → course_nodes (api-sse §7.2).
+			result = s.assignOneStudentDraft(ctx, assignment, studentID, *assignment.DraftID)
+		} else {
+			// Legacy synchronous syllabus path (non-draft assignments, unchanged).
+			result = s.assignOneStudent(ctx, assignment, studentID)
+		}
 		if result.Error != "" {
 			errs = append(errs, result)
 		} else {
@@ -117,8 +154,9 @@ func (s *AssignmentService) AssignStudents(ctx context.Context, assignmentID uui
 	return created, errs
 }
 
-// assignOneStudent executes the 4-step assignment flow for a single student.
-// It returns a StudentAssignResult with Error set on any failure.
+// assignOneStudent executes the 4-step assignment flow for a single student
+// on the non-draft (legacy synchronous syllabus) path. Unchanged from the
+// pre-tree-mode implementation.
 //
 // @{"req": ["REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-011"]}
 func (s *AssignmentService) assignOneStudent(ctx context.Context, assignment AssignmentRow, studentID uuid.UUID) StudentAssignResult {
@@ -170,6 +208,71 @@ func (s *AssignmentService) assignOneStudent(ctx context.Context, assignment Ass
 			log.Printf("admin: assign student %s: compensating DELETE (syllabus insert fail) course %s: %v", studentID, courseID, delErr)
 		}
 		return StudentAssignResult{StudentID: studentID, Error: "SYLLABUS_GENERATION_FAILED"}
+	}
+
+	return StudentAssignResult{StudentID: studentID, CourseID: courseID}
+}
+
+// assignOneStudentDraft is the draft-backed assignment path (api-sse §7.2).
+// It creates the courses row with tree_mode=true and copies draft_nodes →
+// course_nodes (status=pending) in a single transaction so the course never
+// ends up half-copied (D13). GenerateSyllabusFromParams is NOT called; the
+// student grows nodes through the normal student-building HITL flow.
+//
+// @{"req": ["REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-011",
+//           "REQ-AGENT-047", "REQ-SYS-077"]}
+func (s *AssignmentService) assignOneStudentDraft(ctx context.Context, assignment AssignmentRow, studentID, draftID uuid.UUID) StudentAssignResult {
+	// Step 1: verify student exists and is an active student-role account.
+	ok, err := s.repo.StudentExistsAndActive(ctx, studentID)
+	if err != nil {
+		log.Printf("admin: assign student (draft) %s: check exists: %v", studentID, err)
+		return StudentAssignResult{StudentID: studentID, Error: "STUDENT_NOT_FOUND"}
+	}
+	if !ok {
+		return StudentAssignResult{StudentID: studentID, Error: "STUDENT_NOT_FOUND"}
+	}
+
+	// Steps 2+3 are tx-wrapped on the server pool so the server_write RLS policy
+	// on course_nodes is satisfied (D12/D13).
+	serverConn, connErr := db.AcquireServerConn(ctx, s.serverPool)
+	if connErr != nil {
+		log.Printf("admin: assign student (draft) %s: acquire server conn: %v", studentID, connErr)
+		return StudentAssignResult{StudentID: studentID, Error: "INTERNAL_ERROR"}
+	}
+	defer serverConn.Release()
+
+	tx, txErr := serverConn.Begin(ctx)
+	if txErr != nil {
+		log.Printf("admin: assign student (draft) %s: begin tx: %v", studentID, txErr)
+		return StudentAssignResult{StudentID: studentID, Error: "INTERNAL_ERROR"}
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Step 2: INSERT the courses row with tree_mode=true.
+	var courseID uuid.UUID
+	scanErr := tx.QueryRow(ctx,
+		`INSERT INTO courses (student_id, topic, status, assignment_id, intake_kickoff_sent, tree_mode)
+		 VALUES ($1, $2, 'syllabus_approved', $3, true, true)
+		 RETURNING id`,
+		studentID, assignment.Topic, assignment.ID,
+	).Scan(&courseID)
+	if scanErr != nil {
+		if isUniqueViolationOnActiveIdx(scanErr) {
+			return StudentAssignResult{StudentID: studentID, Error: "COURSE_ALREADY_ACTIVE"}
+		}
+		log.Printf("admin: assign student (draft) %s: create course: %v", studentID, scanErr)
+		return StudentAssignResult{StudentID: studentID, Error: "INTERNAL_ERROR"}
+	}
+
+	// Step 3: copy draft_nodes → course_nodes (status=pending) within the same tx.
+	if copyErr := s.repo.CopyDraftNodesToCourse(ctx, tx, draftID, courseID); copyErr != nil {
+		log.Printf("admin: assign student (draft) %s: copy draft nodes for course %s: %v", studentID, courseID, copyErr)
+		return StudentAssignResult{StudentID: studentID, Error: "TREE_COPY_FAILED"}
+	}
+
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		log.Printf("admin: assign student (draft) %s: commit: %v", studentID, commitErr)
+		return StudentAssignResult{StudentID: studentID, Error: "INTERNAL_ERROR"}
 	}
 
 	return StudentAssignResult{StudentID: studentID, CourseID: courseID}

@@ -1,7 +1,8 @@
-// @{"req": ["REQ-FEADMIN-050", "REQ-FEADMIN-051", "REQ-FEADMIN-052", "REQ-FEADMIN-053", "REQ-FEADMIN-400", "REQ-FEADMIN-401", "REQ-FEADMIN-402", "REQ-FEADMIN-403", "REQ-FEADMIN-404", "REQ-FEADMIN-405", "REQ-FEADMIN-406"]}
+// @{"req": ["REQ-FEADMIN-050", "REQ-FEADMIN-051", "REQ-FEADMIN-052", "REQ-FEADMIN-053", "REQ-FEADMIN-400", "REQ-FEADMIN-401", "REQ-FEADMIN-402", "REQ-FEADMIN-403", "REQ-FEADMIN-404", "REQ-FEADMIN-405", "REQ-FEADMIN-406", "REQ-FEADMIN-707", "REQ-FEADMIN-708"]}
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { get, ApiError } from '@/api/client'
 
@@ -10,6 +11,8 @@ interface OversightCourse {
   title: string
   status: string
   student_id: string
+  student_username?: string
+  student_email?: string
   created_at: string
   updated_at: string
 }
@@ -20,6 +23,7 @@ interface CoursesResponse {
 }
 
 const auth = useAuthStore()
+const router = useRouter()
 
 const courses = ref<OversightCourse[]>([])
 const loading = ref(false)
@@ -81,6 +85,11 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+// @{"req": ["REQ-FEADMIN-707"]}
+function openCourse(courseId: string): void {
+  router.push(`/admin/courses/${courseId}`)
+}
+
 onMounted(() => {
   fetchCourses()
 })
@@ -119,16 +128,23 @@ onMounted(() => {
           <tr>
             <th>Title</th>
             <th>Status</th>
-            <th>Student ID</th>
+            <th>Student</th>
             <th>Created</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="course in courses" :key="course.id" class="course-row">
             <td class="title">{{ course.title }}</td>
             <td class="status">{{ course.status }}</td>
-            <td class="student-id">{{ course.student_id }}</td>
+            <td class="student">
+              <div class="student-name">{{ course.student_username || course.student_id }}</div>
+              <div v-if="course.student_username" class="student-id-secondary" :title="course.student_id">{{ course.student_id.substring(0, 8) }}...</div>
+            </td>
             <td class="created">{{ formatDate(course.created_at) }}</td>
+            <td class="actions">
+              <button class="view-button" @click="openCourse(course.id)">View</button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -257,9 +273,19 @@ onMounted(() => {
   font-size: 0.9rem;
 }
 
-.student-id {
+.student {
   font-size: 0.9rem;
-  color: #666;
+  color: #333;
+}
+
+.student-name {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.student-id-secondary {
+  font-size: 0.8rem;
+  color: #999;
 }
 
 .created {
@@ -299,5 +325,25 @@ onMounted(() => {
 .load-more-button:disabled {
   background-color: #bbb;
   cursor: not-allowed;
+}
+
+.actions {
+  text-align: center;
+}
+
+.view-button {
+  padding: 0.35rem 0.75rem;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.view-button:hover {
+  background-color: #1565c0;
 }
 </style>

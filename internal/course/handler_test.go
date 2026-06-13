@@ -1101,6 +1101,181 @@ func TestHandler_ListHomework_EmptyArray(t *testing.T) {
 	}
 }
 
+// @{"verifies": ["REQ-SYS-073", "REQ-SYS-077"]}
+// TestHandler_GetCourse_TreeMode_False asserts that a standard (flat) course
+// always returns tree_mode: false in the GET /courses/{id} response.
+func TestHandler_GetCourse_TreeMode_False(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_treemode_false_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "Flat Course")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.getCourse(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String(), nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	treeMode, ok := resp["tree_mode"]
+	if !ok {
+		t.Fatal("expected tree_mode field in response")
+	}
+	if treeMode != false {
+		t.Errorf("expected tree_mode false for flat course, got %v", treeMode)
+	}
+}
+
+// @{"verifies": ["REQ-SYS-073", "REQ-SYS-077"]}
+// TestHandler_GetCourse_TreeMode_True asserts that a course with tree_mode=true
+// returns tree_mode: true in the GET /courses/{id} response.
+func TestHandler_GetCourse_TreeMode_True(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_treemode_true_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "Tree Course")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	// Flip tree_mode to true via direct SQL so the repository read path is exercised.
+	if _, err := pool.Exec(ctx, `UPDATE courses SET tree_mode = true WHERE id = $1`, course.ID); err != nil {
+		t.Fatalf("failed to set tree_mode: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.getCourse(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/"+course.ID.String(), nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	treeMode, ok := resp["tree_mode"]
+	if !ok {
+		t.Fatal("expected tree_mode field in response")
+	}
+	if treeMode != true {
+		t.Errorf("expected tree_mode true for tree-mode course, got %v", treeMode)
+	}
+}
+
+// @{"verifies": ["REQ-SYS-073", "REQ-SYS-077"]}
+// TestHandler_ListCourses_TreeMode asserts that listCourses includes tree_mode
+// in each course item and that the value reflects the database row.
+func TestHandler_ListCourses_TreeMode(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	studentID := createTestUserWithRole(ctx, t, "student_list_treemode_"+uuid.New().String(), "student")
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+
+	course, err := svc.CreateCourse(ctx, studentID, "Tree List Course")
+	if err != nil {
+		t.Fatalf("CreateCourse failed: %v", err)
+	}
+
+	// Flip tree_mode to true so we can assert a non-default value.
+	if _, err := pool.Exec(ctx, `UPDATE courses SET tree_mode = true WHERE id = $1`, course.ID); err != nil {
+		t.Fatalf("failed to set tree_mode: %v", err)
+	}
+
+	handler := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(auth.SetTestContext(r.Context(), [16]byte(studentID), "student"))
+		handler.listCourses(w, r)
+	})
+
+	req := httptest.NewRequest("GET", "/?limit=20", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	courses, ok := resp["courses"].([]interface{})
+	if !ok || len(courses) == 0 {
+		t.Fatalf("expected non-empty courses array in response")
+	}
+
+	var found bool
+	for _, c := range courses {
+		item := c.(map[string]interface{})
+		if item["id"] == course.ID.String() {
+			found = true
+			treeMode, ok := item["tree_mode"]
+			if !ok {
+				t.Errorf("expected tree_mode field in course item")
+			} else if treeMode != true {
+				t.Errorf("expected tree_mode true for tree-mode course in list, got %v", treeMode)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected course %s in listing", course.ID)
+	}
+}
+
 // @{"verifies": ["REQ-COURSE-008"]}
 func TestHandler_AgreeToSchedule_NoPending_Returns409(t *testing.T) {
 	if pool == nil {

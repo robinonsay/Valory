@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-039",
+  "title": "Layer Expansion Requires Explicit Human Call",
+  "description": "The agent module shall not advance a tree-mode course to the next layer until an explicit layer-expand call is received.",
+  "rationale": "Auto-advancing to the next layer after approval would bypass the human cost gate and violate the HITL-at-each-level root ask; requiring an explicit call ensures the human consciously authorizes the next layer's token spend.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-073", "REQ-SYS-074"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-032",
+  "title": "RLS Student-Isolation on course_nodes",
+  "description": "The agent module shall permit a student to read only nodes belonging to their own courses.",
+  "rationale": "Tree nodes contain course content generated for a specific student; RLS must enforce the same per-student isolation already applied to lesson_content and syllabi.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-075", "REQ-SECURITY-002"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-041",
+  "title": "Stale Generating Node Reset to Pending",
+  "description": "The agent module shall reset a node stuck in generating status for more than the staleness threshold back to pending.",
+  "rationale": "A server crash can leave nodes in generating indefinitely; without a staleness reset the course stalls permanently and the student has no observable indication of why generation stopped.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-030", "REQ-SYS-072"]
+}

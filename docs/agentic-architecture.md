@@ -34,6 +34,8 @@ collapse unused levels for a small ask (it may go Root → Tasks directly).
 | 3 | **Tasks** — concrete units per sprint | What discrete pieces of work? | 1 → N |
 | 4 | **Specification** — design / requirements / acceptance | How, what-for, and done-criteria | 1 → 3 facets |
 | 5 | **Implementation** — the artifact | The realized work product | 1 |
+| 5a | **File** — one source file (the implementation grain) | Which files realize the task? | 1 → N |
+| 5b | **Unit** — a coherent chunk within a File | What chunk satisfies which requirement, and how is it checked? | 1 → N |
 
 ### The level-4 asymmetry
 
@@ -48,6 +50,34 @@ subdivision of scope:
 This is the serialization boundary between orchestrator and worker. The triplet becomes the
 **worker's prompt contract**: design + requirements go *in*; acceptance defines what a
 successful *return* looks like.
+
+### The implementation grain: Files and Units
+
+Level 5 is not atomic. When a task spans more than one source file, the implementation is
+planned along two finer axes that make parallelism and review structural rather than a matter
+of discipline:
+
+- **File (5a) — one source file.** A File node maps one-to-one onto a single source file the
+  task creates or edits. The File is the **natural unit of parallel dispatch**: assign one
+  worker per File and the "no two workers edit the same file" invariant (§12) stops being a
+  rule you have to remember and becomes true *by construction*. Id `G<n>-S<m>-T<k>-F<NN>`; plan
+  doc `plan/files/<task>-F<NN>-<slug>.md`.
+- **Unit (5b) — a coherent chunk within a File.** A Unit is the smallest independently
+  reviewable piece of a File: a function, a type, an HTTP handler, a migration block, a
+  test-case group, or an AsciiDoc `include::` section. A Unit is where design intent, the
+  requirement(s) it satisfies, and its acceptance check are pinned, so the SQE reviews
+  chunk-by-chunk and traceability runs all the way down. Id `G<n>-S<m>-T<k>-F<NN>-U<MM>`; plan
+  doc `plan/units/<task>-F<NN>-U<MM>-<slug>.md`.
+
+**Why a File is not called a "module".** In Valory "module" already means a Go
+package/directory — requirements live in `<module-dir>/requirements/REQ-<MODULE>-NNN.json` and
+the systems-engineer reviews "cross-module integration." A File is finer than a module (one
+file, not a package), so it carries its own name rather than overloading the term. A module may
+contain many Files; a File belongs to exactly one module.
+
+**Collapse the grain for small tasks.** A single-file task *is* one File and needs no separate
+Unit planning; do not manufacture File/Unit docs where the task contract already says
+everything. This mirrors the "collapse unused levels" rule for the upper tree (§1).
 
 ---
 
@@ -78,9 +108,13 @@ not transcripts** — fan out for breadth, keep each worker's mandate "report th
 | 4 | Requirements facet | `requirements-author` |
 | 4 | Acceptance facet | `test-author` + the review pipeline (see §6) |
 | 5 | Implementation | `senior-engineer` / `junior-engineer` (workers) |
+| 5a | File breakdown | `design-author` (the structural part of the design facet); the orchestrator dispatches one worker per File |
+| 5b | Unit breakdown | `design-author` defines the chunks; `test-author` pins each Unit's acceptance; the worker realizes them |
 
 The `software-lead` is the single durable orchestrator (owns levels 0–3 of the live tree).
-Everyone else is a worker it dispatches against one leaf.
+Everyone else is a worker it dispatches against one leaf. Files and Units (5a/5b) are the
+*structural design* of a leaf — produced by the design facet, scheduled by the orchestrator
+(one worker per File), and realized by the worker; they are not a new layer of orchestration.
 
 ---
 
@@ -173,6 +207,10 @@ The tree is the *plan*; the dependency graph drives *scheduling*.
 - **Workers in flight:** 3–5 concurrent is the default; coordination cost and token spend
   scale with worker count, with diminishing returns past that.
 - **Tasks per worker:** ~5–6 keeps a worker productive without excessive context switching.
+- **Files & Units (level 5):** one File = one source file (the dispatch grain — one worker per
+  File); one Unit = one reviewable chunk within a file. Break a task into Files only when it
+  spans multiple files; break a File into Units only when it is large enough that chunk-level
+  acceptance buys clarity. Don't over-grain a small task.
 - Scale up only when work genuinely parallelizes.
 
 ---
@@ -189,6 +227,8 @@ plan/
   goals/               # G<n>.md — high-level goals, link to their sprints (level 1)
   sprints/             # G<n>-S<m>.md — sprint scope, task list, deps (level 2)
   tasks/               # G<n>-S<m>-T<k>.md — the design/requirements/acceptance triplet (level 4)
+  files/               # G<n>-S<m>-T<k>-F<NN>-<slug>.md — one source file per File node, the dispatch grain (level 5a)
+  units/               # G<n>-S<m>-T<k>-F<NN>-U<MM>-<slug>.md — one reviewable chunk per Unit node (level 5b)
   artifacts/           # <task-id>/ — implementation output + acceptance results (level 5)
   .snapshots/          # PreCompact backups of state.json (gitignored)
   state.json           # LIVE coordination state: task DAG, statuses, workers, result pointers
@@ -278,15 +318,17 @@ deviations   anything that diverged from the task contract (or "none")
 - **File conflicts** — two workers editing one file. Partition files; one worker per file-set.
 - **Stale tree** — workers finish but status lags, blocking dependents. Reconcile `state.json`
   before advancing.
-- **Over-decomposition** — not every ask needs six levels. Collapse unused levels.
+- **Over-decomposition** — not every ask needs six levels, and not every task needs File/Unit
+  docs. Collapse unused levels; a single-file task is one File with no separate Unit planning.
 
 ---
 
 ## Appendix: one-line summary
 
-A logically deep tree (intent → outcome → batch → unit → contract → artifact), executed
-through a flat layer (one `software-lead` orchestrator owning levels 0–3, parallel workers
-owning each leaf's design → implementation → acceptance), with dependencies scheduled by the
-orchestrator, worker returns kept to pointers, the three review gates serving as the acceptance
-facet, and the orchestrator's mission/structure/state persisted to `plan/` + `CLAUDE.md` so
-compaction can never permanently lose them.
+A logically deep tree (intent → outcome → batch → task → contract → artifact, the artifact
+itself grained into Files and Units), executed through a flat layer (one `software-lead`
+orchestrator owning levels 0–3, parallel workers owning each leaf's design → implementation →
+acceptance, dispatched one worker per File so file conflicts cannot arise), with dependencies
+scheduled by the orchestrator, worker returns kept to pointers, the three review gates serving
+as the acceptance facet, and the orchestrator's mission/structure/state persisted to `plan/` +
+`CLAUDE.md` so compaction can never permanently lose them.

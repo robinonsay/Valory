@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-034",
+  "title": "node_chats Two Nullable Typed FKs With Exactly-One-Non-Null Check",
+  "description": "The agent module shall enforce referential integrity on node_chats with exactly one owner FK non-null per row.",
+  "rationale": "A polymorphic single node_id column with no FK produces orphan rows on node deletion because PostgreSQL cannot enforce a FK to two tables simultaneously. Two nullable typed FKs each with ON DELETE CASCADE give full referential integrity for both student and admin paths.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-027", "REQ-SYS-075"]
+}

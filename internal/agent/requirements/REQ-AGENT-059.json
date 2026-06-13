@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-059",
+  "title": "keyword-Feedback Polling Skips Tree-Mode Courses",
+  "description": "The agent module shall exclude tree-mode courses from section-feedback keyword detection.",
+  "rationale": "Tree-mode courses use explicit HITL feedback endpoints rather than keyword heuristics; running the keyword poll on tree-mode courses would create a conflicting second feedback loop that could trigger unintended regenerations.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-037", "REQ-SYS-072"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-028",
+  "title": "One Root Node Per Course Enforced",
+  "description": "The agent module shall enforce that each tree-mode course has exactly one root node.",
+  "rationale": "A single root anchors the knowledge tree and is the required starting point for layer-by-layer generation; multiple roots would make the tree traversal ambiguous.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-027"]
+}

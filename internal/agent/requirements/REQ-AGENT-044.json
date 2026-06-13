@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-044",
+  "title": "Admin-Path Syllabus Node Requires Admin Approve",
+  "description": "The agent module shall keep the syllabus node in awaiting_review on the admin-authoring path until the admin explicitly approves it.",
+  "rationale": "Admin-authored drafts have no prior intake approval; the syllabus is generated fresh and must pass the same HITL gate as any other node to satisfy the provenance requirement before the draft can be published to an assignment.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-073", "REQ-SYS-077"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-043",
+  "title": "Student-Path Syllabus Node Pre-Seeded Approved on Tree Init",
+  "description": "The agent module shall set the syllabus node status to approved when initialising a student tree-mode course.",
+  "rationale": "On the student path the syllabus was already approved during the intake flow; inserting it as approved avoids a redundant second HITL gate for content the student already accepted, while the first active gate at section_goal preserves the HITL-per-level contract.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-073", "REQ-AGENT-038"]
+}

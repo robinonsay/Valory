@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-029",
+  "title": "Cross-Course Parent Assignment Rejected",
+  "description": "The agent module shall reject any node insertion whose parent belongs to a different course.",
+  "rationale": "The self-FK on course_nodes does not prevent cross-course parenting at the DB level; an application-layer guard is required to prevent a node in course A from falsely linking to a node in course B, which would break RLS isolation.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-027", "REQ-SYS-075"]
+}

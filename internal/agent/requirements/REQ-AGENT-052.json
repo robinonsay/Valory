@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-052",
+  "title": "Node Regenerate Endpoint Accepts Only Rejected or Failed Nodes",
+  "description": "The agent module shall reject a regenerate request when the target node is not in rejected or failed status.",
+  "rationale": "Triggering regeneration on an approved or generating node would overwrite accepted content or create a concurrent generation conflict; constraining the endpoint to rejected/failed prevents these race conditions.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-030"]
+}

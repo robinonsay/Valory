@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "schemas/plan-state.schema.json",
   "title": "PlanState",
-  "description": "Live coordination state for the Valory orchestrator. Mirrors the work-decomposition tree's runtime: the task DAG, per-task status, dispatched workers, and result-file pointers. Persisted at plan/state.json so a long-running orchestrator survives compaction. See docs/agentic-architecture.md.",
+  "description": "Live coordination state for the Valory orchestrator. Mirrors the work-decomposition tree's runtime: the task DAG, per-task status, dispatched workers, result-file pointers, and the optional File/Unit implementation grain. Persisted at plan/state.json so a long-running orchestrator survives compaction. See docs/agentic-architecture.md.",
   "type": "object",
   "required": ["mission", "current_phase", "tasks"],
   "additionalProperties": false,
@@ -23,7 +23,7 @@
     },
     "tasks": {
       "type": "array",
-      "description": "The task DAG. Each entry is a level-3 task with its scheduling and acceptance state.",
+      "description": "The task DAG. Each entry is a level-3 task with its scheduling and acceptance state, optionally grained into Files (5a) and Units (5b).",
       "items": {
         "type": "object",
         "required": ["id", "title", "sprint", "status"],
@@ -81,6 +81,67 @@
           "blockers": {
             "type": "string",
             "description": "Why this task is blocked or failed, if applicable."
+          },
+          "files": {
+            "type": "array",
+            "description": "Optional level-5a implementation grain: the task decomposed into File nodes, one per source file it creates or edits. Present only when a task spans multiple files; a single-file task needs no entries here. Dispatching one worker per File makes 'no two workers edit the same file' structural. A File is finer than a Go-package 'module' (a module contains many Files).",
+            "items": {
+              "type": "object",
+              "required": ["id", "path"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^G[0-9]+-S[0-9]+-T[0-9]+-F[0-9]+$",
+                  "description": "Canonical File id in the form <task>-F<NN> (e.g. G1-S1-T1-F01)."
+                },
+                "path": {
+                  "type": "string",
+                  "description": "The single source file this File node realizes (e.g. internal/admin/oversight_handler.go)."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["pending", "in-progress", "done", "blocked", "failed"],
+                  "description": "Lifecycle status of this File's implementation."
+                },
+                "assigned_worker": {
+                  "type": ["string", "null"],
+                  "description": "The worker dispatched against this File, or null if unassigned. One worker per File."
+                },
+                "units": {
+                  "type": "array",
+                  "description": "Optional level-5b grain: the File decomposed into Unit nodes, one per coherent chunk (a function, type, handler, migration block, test group, or include:: section). The smallest reviewable piece.",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "title"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^G[0-9]+-S[0-9]+-T[0-9]+-F[0-9]+-U[0-9]+$",
+                        "description": "Canonical Unit id in the form <file>-U<MM> (e.g. G1-S1-T1-F01-U01)."
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 3,
+                        "description": "Short description of the chunk this Unit realizes."
+                      },
+                      "requirements": {
+                        "type": "array",
+                        "items": { "type": "string", "pattern": "^REQ-[A-Z]+-[0-9]{3}$" },
+                        "uniqueItems": true,
+                        "description": "Requirement IDs this Unit satisfies, for chunk-level traceability."
+                      },
+                      "acceptance": {
+                        "type": "string",
+                        "enum": ["pending", "pass", "fail"],
+                        "description": "Verdict for this Unit from the review pipeline."
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

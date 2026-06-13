@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-055",
+  "title": "Node Generation Concurrent Conflict Guard",
+  "description": "The agent module shall reject a node generation request when that node already has generation in progress.",
+  "rationale": "Concurrent generation for the same node would produce two independent race-condition writes to node status and payload; the atomic test-and-set on status (WHERE status != 'generating') is the only safe guard against this.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-030"]
+}

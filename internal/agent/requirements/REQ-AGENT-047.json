@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-047",
+  "title": "course_drafts Table for Admin-Authored Trees",
+  "description": "The agent module shall store admin-authored tree drafts in storage isolated from student course records.",
+  "rationale": "Admin drafts must not appear in student-facing course queries; a dedicated table with its own RLS policies scoped to admin_id keeps the admin preview lifecycle fully isolated from student data.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-077"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-040",
+  "title": "Layer Expand Precondition: No Pending Nodes",
+  "description": "The agent module shall reject a layer-expand call when any node in that layer is still pending or awaiting review.",
+  "rationale": "Expanding to the next layer while nodes are still awaiting_review would generate child content before the parent is accepted, wasting tokens and breaking the HITL review contract.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-039"]
+}

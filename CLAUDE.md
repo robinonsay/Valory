@@ -28,11 +28,21 @@ the acceptance facet (SQE + Systems Engineer → Senior SQE).
 | 3 Tasks | concrete units per sprint | `software-lead` (orchestrator) → sprint files + `plan/state.json` |
 | 4 Spec triplet | **design / requirements / acceptance** | `design-author` / `requirements-author` / `test-author` + reviewers → `plan/tasks/*.md` |
 | 5 Implementation | the artifact | `senior-engineer` / `junior-engineer` (workers) → `plan/artifacts/<task-id>/` |
+| 5a File | one source file (the dispatch grain) | `design-author` breaks it down → `plan/files/<task>-F<NN>-<slug>.md`; one worker per File |
+| 5b Unit | a coherent chunk within a File | `design-author` + `test-author` → `plan/units/<task>-F<NN>-U<MM>-<slug>.md` |
 
 Levels 0–3 are scope decomposition. **Level 4 is the asymmetry**: not a further subdivision of
 scope but a fan-out into three facets of one task. The task file (`plan/tasks/G<n>-S<m>-T<k>.md`)
 **is the worker's prompt contract** — design + requirements go *in*, acceptance defines what a
 successful *return* looks like.
+
+**The implementation grain (level 5).** Level 5 is not atomic. A **File** is one source file —
+the natural unit of parallel dispatch, so "one worker per File" makes the no-conflict invariant
+structural. A **Unit** is a coherent chunk within a File (a function, type, handler, migration
+block, test group, or `include::` section) — the smallest reviewable piece, where a Unit's
+requirement(s) and acceptance check are pinned. "Module" stays reserved for a Go
+package/directory (a module holds many Files); break a task into Files/Units only when it spans
+multiple files, and collapse the grain for a single-file task.
 
 ### Execution: orchestrator + workers
 
@@ -45,7 +55,8 @@ workers. The orchestrator owns the tree; workers own leaves.
 - The orchestrator (`software-lead`) owns levels 0–3; each worker owns exactly one leaf.
 - Dispatch only the **independent frontier**; never parallelize dependent tasks. 3–5 workers in
   flight, ~5–6 tasks each, is the default.
-- One worker per file-set — no two workers edit the same file.
+- One worker per file-set — no two workers edit the same file. Dispatching at the **File** grain
+  (level 5a, one File = one source file) makes this structural rather than a discipline.
 - Workers return a **result-file pointer + acceptance verdict, never full output** (a return
   flood refills the context window and causes compaction thrash).
 - The orchestrator does not do the work itself — it dispatches and integrates.

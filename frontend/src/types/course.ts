@@ -1,3 +1,5 @@
+// @{"req": ["REQ-SYS-073", "REQ-FECOURSE-001", "REQ-FECOURSE-002", "REQ-FECOURSE-003"]}
+
 export type CourseStatus =
   | 'intake'
   | 'syllabus_draft'
@@ -13,9 +15,15 @@ export interface Course {
   topic: string
   status: CourseStatus
   student_id: string
+  student_username?: string
+  student_email?: string
   created_at: string
   updated_at: string
   assignment_id?: string | null
+  // tree_mode is emitted by courseToResponse for every course (flat or tree).
+  // false = existing flat intake→syllabus→generating→hub flow.
+  // true  = interactive layer-by-layer build flow (G2-S3 student HITL API).
+  tree_mode: boolean
 }
 
 export interface CourseListResponse {

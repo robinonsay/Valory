@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-031",
+  "title": "Failed Node Status Is Terminal",
+  "description": "The agent module shall not automatically retry a node whose status is failed.",
+  "rationale": "A failed node indicates an unrecoverable error (timeout, token cap, or max-iterations exhausted); automatic retry would mask the error and potentially consume additional tokens without resolving the root cause.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-030"]
+}

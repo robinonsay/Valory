@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-042",
+  "title": "All-Failed Layer Halts Course With Escalation Event",
+  "description": "The agent module shall halt a tree-mode course and escalate when every node in a layer reaches failed status.",
+  "rationale": "A layer with every node failed cannot produce a valid next layer; halting with an escalation event surfaces the issue to an admin rather than allowing the pipeline to produce empty or corrupt downstream content.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-031", "REQ-AGENT-008"]
+}

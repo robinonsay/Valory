@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-057",
+  "title": "Admin Draft Publish Requires All Nodes Approved",
+  "description": "The agent module shall reject a draft publish request when any draft node is not yet approved.",
+  "rationale": "Publishing an incompletely reviewed draft would assign unapproved content to students; the all-nodes-approved gate enforces that the admin has accepted every piece of content before it becomes an assignment template.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-077", "REQ-AGENT-044"]
+}

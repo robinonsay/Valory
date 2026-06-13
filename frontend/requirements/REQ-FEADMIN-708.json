@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-708",
+  "title": "Admin Course Oversight Shows Student Name",
+  "description": "The frontend module shall display each enrolled student's username as the primary identifier in the admin course list.",
+  "rationale": "Admins managing large course rosters need a readable student identity (username and email) rather than a raw UUID to quickly identify and manage enrolled students; this improves visibility and reduces lookup friction.",
+  "verification_method": "Test",
+  "uses": ["REQ-COURSE-002", "REQ-ASSIGN-001"]
+}

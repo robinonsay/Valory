@@ -13,6 +13,8 @@ export interface Course {
   topic: string
   status: CourseStatus
   student_id: string
+  student_username?: string
+  student_email?: string
   created_at: string
   updated_at: string
   assignment_id?: string | null

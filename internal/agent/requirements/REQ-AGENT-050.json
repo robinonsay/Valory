@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-050",
+  "title": "Node Feedback Endpoint Requires Non-Empty Text",
+  "description": "The agent module shall reject a node feedback request when the feedback text is absent or empty.",
+  "rationale": "Feedback is stored in node_chats and payload.feedback to drive regeneration; an empty feedback string would produce a regeneration prompt with no useful context, wasting tokens and leaving the rejection state without a recoverable path.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-073"]
+}

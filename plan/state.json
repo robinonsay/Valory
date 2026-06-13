@@ -1,55 +1,155 @@
 {
   "mission": "Give admins real oversight of student learning and re-architect course generation as an interactive, human-in-the-loop knowledge tree. See plan/root.md.",
-  "current_phase": "G1-S1 (Sprint 25) — active frontier; no contributor workers dispatched until an explicit go",
+  "current_phase": "EXECUTING (go 2026-06-13). DONE: G1-S1 (Sprint 25, all 4 tasks pass) + G2-S1 (Sprint 27 design contract, all 4 tasks pass) -> Phase B (G2-S2..S4) decomposition AUTHORIZED. REMAINING: (a) G1-S2 (Sprint 26 read-only admin oversight, not started); (b) decompose + build Phase B G2-S2/S3/S4; (c) final Senior SQE delivery gate over the whole combined release (T2/T4 batched there). Deferred follow-up: DeleteStudent request-scoped-conn refactor + test-comment RLS cleanup.",
   "updated_at": "2026-06-13T00:00:00Z",
   "tasks": [
     {
       "id": "G1-S1-T1",
       "title": "Fix Repository.DeleteStudent: delete agent_runs before courses in-tx",
       "sprint": "G1-S1",
-      "status": "pending",
+      "status": "done",
       "depends_on": [],
-      "assigned_worker": null,
+      "assigned_worker": "senior-engineer",
       "verifier": "SQE + Systems Engineer",
-      "artifact_path": null,
-      "acceptance": "pending",
-      "requirements": ["REQ-USER-007"]
+      "artifact_path": "internal/user/repository.go",
+      "acceptance": "pass",
+      "requirements": ["REQ-USER-007"],
+      "blockers": "Accepted (gate 1 + Senior SQE PASS). DEFERRED FOLLOW-UP (PM, not a blocker): refactor DeleteStudent to use request-scoped conn(ctx) instead of bare pool (Major) + fix integration_test RLS-coverage comment."
     },
     {
       "id": "G1-S1-T2",
       "title": "Regression test: seed agent_runs + pipeline_events, delete student, assert full cascade",
       "sprint": "G1-S1",
-      "status": "pending",
+      "status": "done",
       "depends_on": ["G1-S1-T1"],
-      "assigned_worker": null,
+      "assigned_worker": "test-author",
       "verifier": "SQE",
-      "artifact_path": null,
-      "acceptance": "pending",
-      "requirements": ["REQ-USER-007"]
+      "artifact_path": "internal/user/integration_test.go",
+      "acceptance": "pass",
+      "requirements": ["REQ-USER-007"],
+      "blockers": "SQE PASS after fix (verifies-annotation colon). Final Senior SQE delivery gate batched at release."
     },
     {
       "id": "G1-S1-T3",
       "title": "Backend: admin ListCourses returns student_username + email via users join",
       "sprint": "G1-S1",
-      "status": "pending",
+      "status": "done",
       "depends_on": [],
-      "assigned_worker": null,
+      "assigned_worker": "junior-engineer",
       "verifier": "SQE + Systems Engineer",
-      "artifact_path": null,
-      "acceptance": "pending",
-      "requirements": ["REQ-FEADMIN-701"]
+      "artifact_path": "internal/course/repository.go ; handler.go ; service.go ; integration_test.go ; frontend/requirements/REQ-FEADMIN-708.json",
+      "acceptance": "pass",
+      "requirements": ["REQ-FEADMIN-708"],
+      "blockers": "Accepted (gate 1 after REQ-708 rework + Senior SQE PASS)."
     },
     {
       "id": "G1-S1-T4",
       "title": "Frontend: CourseOversightView shows student name (ID secondary)",
       "sprint": "G1-S1",
-      "status": "pending",
+      "status": "done",
       "depends_on": ["G1-S1-T3"],
+      "assigned_worker": "junior-engineer",
+      "verifier": "SQE",
+      "artifact_path": "frontend/src/views/admin/CourseOversightView.vue ; CourseOversightView.test.ts ; types/course.ts",
+      "acceptance": "pass",
+      "requirements": ["REQ-FEADMIN-708"],
+      "blockers": "SQE PASS after fix (per-test verifies annotations + atomic REQ-708 description). Final Senior SQE delivery gate batched at release."
+    },
+    {
+      "id": "G1-S2-T1",
+      "title": "Requirements: admin read-only course-material oversight (REQ-ADMIN-011, REQ-FEADMIN-707)",
+      "sprint": "G1-S2",
+      "status": "pending",
+      "depends_on": [],
+      "assigned_worker": null,
+      "verifier": "Senior SQE",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-ADMIN-011"]
+    },
+    {
+      "id": "G1-S2-T2",
+      "title": "Backend: migration 021 admin read RLS for syllabi/homework/submissions + GET /admin/courses/{id}/overview",
+      "sprint": "G1-S2",
+      "status": "pending",
+      "depends_on": ["G1-S2-T1"],
+      "assigned_worker": null,
+      "verifier": "SQE + Systems Engineer",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-ADMIN-011"]
+    },
+    {
+      "id": "G1-S2-T3",
+      "title": "Backend tests: admin reads any student material; student-to-student RLS isolation",
+      "sprint": "G1-S2",
+      "status": "pending",
+      "depends_on": ["G1-S2-T2"],
       "assigned_worker": null,
       "verifier": "SQE",
       "artifact_path": null,
       "acceptance": "pending",
-      "requirements": ["REQ-FEADMIN-701"]
+      "requirements": ["REQ-ADMIN-011"]
+    },
+    {
+      "id": "G1-S2-T4",
+      "title": "Frontend: admin read-only course-material browser reachable from Oversight",
+      "sprint": "G1-S2",
+      "status": "pending",
+      "depends_on": ["G1-S2-T2"],
+      "assigned_worker": null,
+      "verifier": "SQE + Systems Engineer",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-FEADMIN-707"]
+    },
+    {
+      "id": "G2-S1-T1",
+      "title": "TDD: knowledge-tree DAG data model (course_nodes; legacy coexistence; RLS)",
+      "sprint": "G2-S1",
+      "status": "done",
+      "depends_on": [],
+      "assigned_worker": "design-author",
+      "verifier": "Senior SQE",
+      "artifact_path": "docs/design/knowledge-tree-data-model.md",
+      "acceptance": "pass",
+      "blockers": "Senior SQE PASS (rev 2). Authoritative DDL source for Phase B."
+    },
+    {
+      "id": "G2-S1-T2",
+      "title": "TDD: layered generation state machine + per-level HITL checkpoint protocol",
+      "sprint": "G2-S1",
+      "status": "done",
+      "depends_on": [],
+      "assigned_worker": "design-author",
+      "verifier": "Senior SQE",
+      "artifact_path": "docs/design/layered-generation-state-machine.md",
+      "acceptance": "pass",
+      "blockers": "Senior SQE PASS (rev 2). One HITL model reconciled with T3."
+    },
+    {
+      "id": "G2-S1-T3",
+      "title": "API + SSE spec: node-level Chair interaction; HITL endpoints; admin-author vs student-build entry points",
+      "sprint": "G2-S1",
+      "status": "done",
+      "depends_on": [],
+      "assigned_worker": "design-author",
+      "verifier": "Senior SQE + Systems Engineer",
+      "artifact_path": "docs/design/knowledge-tree-api-sse.md",
+      "acceptance": "pass",
+      "blockers": "Systems Engineer PASS (security) + Senior SQE PASS (rev 2)."
+    },
+    {
+      "id": "G2-S1-T4",
+      "title": "L1 + L2 requirements derived from the TDDs (gates G2-S2..S4 decomposition)",
+      "sprint": "G2-S1",
+      "status": "done",
+      "depends_on": ["G2-S1-T1", "G2-S1-T2", "G2-S1-T3"],
+      "assigned_worker": "requirements-author",
+      "verifier": "Senior SQE",
+      "artifact_path": "internal/agent/requirements/REQ-AGENT-027..060.json ; requirements/l1-requirements.json (REQ-SYS-072..077)",
+      "acceptance": "pass",
+      "blockers": "Senior SQE PASS. G2-S1 COMPLETE. Phase B (G2-S2..S4) decomposition AUTHORIZED. (artifacts/G2-S1-T4 summary waived - worker policy blocked the write.)"
     }
   ]
 }

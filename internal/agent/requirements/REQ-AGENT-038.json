@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-038",
+  "title": "Layer Generation Pauses After All Nodes Reach Awaiting-Review",
+  "description": "The agent module shall pause a tree-mode course for human review after all nodes in a layer are settled.",
+  "rationale": "Pausing after each layer is the mechanism that creates the HITL checkpoint; without this pause the pipeline would continue generating deeper layers without human review, bypassing the cost gate and oversight goal.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-073"]
+}

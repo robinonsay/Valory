@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-058",
+  "title": "Student Course Nodes List Endpoint",
+  "description": "The agent module shall return a student's course nodes filterable by node type or parent node.",
+  "rationale": "The frontend requires a single endpoint to retrieve the full tree or a specific layer in order to render the HITL review UI; without this endpoint the student cannot see the generated nodes or act on them.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-032"]
+}

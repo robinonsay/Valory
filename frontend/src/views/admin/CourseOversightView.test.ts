@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-050", "REQ-FEADMIN-051", "REQ-FEADMIN-052", "REQ-FEADMIN-053", "REQ-FEADMIN-400", "REQ-FEADMIN-401", "REQ-FEADMIN-402", "REQ-FEADMIN-403", "REQ-FEADMIN-404", "REQ-FEADMIN-405", "REQ-FEADMIN-406"]}
+// @{"req": ["REQ-FEADMIN-050", "REQ-FEADMIN-051", "REQ-FEADMIN-052", "REQ-FEADMIN-053", "REQ-FEADMIN-400", "REQ-FEADMIN-401", "REQ-FEADMIN-402", "REQ-FEADMIN-403", "REQ-FEADMIN-404", "REQ-FEADMIN-405", "REQ-FEADMIN-406", "REQ-FEADMIN-708"]}
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -37,6 +37,8 @@ describe('CourseOversightView', () => {
           title: 'JavaScript Basics',
           status: 'active',
           student_id: 'student-1',
+          student_username: 'alice',
+          student_email: 'alice@example.com',
           created_at: '2026-05-01T00:00:00Z',
           updated_at: '2026-05-01T12:00:00Z'
         },
@@ -45,6 +47,8 @@ describe('CourseOversightView', () => {
           title: 'Advanced JavaScript',
           status: 'archived',
           student_id: 'student-2',
+          student_username: 'bob',
+          student_email: 'bob@example.com',
           created_at: '2026-04-15T00:00:00Z',
           updated_at: '2026-05-01T12:00:00Z'
         }
@@ -69,7 +73,7 @@ describe('CourseOversightView', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('JavaScript Basics')
     expect(rows[0].text()).toContain('active')
-    expect(rows[0].text()).toContain('student-1')
+    expect(rows[0].text()).toContain('alice')
   })
 
   it('status filter triggers re-fetch with status param', async () => {
@@ -80,6 +84,8 @@ describe('CourseOversightView', () => {
           title: 'JavaScript Basics',
           status: 'active',
           student_id: 'student-1',
+          student_username: 'alice',
+          student_email: 'alice@example.com',
           created_at: '2026-05-01T00:00:00Z',
           updated_at: '2026-05-01T12:00:00Z'
         }
@@ -94,6 +100,8 @@ describe('CourseOversightView', () => {
           title: 'Archived Course',
           status: 'archived',
           student_id: 'student-3',
+          student_username: 'charlie',
+          student_email: 'charlie@example.com',
           created_at: '2026-03-01T00:00:00Z',
           updated_at: '2026-05-01T12:00:00Z'
         }
@@ -140,6 +148,8 @@ describe('CourseOversightView', () => {
           title: 'Course 1',
           status: 'active',
           student_id: 'student-1',
+          student_username: 'alice',
+          student_email: 'alice@example.com',
           created_at: '2026-05-01T00:00:00Z',
           updated_at: '2026-05-01T12:00:00Z'
         }
@@ -154,6 +164,8 @@ describe('CourseOversightView', () => {
           title: 'Course 2',
           status: 'active',
           student_id: 'student-2',
+          student_username: 'bob',
+          student_email: 'bob@example.com',
           created_at: '2026-04-15T00:00:00Z',
           updated_at: '2026-05-01T12:00:00Z'
         }
@@ -239,5 +251,77 @@ describe('CourseOversightView', () => {
     const errorDiv = wrapper.find('.error')
     expect(errorDiv.exists()).toBe(true)
     expect(errorDiv.text()).toContain('Failed to load courses')
+  })
+
+  // @{"verifies": ["REQ-FEADMIN-708"]}
+  it('renders student username as primary identifier', async () => {
+    const mockResponse = {
+      courses: [
+        {
+          id: 'course-1',
+          title: 'Course with username',
+          status: 'active',
+          student_id: '550e8400-e29b-41d4-a716-446655440000',
+          student_username: 'john_doe',
+          student_email: 'john@example.com',
+          created_at: '2026-05-01T00:00:00Z',
+          updated_at: '2026-05-01T12:00:00Z'
+        }
+      ],
+      next_cursor: ''
+    }
+
+    vi.mocked(get).mockResolvedValue(mockResponse)
+
+    const auth = useAuthStore()
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
+
+    const wrapper = mount(CourseOversightView)
+
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await wrapper.vm.$nextTick()
+
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows).toHaveLength(1)
+    const studentCell = rows[0].find('.student')
+    expect(studentCell.text()).toContain('john_doe')
+    expect(studentCell.find('.student-name').exists()).toBe(true)
+    expect(studentCell.find('.student-name').text()).toBe('john_doe')
+    expect(studentCell.find('.student-id-secondary').exists()).toBe(true)
+  })
+
+  // @{"verifies": ["REQ-FEADMIN-708"]}
+  it('falls back to student_id when student_username is absent', async () => {
+    const mockResponse = {
+      courses: [
+        {
+          id: 'course-1',
+          title: 'Course without username',
+          status: 'active',
+          student_id: '550e8400-e29b-41d4-a716-446655440001',
+          created_at: '2026-05-01T00:00:00Z',
+          updated_at: '2026-05-01T12:00:00Z'
+        }
+      ],
+      next_cursor: ''
+    }
+
+    vi.mocked(get).mockResolvedValue(mockResponse)
+
+    const auth = useAuthStore()
+    auth.$patch({ role: 'admin', expiresAt: Math.floor(Date.now() / 1000) + 3600, restoreDone: true })
+
+    const wrapper = mount(CourseOversightView)
+
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 50))
+    await wrapper.vm.$nextTick()
+
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows).toHaveLength(1)
+    const studentCell = rows[0].find('.student')
+    expect(studentCell.text()).toContain('550e8400-e29b-41d4-a716-446655440001')
+    expect(studentCell.find('.student-id-secondary').exists()).toBe(false)
   })
 })

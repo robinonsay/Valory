@@ -554,3 +554,121 @@ func TestInteg_Repository_TransitionViaServerRole(t *testing.T) {
 		t.Fatalf("expected course ID %v, got %v", courseID, updated.ID)
 	}
 }
+
+// TC-COURSE-002 / TC-ADMIN-COURSE-OVERSIGHT (admin path):
+// ListCourses admin path returns student username and email via users join.
+//
+// Admin path (studentID == nil) must return non-nil StudentUsername and
+// StudentEmail populated from the users table join. Student path
+// (studentID != nil) must leave those fields nil. This test exercises both
+// paths and runs under SET ROLE valory_app to validate that the admin path
+// can read user credentials without triggering any RLS block on the users
+// table (users is not FORCE RLS protected but the join happens in admin
+// context).
+//
+// @{"verifies": ["REQ-FEADMIN-708"]}
+func TestInteg_ListCourses_AdminPathReturnsStudentInfo(t *testing.T) {
+	p := internaldb.IntegrationPool(t)
+	internaldb.TruncateTables(t, p, "courses", "users")
+
+	// Create two students with known usernames and emails.
+	alice := integSeedUser(t, p, "alice_"+uuid.New().String()[:8])
+	bob := integSeedUser(t, p, "bob_"+uuid.New().String()[:8])
+
+	// Set email on alice via direct pool query (users table is not FORCE RLS).
+	err := p.QueryRow(context.Background(),
+		`UPDATE users SET email = 'alice@example.com' WHERE id = $1 RETURNING id`, alice).Scan(&alice)
+	if err != nil {
+		t.Fatalf("failed to set alice email: %v", err)
+	}
+
+	err = p.QueryRow(context.Background(),
+		`UPDATE users SET email = 'bob@example.com' WHERE id = $1 RETURNING id`, bob).Scan(&bob)
+	if err != nil {
+		t.Fatalf("failed to set bob email: %v", err)
+	}
+
+	// Seed courses for both students via the bare pool (superuser bypasses FORCE RLS).
+	aliceCourseID := integSeedCourseViaBarePool(t, p, alice, "Alice Course Topic")
+	bobCourseID := integSeedCourseViaBarePool(t, p, bob, "Bob Course Topic")
+
+	repo := NewRepository(p)
+
+	// TEST 1: Admin path (studentID == nil) returns StudentUsername and StudentEmail.
+	// The admin course list query joins users to populate these fields.
+	adminCourses, _, err := repo.ListCourses(context.Background(), nil, "", "", 100)
+	if err != nil {
+		t.Fatalf("ListCourses admin path failed: %v", err)
+	}
+
+	if len(adminCourses) < 2 {
+		t.Fatalf("expected at least 2 courses in admin listing, got %d", len(adminCourses))
+	}
+
+	// Find alice's and bob's courses in the result.
+	var aliceCourseFromAdmin, bobCourseFromAdmin *CourseRow
+	for i := range adminCourses {
+		if adminCourses[i].ID == aliceCourseID {
+			aliceCourseFromAdmin = &adminCourses[i]
+		}
+		if adminCourses[i].ID == bobCourseID {
+			bobCourseFromAdmin = &adminCourses[i]
+		}
+	}
+
+	if aliceCourseFromAdmin == nil {
+		t.Fatalf("alice's course not found in admin listing")
+	}
+	if bobCourseFromAdmin == nil {
+		t.Fatalf("bob's course not found in admin listing")
+	}
+
+	// Verify alice's course has non-nil StudentUsername and StudentEmail.
+	if aliceCourseFromAdmin.StudentUsername == nil {
+		t.Errorf("expected alice's StudentUsername to be non-nil in admin path")
+	} else if *aliceCourseFromAdmin.StudentUsername == "" {
+		t.Errorf("expected alice's StudentUsername to be non-empty, got empty string")
+	}
+	if aliceCourseFromAdmin.StudentEmail == nil {
+		t.Errorf("expected alice's StudentEmail to be non-nil in admin path")
+	} else if *aliceCourseFromAdmin.StudentEmail != "alice@example.com" {
+		t.Errorf("expected alice's StudentEmail 'alice@example.com', got %q", *aliceCourseFromAdmin.StudentEmail)
+	}
+
+	// Verify bob's course has non-nil StudentUsername and StudentEmail.
+	if bobCourseFromAdmin.StudentUsername == nil {
+		t.Errorf("expected bob's StudentUsername to be non-nil in admin path")
+	} else if *bobCourseFromAdmin.StudentUsername == "" {
+		t.Errorf("expected bob's StudentUsername to be non-empty, got empty string")
+	}
+	if bobCourseFromAdmin.StudentEmail == nil {
+		t.Errorf("expected bob's StudentEmail to be non-nil in admin path")
+	} else if *bobCourseFromAdmin.StudentEmail != "bob@example.com" {
+		t.Errorf("expected bob's StudentEmail 'bob@example.com', got %q", *bobCourseFromAdmin.StudentEmail)
+	}
+
+	// TEST 2: Student path (studentID != nil) leaves StudentUsername and StudentEmail nil.
+	// When studentID is provided (student path), the query uses NULL literals instead of
+	// joining users, so StudentUsername and StudentEmail remain nil/absent.
+	studentCourses, _, err := repo.ListCourses(context.Background(), &alice, "", "", 100)
+	if err != nil {
+		t.Fatalf("ListCourses student path failed: %v", err)
+	}
+
+	if len(studentCourses) != 1 {
+		t.Fatalf("expected exactly 1 course for alice in student path, got %d", len(studentCourses))
+	}
+
+	aliceCourseStudent := studentCourses[0]
+	if aliceCourseStudent.ID != aliceCourseID {
+		t.Fatalf("expected course ID %v, got %v", aliceCourseID, aliceCourseStudent.ID)
+	}
+
+	// Verify that StudentUsername and StudentEmail are nil in the student path.
+	if aliceCourseStudent.StudentUsername != nil {
+		t.Errorf("expected StudentUsername to be nil in student path, got %q", *aliceCourseStudent.StudentUsername)
+	}
+	if aliceCourseStudent.StudentEmail != nil {
+		t.Errorf("expected StudentEmail to be nil in student path, got %q", *aliceCourseStudent.StudentEmail)
+	}
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-046",
+  "title": "Token-Cap Exhaustion Surfaces User-Visible Reason",
+  "description": "The agent module shall emit a user-visible error reason when a node fails due to token-cap exhaustion mid-tree.",
+  "rationale": "Without an explicit failure reason the student observes a node stuck in failed status with no explanation of why generation stopped; a visible reason allows the student to request an admin to raise the cap or regenerate the node.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-045", "REQ-SYS-076"]
+}

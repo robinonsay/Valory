@@ -33,6 +33,11 @@ type CourseRow struct {
 	AssignmentID *uuid.UUID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	// StudentUsername and StudentEmail are populated by the admin path of
+	// ListCourses (REQ-FEADMIN-708) via a JOIN on users. Student path
+	// (studentID != nil) leaves these empty.
+	StudentUsername *string
+	StudentEmail    *string
 }
 
 type SyllabusRow struct {
@@ -163,19 +168,32 @@ func (r *CourseRepository) GetCourseByID(ctx context.Context, id uuid.UUID) (Cou
 	return course, nil
 }
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-FEADMIN-708"]}
 func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID, statusFilter string, cursor string, limit int) ([]CourseRow, string, error) {
 	var query string
 	var args []interface{}
 
-	baseQuery := `SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at
-	             FROM courses
-	             WHERE ($1::uuid IS NULL OR student_id = $1)
-	               AND ($2 = '' OR status::text = $2)`
+	// Admin path (studentID == nil): join users to include student_username and
+	// student_email. Student path: no join, StudentUsername/StudentEmail remain nil.
+	var baseQuery string
+	if studentID == nil {
+		// Admin path: include username and email via join on users table.
+		baseQuery = `SELECT c.id, c.student_id, c.title, c.topic, c.status, c.pre_withdrawal_status, c.assignment_id, c.created_at, c.updated_at, u.username, u.email
+		             FROM courses c
+		             LEFT JOIN users u ON u.id = c.student_id
+		             WHERE ($1::uuid IS NULL OR c.student_id = $1)
+		               AND ($2 = '' OR c.status::text = $2)`
+	} else {
+		// Student path: no join, unchanged response shape.
+		baseQuery = `SELECT c.id, c.student_id, c.title, c.topic, c.status, c.pre_withdrawal_status, c.assignment_id, c.created_at, c.updated_at, NULL::text, NULL::text
+		             FROM courses c
+		             WHERE ($1::uuid IS NULL OR c.student_id = $1)
+		               AND ($2 = '' OR c.status::text = $2)`
+	}
 
 	if cursor == "" {
 		query = baseQuery + `
-	             ORDER BY created_at DESC, id DESC
+	             ORDER BY c.created_at DESC, c.id DESC
 	             LIMIT $3`
 		args = []interface{}{studentID, statusFilter, limit + 1}
 	} else {
@@ -198,8 +216,8 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 		}
 
 		query = baseQuery + `
-	               AND (created_at, id) < ($4, $5)
-	               ORDER BY created_at DESC, id DESC
+	               AND (c.created_at, c.id) < ($4, $5)
+	               ORDER BY c.created_at DESC, c.id DESC
 	               LIMIT $3`
 		args = []interface{}{studentID, statusFilter, limit + 1, createdAt, cursorID}
 	}
@@ -223,6 +241,8 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
+			&course.StudentUsername,
+			&course.StudentEmail,
 		); err != nil {
 			return nil, "", err
 		}

@@ -24,7 +24,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/valory/valory/internal/audit"
 	dbpkg "github.com/valory/valory/internal/db"
 )
 
@@ -603,4 +605,288 @@ func TestGetValidResetToken_UserDeleted_CascadeRemovesToken_RealSchema(t *testin
 	if err != ErrTokenNotFound {
 		t.Fatalf("expected ErrTokenNotFound after user deletion (cascade), got %v", err)
 	}
+}
+
+// ----------------------------------------------------------------------------
+// G1-S1-T2 Regression: DeleteStudent with agent_runs + pipeline_events present
+// (agent_runs FK ON DELETE RESTRICT caused HTTP 500 before the G1-S1-T1 fix)
+// ----------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-USER-007"]}
+// TestDeleteStudent_WithAgentRunsAndPipelineEvents_CascadesCleanly is the
+// regression guard for the FK RESTRICT violation that caused an HTTP 500 when
+// deleting a student whose course had agent_runs rows. The root cause: the old
+// Repository.DeleteStudent deleted courses before agent_runs; since
+// agent_runs.course_id is ON DELETE RESTRICT the courses DELETE failed.
+//
+// Fix (G1-S1-T1): agent_runs is now deleted inside the transaction before
+// courses, and pipeline_events cascades automatically (ON DELETE CASCADE from
+// agent_runs).
+//
+// Fixture graph seeded by this test:
+//
+//	student
+//	  └─ course
+//	       ├─ agent_run  (the RESTRICT child that previously blocked deletion)
+//	       │    └─ pipeline_event  (ON DELETE CASCADE — swept with agent_run)
+//	       └─ homework
+//	            └─ submission  (belt-and-braces: also swept by DeleteStudent)
+//
+// Assertions (step 10):
+//
+//  1. Service.DeleteStudent returns nil (no FK violation).
+//  2. agent_runs rows for the course are gone.
+//  3. pipeline_events rows for those agent_runs are gone.
+//  4. courses row for the student is gone.
+//  5. submissions row is gone.
+//  6. The student user row is gone.
+//
+// SET ROLE valory_app (step 8): a probing DELETE on a role-downgraded
+// connection verifies that valory_app holds the DELETE grant on agent_runs and
+// pipeline_events (migration 004). The probe runs in a rolled-back savepoint so
+// the rows are intact for step 9. Omitting this check would let a missing grant
+// pass under the superuser test pool (which bypasses privilege enforcement) but
+// fail in production — exactly the gap flagged in the "force-rls-superuser-
+// test-masking" memory note.
+func TestDeleteStudent_WithAgentRunsAndPipelineEvents_CascadesCleanly(t *testing.T) {
+	// integTruncate issues TRUNCATE users RESTART IDENTITY CASCADE which
+	// cascades into courses → agent_runs → pipeline_events and all other
+	// descendant tables, giving this test a clean starting state.
+	integTruncate(t)
+
+	ctx := context.Background()
+	pool := dbpkg.IntegrationPool(t)
+	repo := NewRepository(pool)
+
+	// ── 1. Create an admin (required for Service.DeleteStudent audit entry) ───
+	admin, err := repo.CreateUser(ctx,
+		"rg_admin_"+uuid.New().String()[:8], nil, "hash_admin", "admin",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser (admin): %v", err)
+	}
+
+	// ── 2. Create the student ─────────────────────────────────────────────────
+	student, err := repo.CreateUser(ctx,
+		"rg_stu_"+uuid.New().String()[:8], nil, "hash_stu", "student",
+	)
+	if err != nil {
+		t.Fatalf("CreateUser (student): %v", err)
+	}
+
+	// ── 3. Seed a course for the student ─────────────────────────────────────
+	// Direct SQL: the course repository lives in internal/course, which this
+	// package does not import. SQL seeding is correct for integration tests
+	// that exercise DELETE cascade rather than course-creation business logic.
+	var courseID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO courses (student_id, topic, status)
+		 VALUES ($1, 'Regression Topic', 'generating')
+		 RETURNING id`,
+		student.ID,
+	).Scan(&courseID); err != nil {
+		t.Fatalf("seed course: %v", err)
+	}
+
+	// ── 4. Seed an agent_runs row ─────────────────────────────────────────────
+	// This is the RESTRICT child. Before G1-S1-T1, deleting the course with
+	// this row present raised:
+	//   ERROR: update or delete on table "courses" violates foreign key
+	//   constraint "agent_runs_course_id_fkey" on table "agent_runs"
+	var agentRunID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO agent_runs (course_id, run_type, status)
+		 VALUES ($1, 'content_generation', 'completed')
+		 RETURNING id`,
+		courseID,
+	).Scan(&agentRunID); err != nil {
+		t.Fatalf("seed agent_runs: %v", err)
+	}
+
+	// ── 5. Seed a pipeline_events row (ON DELETE CASCADE from agent_runs) ────
+	var pipelineEventID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO pipeline_events (agent_run_id, event_type, payload)
+		 VALUES ($1, 'generation_complete', '{"sections": 3}')
+		 RETURNING id`,
+		agentRunID,
+	).Scan(&pipelineEventID); err != nil {
+		t.Fatalf("seed pipeline_events: %v", err)
+	}
+
+	// ── 6. Seed homework + submission for additional cascade coverage ─────────
+	var homeworkID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO homework (course_id, section_index, title, rubric, grade_weight)
+		 VALUES ($1, 0, 'Regression HW', 'Grade by correctness.', 0.7)
+		 RETURNING id`,
+		courseID,
+	).Scan(&homeworkID); err != nil {
+		t.Fatalf("seed homework: %v", err)
+	}
+
+	var submissionID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO submissions (homework_id, student_id, format, file_path, file_size_bytes)
+		 VALUES ($1, $2, 'markdown', '/tmp/rg_submission.md', 512)
+		 RETURNING id`,
+		homeworkID, student.ID,
+	).Scan(&submissionID); err != nil {
+		t.Fatalf("seed submission: %v", err)
+	}
+
+	// ── 7. Pre-delete sanity: confirm seeded rows are present ────────────────
+	var preAgentCount, prePipelineCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM agent_runs WHERE course_id = $1`, courseID,
+	).Scan(&preAgentCount); err != nil {
+		t.Fatalf("pre-delete agent_runs count: %v", err)
+	}
+	if preAgentCount != 1 {
+		t.Fatalf("expected 1 agent_run before delete, got %d", preAgentCount)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM pipeline_events WHERE agent_run_id = $1`, agentRunID,
+	).Scan(&prePipelineCount); err != nil {
+		t.Fatalf("pre-delete pipeline_events count: %v", err)
+	}
+	if prePipelineCount != 1 {
+		t.Fatalf("expected 1 pipeline_event before delete, got %d", prePipelineCount)
+	}
+
+	// ── 8. Grant verification under SET ROLE valory_app ──────────────────────
+	// The integration pool runs as the superuser (valory_test), which bypasses
+	// all privilege checks. To confirm that valory_app actually holds the DELETE
+	// grant on agent_runs and pipeline_events (migration 004), we acquire a
+	// single connection, downgrade it to valory_app, and run probing DELETEs
+	// inside a savepoint that we always roll back so rows survive for step 9.
+	//
+	// A failure here (e.g. "permission denied") means the migration 004 grant
+	// is absent and production would reject the same DELETE even though the
+	// superuser test passes — the exact gap the memory note warns about.
+	verifyValoryAppGrants(t, ctx, pool, courseID, agentRunID)
+
+	// ── 9. Exercise the real Service.DeleteStudent production path ────────────
+	// Service calls TerminateStudentOperations → repo.DeleteStudent (ordered
+	// DELETEs in a transaction) → audit append. noopTerminator and noopEmail
+	// are defined in service_test.go (no build tag, always compiled).
+	svc := NewService(
+		pool,
+		repo,
+		audit.NewRepository(pool),
+		&noopEmail{},
+		1*time.Hour,
+		&noopTerminator{},
+	)
+
+	if err := svc.DeleteStudent(ctx, admin.ID, student.ID); err != nil {
+		// Regression: before G1-S1-T1 this returned a FK RESTRICT error.
+		t.Fatalf("Service.DeleteStudent failed — want nil, got: %v", err)
+	}
+
+	// ── 10. Post-delete orphan checks ─────────────────────────────────────────
+
+	// 10a. Student user row is gone.
+	if _, getErr := repo.GetUserByID(ctx, student.ID); getErr != ErrUserNotFound {
+		t.Errorf("student row still present after DeleteStudent; want ErrUserNotFound, got %v", getErr)
+	}
+
+	// 10b. agent_runs rows for the deleted course are gone.
+	var agentRunsAfter int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM agent_runs WHERE course_id = $1`, courseID,
+	).Scan(&agentRunsAfter); err != nil {
+		t.Fatalf("post-delete agent_runs count: %v", err)
+	}
+	if agentRunsAfter != 0 {
+		t.Errorf("agent_runs orphan: expected 0 rows, got %d", agentRunsAfter)
+	}
+
+	// 10c. pipeline_events rows are gone (cascaded from agent_runs).
+	var pipelineEventsAfter int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM pipeline_events WHERE agent_run_id = $1`, agentRunID,
+	).Scan(&pipelineEventsAfter); err != nil {
+		t.Fatalf("post-delete pipeline_events count: %v", err)
+	}
+	if pipelineEventsAfter != 0 {
+		t.Errorf("pipeline_events orphan: expected 0 rows, got %d", pipelineEventsAfter)
+	}
+
+	// 10d. courses row is gone.
+	var coursesAfter int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM courses WHERE id = $1`, courseID,
+	).Scan(&coursesAfter); err != nil {
+		t.Fatalf("post-delete courses count: %v", err)
+	}
+	if coursesAfter != 0 {
+		t.Errorf("courses orphan: expected 0 rows, got %d", coursesAfter)
+	}
+
+	// 10e. submissions row is gone (DeleteStudent deletes by student_id).
+	var submissionsAfter int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM submissions WHERE id = $1`, submissionID,
+	).Scan(&submissionsAfter); err != nil {
+		t.Fatalf("post-delete submissions count: %v", err)
+	}
+	if submissionsAfter != 0 {
+		t.Errorf("submissions orphan: expected 0 rows, got %d", submissionsAfter)
+	}
+
+	// Silence unused variable warnings for IDs used only in pre/post checks.
+	_ = pipelineEventID
+}
+
+// verifyValoryAppGrants runs probing DELETEs on a valory_app-role connection
+// to confirm migration 004's GRANT DELETE ON agent_runs / pipeline_events TO
+// valory_app is actually in effect. Each probe runs inside a savepoint that is
+// always rolled back, so no rows are mutated.
+//
+// Why a savepoint rather than a normal transaction rollback: the test calls
+// this helper mid-function and then exercises Service.DeleteStudent immediately
+// afterwards. A savepoint lets us roll back the probe without closing the
+// connection or the outer test function.
+func verifyValoryAppGrants(t *testing.T, ctx context.Context, pool *pgxpool.Pool, courseID, agentRunID uuid.UUID) {
+	t.Helper()
+
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("verifyValoryAppGrants: acquire conn: %v", err)
+	}
+	defer conn.Release() // AfterRelease issues RESET ROLE automatically
+
+	// Downgrade from the superuser login role to valory_app so that privilege
+	// checks fire. Without this the superuser bypasses all GRANTs, making the
+	// probe vacuous.
+	if err := conn.Conn().PgConn().Exec(ctx, "SET ROLE valory_app").Close(); err != nil {
+		t.Fatalf("verifyValoryAppGrants: SET ROLE valory_app: %v", err)
+	}
+
+	// Open a transaction and immediately create a savepoint. On rollback only
+	// the savepoint is unwound, leaving the connection usable.
+	tx, err := conn.Conn().Begin(ctx)
+	if err != nil {
+		t.Fatalf("verifyValoryAppGrants: begin tx: %v", err)
+	}
+	// Always rollback — this is a read-then-discard probe.
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM agent_runs WHERE course_id = $1`, courseID,
+	); err != nil {
+		t.Fatalf("verifyValoryAppGrants: DELETE agent_runs under valory_app failed "+
+			"(grant missing in migration 004?): %v", err)
+	}
+
+	// pipeline_events cascades automatically from agent_runs, but an explicit
+	// DELETE should also be permitted since valory_app has DELETE on the table.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM pipeline_events WHERE agent_run_id = $1`, agentRunID,
+	); err != nil {
+		t.Fatalf("verifyValoryAppGrants: DELETE pipeline_events under valory_app failed "+
+			"(grant missing in migration 004?): %v", err)
+	}
+	// tx.Rollback in defer discards both deletes; rows remain for step 9.
 }

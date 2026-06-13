@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-035",
+  "title": "agent_token_usage Supports Draft Context With Mutual-Exclusion Check",
+  "description": "The agent module shall track AI token usage for admin draft generation separately from student course usage.",
+  "rationale": "Admin draft generation has no student_id or course_id; without a draft context column, token spend for admin previews cannot be tracked or capped, and the mutual-exclusion check prevents a row from mixing both contexts.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-074", "REQ-SYS-077"]
+}

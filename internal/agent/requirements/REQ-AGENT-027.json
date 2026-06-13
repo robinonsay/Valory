@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-027",
+  "title": "course_nodes Table With Strict Tree Structure",
+  "description": "The agent module shall persist each knowledge-tree node as a typed row with a single nullable parent reference.",
+  "rationale": "A per-row representation with a self-FK parent makes each generation step an explicit, queryable database event and enables partial completion and per-node RLS without polymorphic joins.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-072"]
+}

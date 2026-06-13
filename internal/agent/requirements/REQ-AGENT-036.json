@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-036",
+  "title": "agent_runs Supports Draft Context With Context-Anchor Check",
+  "description": "The agent module shall anchor admin-draft pipeline events to the draft context in agent_runs.",
+  "rationale": "Admin drafts have no course_id; the existing GetEventsAfter query must have a draft-scoped overload that joins on draft_id, requiring course_id to be relaxed to nullable with a constraint ensuring at least one anchor exists.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-006", "REQ-SYS-077"]
+}

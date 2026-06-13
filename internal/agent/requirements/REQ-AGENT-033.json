@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-033",
+  "title": "course_nodes RLS NULLIF Guard on User ID",
+  "description": "The agent module shall apply the NULLIF empty-string guard on app.current_user_id in every course_nodes RLS policy.",
+  "rationale": "Without the NULLIF guard, a superuser test connection sets the GUC to empty string, which casts to NULL and makes student_id = NULL true for every row, masking RLS bypass bugs in tests before they reach production.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-AGENT-032"]
+}

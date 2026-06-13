@@ -542,5 +542,53 @@
     "rationale": "A fresh install has no users and no mechanism to create the first admin; without a dedicated setup path the system cannot be bootstrapped and operators are left with no way to log in or administer the platform.",
     "verification_method": "Test",
     "implements": ["REQ-SETUP-001", "REQ-SETUP-002", "REQ-SETUP-003", "REQ-SETUP-004", "REQ-SETUP-005", "REQ-SETUP-006", "REQ-SETUP-007", "REQ-SETUP-008", "REQ-SETUP-009", "REQ-SETUP-010", "REQ-SETUP-011", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003", "REQ-FESETUP-004", "REQ-FESETUP-005", "REQ-FESETUP-006", "REQ-FESETUP-007"]
+  },
+  {
+    "id": "REQ-SYS-072",
+    "title": "Tree-Mode Backward Compatibility With Flat Courses",
+    "description": "The system shall leave all existing flat-course behavior unchanged when tree_mode is false.",
+    "rationale": "Existing courses are generated and rendered through the flat pipeline; any change to that path risks breaking in-flight and completed courses. The tree model is an additive parallel path that must not touch flat-course data.",
+    "verification_method": "Test",
+    "implements": ["REQ-AGENT-037", "REQ-AGENT-059"]
+  },
+  {
+    "id": "REQ-SYS-073",
+    "title": "Human-in-the-Loop Checkpoint at Each Tree Layer",
+    "description": "The system shall pause generation and require explicit human approval before advancing to each successive tree layer.",
+    "rationale": "Root ask #5 requires HITL at every level; without a mandatory pause at each layer boundary the system could consume large token budgets generating content the human has not yet reviewed, defeating the oversight and cost-control goals.",
+    "verification_method": "Demonstration",
+    "implements": ["REQ-AGENT-038", "REQ-AGENT-039", "REQ-AGENT-040", "REQ-AGENT-043", "REQ-AGENT-044", "REQ-AGENT-050"]
+  },
+  {
+    "id": "REQ-SYS-074",
+    "title": "Per-Layer Token Budget as Binding Enforceable Control",
+    "description": "The system shall enforce a configurable per-layer token budget that fails nodes exceeding the limit.",
+    "rationale": "The global per-student token cap is insufficient for layered generation where a single layer can exhaust the budget before the human reviews it; a per-layer sub-cap gives admins fine-grained cost control and makes budget exhaustion observable via failed-node escalation.",
+    "verification_method": "Test",
+    "implements": ["REQ-AGENT-045", "REQ-AGENT-046"]
+  },
+  {
+    "id": "REQ-SYS-075",
+    "title": "Row-Level Security Isolation for Tree Nodes",
+    "description": "The system shall restrict access to tree node data to the owning student or admin only.",
+    "rationale": "Tree nodes contain generated course content and chat history that are as sensitive as lesson_content and submissions; the same per-student RLS pattern must be extended to all tree tables to preserve the existing data isolation guarantee.",
+    "verification_method": "Test",
+    "implements": ["REQ-AGENT-032", "REQ-AGENT-033", "REQ-AGENT-034"]
+  },
+  {
+    "id": "REQ-SYS-076",
+    "title": "Mid-Tree Token-Cap Failure Surfaces User-Visible Reason",
+    "description": "The system shall display the specific reason to the user when a tree-mode node fails due to token-cap exhaustion.",
+    "rationale": "A silent failed node mid-tree leaves the user with no explanation of why generation stopped or what action to take; a visible failure reason enables the student to seek admin intervention and prevents indefinite unexplained stalls.",
+    "verification_method": "Demonstration",
+    "implements": ["REQ-AGENT-046"]
+  },
+  {
+    "id": "REQ-SYS-077",
+    "title": "Admin Co-Development of Course Tree Before Student Assignment",
+    "description": "The system shall allow admins to preview and interactively refine a course tree draft before assigning it to students.",
+    "rationale": "Root ask #3 requires an admin-authoring path separate from the student-build path; without a draft lifecycle admins cannot inspect or adjust generated content before it is exposed to students, reducing quality control.",
+    "verification_method": "Demonstration",
+    "implements": ["REQ-AGENT-044", "REQ-AGENT-047", "REQ-AGENT-048", "REQ-AGENT-049", "REQ-AGENT-054", "REQ-AGENT-056", "REQ-AGENT-057"]
   }
 ]

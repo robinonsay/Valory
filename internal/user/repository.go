@@ -299,6 +299,14 @@ func (r *Repository) DeleteStudent(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 
+	// agent_runs.course_id is ON DELETE RESTRICT (migrations/004_agent.sql:63),
+	// so it must be removed before courses. pipeline_events is ON DELETE CASCADE
+	// from agent_runs, so its rows are swept automatically by this delete.
+	if err := deleteIfTableExists(ctx, tx, "agent_runs",
+		`DELETE FROM agent_runs WHERE course_id IN (SELECT id FROM courses WHERE student_id = $1)`, id); err != nil {
+		return err
+	}
+
 	if err := deleteIfTableExists(ctx, tx, "courses",
 		`DELETE FROM courses WHERE student_id = $1`, id); err != nil {
 		return err

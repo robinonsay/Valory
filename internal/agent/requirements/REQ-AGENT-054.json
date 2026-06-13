@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-054",
+  "title": "Admin Draft Node Chat History Endpoint",
+  "description": "The agent module shall return an admin's draft node chat history in ascending chronological order.",
+  "rationale": "Parity with the student chat-history endpoint is required so the admin can review the full conversation with the Chair when co-developing draft nodes; without this endpoint the admin has no way to inspect prior refinement history.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-034", "REQ-AGENT-047", "REQ-AGENT-053"]
+}

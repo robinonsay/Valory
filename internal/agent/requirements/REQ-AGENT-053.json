@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-053",
+  "title": "Student Node Chat History Endpoint",
+  "description": "The agent module shall return a student's node chat history in ascending chronological order.",
+  "rationale": "The Chair uses accumulated conversation history when refining a node; the student must also be able to review the conversation to understand what has been discussed and request further refinement.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-034", "REQ-AGENT-032"]
+}

@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-050", "REQ-FEADMIN-051", "REQ-FEADMIN-052", "REQ-FEADMIN-053", "REQ-FEADMIN-400", "REQ-FEADMIN-401", "REQ-FEADMIN-402", "REQ-FEADMIN-403", "REQ-FEADMIN-404", "REQ-FEADMIN-405", "REQ-FEADMIN-406"]}
+// @{"req": ["REQ-FEADMIN-050", "REQ-FEADMIN-051", "REQ-FEADMIN-052", "REQ-FEADMIN-053", "REQ-FEADMIN-400", "REQ-FEADMIN-401", "REQ-FEADMIN-402", "REQ-FEADMIN-403", "REQ-FEADMIN-404", "REQ-FEADMIN-405", "REQ-FEADMIN-406", "REQ-FEADMIN-708"]}
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
@@ -10,6 +10,8 @@ interface OversightCourse {
   title: string
   status: string
   student_id: string
+  student_username?: string
+  student_email?: string
   created_at: string
   updated_at: string
 }
@@ -119,7 +121,7 @@ onMounted(() => {
           <tr>
             <th>Title</th>
             <th>Status</th>
-            <th>Student ID</th>
+            <th>Student</th>
             <th>Created</th>
           </tr>
         </thead>
@@ -127,7 +129,10 @@ onMounted(() => {
           <tr v-for="course in courses" :key="course.id" class="course-row">
             <td class="title">{{ course.title }}</td>
             <td class="status">{{ course.status }}</td>
-            <td class="student-id">{{ course.student_id }}</td>
+            <td class="student">
+              <div class="student-name">{{ course.student_username || course.student_id }}</div>
+              <div v-if="course.student_username" class="student-id-secondary" :title="course.student_id">{{ course.student_id.substring(0, 8) }}...</div>
+            </td>
             <td class="created">{{ formatDate(course.created_at) }}</td>
           </tr>
         </tbody>
@@ -257,9 +262,19 @@ onMounted(() => {
   font-size: 0.9rem;
 }
 
-.student-id {
+.student {
   font-size: 0.9rem;
-  color: #666;
+  color: #333;
+}
+
+.student-name {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.student-id-secondary {
+  font-size: 0.8rem;
+  color: #999;
 }
 
 .created {

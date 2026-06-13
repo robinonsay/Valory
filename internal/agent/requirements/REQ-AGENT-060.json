@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-060",
+  "title": "Layer Generation Events Emitted to Pipeline Events Table",
+  "description": "The agent module shall emit pipeline events for layer start, layer review-pause, node failure, and tree completion.",
+  "rationale": "The existing SSE pattern delivers real-time progress via pipeline_events; new layer-level events must use the same mechanism so the frontend can display node-level status updates without a separate polling channel.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-006", "REQ-AGENT-038"]
+}

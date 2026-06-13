@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-030",
+  "title": "Node Status Six-Value Lifecycle",
+  "description": "The agent module shall transition each node through six statuses: pending, generating, awaiting_review, approved, rejected, and failed.",
+  "rationale": "Six distinct statuses capture every meaningful state a node can occupy, making the generation pipeline's progress queryable and resumable without in-memory state.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-027"]
+}

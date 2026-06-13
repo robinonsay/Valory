@@ -57,7 +57,7 @@ func (s *CourseService) GetCourse(ctx context.Context, courseID, requesterID uui
 	return row, nil
 }
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-FEADMIN-708"]}
 func (s *CourseService) ListCourses(ctx context.Context, requesterID uuid.UUID, role string, statusFilter string, cursor string, limit int) ([]CourseRow, string, error) {
 	var studentID *uuid.UUID
 	if role == "student" {

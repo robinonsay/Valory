@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-045",
+  "title": "Per-Layer Token Budget Is a Binding Enforceable Control",
+  "description": "The agent module shall transition a node to failed with reason token_budget_exceeded when per_layer_token_budget is set and would be exceeded.",
+  "rationale": "A per-layer budget sub-cap prevents a single layer from consuming the entire course token allowance before the human has reviewed it; marking nodes failed rather than silently skipping them ensures the escalation path triggers and the student can observe the cause.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-074", "REQ-AGENT-031"]
+}

@@ -331,14 +331,14 @@
       "id": "G2-S4-T3",
       "title": "Admin authoring flow: draft list + draft editor (reuse T1), preview syllabus + chat before publish->assign; admin routes",
       "sprint": "G2-S4",
-      "status": "pending",
+      "status": "done",
       "depends_on": ["G2-S4-T1", "G2-S4-T2", "G2-S4-T5"],
-      "assigned_worker": null,
+      "assigned_worker": "senior-engineer",
       "verifier": "SQE + Systems Engineer",
-      "artifact_path": null,
-      "acceptance": "pending",
-      "requirements": ["REQ-SYS-077"],
-      "blockers": "Files: frontend/src/views/admin/** + router/index.ts (admin routes). depends_on T2 is router serialisation (one-worker-per-file); otherwise independent of T2. Delivers admin ask #3 UX."
+      "artifact_path": "frontend/src/views/admin/DraftListView.vue ; frontend/src/views/admin/DraftEditorView.vue ; frontend/src/router/index.ts ; frontend/src/layouts/AdminLayout.vue ; frontend/requirements/REQ-FEADMIN-710.json",
+      "acceptance": "pass",
+      "requirements": ["REQ-SYS-077", "REQ-FEADMIN-710"],
+      "blockers": "ACCEPTED (gate 1 after 1 rework). Delivers ask #3 admin UX. Gate-1 FAILED on 3 real defects: SYS - DraftListView title labeled '(optional)' but Go createDraft handler hard-rejects empty title (400) -> wire mismatch; SQE - REQ-FEADMIN-710 description non-atomic (creating/editing/publishing 3 behaviors) + rationale described HOW. Reworked (parallel, disjoint files): junior-engineer made title required (label+required attr+submit guard, mirrors topic); requirements-author rewrote REQ-710 to 17-word atomic WHAT desc + WHY-only rationale (schema-valid). Re-review: SQE PASS + Systems PASS. Confirmed: DraftListView (list+filter+cursor, create modal title/topic/level->createDraft, delete 409 DRAFT_ALREADY_PUBLISHED); DraftEditorView (getDraft, admin SSE /admin/drafts/{id}/events via useNodeEvents, T1 TreeView all 6 admin callbacks, live status, 409s surfaced, per-node chat); publish gated on allNodesApproved (empty/partial tree correctly blocked) + 409 DRAFT_HAS_UNAPPROVED_NODES -> navigates /admin/assignments/{assignment_id} (assignment_title/assignment_id wire-verified vs Go handler); routes additive admin-role-guarded no conflict w/ T2; AdminLayout 'Course Drafts' nav; CSRF via client; no .go changes; build+vue-tsc clean, vitest 595/595. DEFERRED backlog: refreshNodes silent catch (add console.warn); handleLoadNodeChat no try/catch (comment); window.confirm for delete (admin-view inconsistency); useSSE no auto-reconnect after 5 retries (UX gap, pre-existing); redundant topic-only early-return guard; summary.md tool-policy waiver. Gate-2 Senior SQE batched. Unblocks T4 (last task)."
     },
     {
       "id": "G2-S4-T4",

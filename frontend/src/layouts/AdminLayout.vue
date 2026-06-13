@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-010", "REQ-FEADMIN-011", "REQ-FEADMIN-012", "REQ-FEADMIN-013", "REQ-FEADMIN-100", "REQ-FEADMIN-101", "REQ-FEADMIN-102", "REQ-FEADMIN-110"]}
+// @{"req": ["REQ-FEADMIN-010", "REQ-FEADMIN-011", "REQ-FEADMIN-012", "REQ-FEADMIN-013", "REQ-FEADMIN-100", "REQ-FEADMIN-101", "REQ-FEADMIN-102", "REQ-FEADMIN-110", "REQ-FEADMIN-710"]}
 
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -68,6 +68,15 @@ const handleLogout = async (): Promise<void> => {
             class="nav-link"
           >
             Assignments
+          </RouterLink>
+          <!-- @{"req": ["REQ-FEADMIN-710"]} -->
+          <RouterLink
+            to="/admin/drafts"
+            active-class="active"
+            exact-active-class="active"
+            class="nav-link"
+          >
+            Course Drafts
           </RouterLink>
           <!-- @{"req": ["REQ-FEONBOARD-002"]} -->
           <RouterLink

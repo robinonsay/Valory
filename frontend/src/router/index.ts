@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003", "REQ-SYS-073"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003", "REQ-SYS-073", "REQ-FEADMIN-710"]}
 import { h } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -30,6 +30,8 @@ import CourseDetailView from '@/views/admin/CourseDetailView.vue'
 import AdminAssignmentsView from '@/views/admin/AdminAssignmentsView.vue'
 import AdminAssignmentDetailView from '@/views/admin/AdminAssignmentDetailView.vue'
 import CourseBuildView from '@/views/CourseBuildView.vue'
+import DraftListView from '@/views/admin/DraftListView.vue'
+import DraftEditorView from '@/views/admin/DraftEditorView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -252,6 +254,25 @@ const router = createRouter({
           path: 'getting-started',
           name: 'getting-started-admin',
           component: GettingStartedView,
+          meta: { requiresAuth: true, requiredRole: 'admin' }
+        },
+        {
+          // @{"req": ["REQ-FEADMIN-710"]}
+          // Draft list — admin authors a new tree course draft. Listed
+          // separately from assignments; published drafts produce assignments
+          // the admin routes to from AdminAssignmentDetailView.
+          path: 'drafts',
+          name: 'admin-drafts',
+          component: DraftListView,
+          meta: { requiresAuth: true, requiredRole: 'admin' }
+        },
+        {
+          // @{"req": ["REQ-FEADMIN-710"]}
+          // Draft editor — interactive tree build view for a single draft.
+          // Admin approves/rejects/regenerates nodes and publishes when done.
+          path: 'drafts/:id',
+          name: 'admin-draft-editor',
+          component: DraftEditorView,
           meta: { requiresAuth: true, requiredRole: 'admin' }
         }
       ]

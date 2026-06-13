@@ -344,14 +344,14 @@
       "id": "G2-S4-T4",
       "title": "Component + e2e tests for both interactive flows (vitest component + e2e; rebuild stack before paid e2e)",
       "sprint": "G2-S4",
-      "status": "pending",
+      "status": "done",
       "depends_on": ["G2-S4-T2", "G2-S4-T3"],
-      "assigned_worker": null,
+      "assigned_worker": "test-author",
       "verifier": "SQE",
-      "artifact_path": null,
-      "acceptance": "pending",
+      "artifact_path": "frontend/src/components/tree/{TreeView,NodeCard,LayerExpandControl}.test.ts ; frontend/src/views/CourseBuildView.test.ts ; frontend/src/views/admin/{DraftListView,DraftEditorView}.test.ts ; frontend/src/composables/useNodeEvents.test.ts ; frontend/e2e/{tree-student-build,tree-admin-author}.spec.ts",
+      "acceptance": "pass",
       "requirements": ["REQ-SYS-073", "REQ-SYS-077"],
-      "blockers": "Files: frontend/src/**/*.test.ts (+ e2e). Stub API for component tests; gate real paid e2e (memory valory-stack-rebuild-before-e2e). Last task before final Senior SQE delivery gate."
+      "blockers": "ACCEPTED (SQE gate, no rework). +78 vitest component tests (595->673, 7 new files), 50 files green; vue-tsc clean; test-only (no source modified). SQE independently confirmed NON-VACUITY of key tests: NodeCard feedback empty(disabled,no-call) vs non-empty(call w/ trimmed) positive control; DraftEditorView publish gating disabled-on-unapproved-root + enabled-on-all-approved + disabled-on-empty + disabled-on-mixed; LayerExpandControl distinct 409 messages (LAYER_NOT_FULLY_APPROVED/TREE_ALREADY_COMPLETE); CourseDashboard tree_mode routing both directions; NodeCard content via real renderAsciidoc spy (not 2nd renderer). Mocks at module seam (@/api/tree, useNodeEvents, renderAsciidoc) - no real network/EventSource/paid API. useNodeEvents reducer unit-tested (13). Tier-2 Playwright e2e (tree-student-build + tree-admin-author) AUTHORED+GATED, zero paid calls, NOT run; paid journey NOT run; rebuild-then-test:e2e steps documented. DEFERRED backlog: DraftEditorView test order-dependent mock (works); e2e waitForTimeout antipattern; summary.md tool-policy waiver. CLOSES G2-S4 (Sprint 30). Gate-2 Senior SQE = the combined-release delivery gate (next)."
     },
     {
       "id": "G2-S4-T5",

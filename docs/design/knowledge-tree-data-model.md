@@ -35,6 +35,23 @@ Changes applied by the cross-document reconciliation pass (2026-06-13):
 
 ---
 
+## Reconciliation log (rev 3)
+
+Applied during G2-S2 implementation (2026-06-13), Lead decision **D10**:
+
+- **§6 student policy — read-only (D10).** The rev-2 DDL for `course_nodes_student_policy`
+  used `USING (...) WITH CHECK (...)` with **no `FOR` clause**, which defaults to `FOR ALL` and
+  (via the `WITH CHECK`) let a student-role connection INSERT/UPDATE its **own** `course_nodes`
+  — directly contradicting this document's own §6 note 3 ("Students may not insert or update
+  course_nodes directly… RLS defaults to deny. Students interact via the chat and feedback APIs
+  only") and the system-wide precedent that students are read-only on
+  `syllabi`/`homework`/`lesson_content`. The shipped migration (`022_tree_generation.sql`)
+  corrects this: `course_nodes_student_policy` is **`FOR SELECT`** (read-own; no `WITH CHECK`).
+  All `course_nodes` writes go through the `server` role (the server insert/update/select
+  policies). `node_chats` student policy intentionally stays `FOR ALL` (students legitimately
+  post their own chat turns). The §6 DDL below is updated to match. Caught by the G2-S2-T4
+  integration tests and verified live under `SET ROLE valory_app`.
+
 ## 1. Overview
 
 ### Problem
@@ -529,15 +546,14 @@ ALTER TABLE course_nodes FORCE ROW LEVEL SECURITY;
 -- Student may read nodes belonging to their own courses.
 -- The NULLIF guard on both USING and WITH CHECK mirrors the lesson_content_student_policy
 -- in 004_agent.sql, which was the first policy to use the guarded subselect idiom.
+-- D10 (rev 3): FOR SELECT only — students are READ-ONLY on course_nodes.
+-- No WITH CHECK (a SELECT policy has none). All writes go through the server role
+-- (see the server insert/update/select policies below). This enforces note 3 below
+-- at the RLS layer rather than relying on the application to avoid student writes.
 DO $$ BEGIN
     CREATE POLICY course_nodes_student_policy ON course_nodes
+        FOR SELECT
         USING (
-            course_id IN (
-                SELECT id FROM courses
-                WHERE student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
-            )
-        )
-        WITH CHECK (
             course_id IN (
                 SELECT id FROM courses
                 WHERE student_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid

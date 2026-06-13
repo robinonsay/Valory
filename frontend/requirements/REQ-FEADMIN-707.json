@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-707",
+  "title": "Admin Course-Material Browser UI",
+  "description": "The frontend module shall render a read-only course-material browser for any student, reachable from Course Oversight.",
+  "rationale": "Admins must be able to inspect a student's full learning record (syllabus, sections, lesson content, homework, rubric, submissions, grades, and relevant chat messages) without any edit controls, to fulfil the read-only oversight mandate from root ask #3. Surfacing this from Course Oversight ensures the natural discovery path matches the admin's existing workflow.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-ADMIN-011", "REQ-SYS-005", "REQ-SYS-023"]
+}

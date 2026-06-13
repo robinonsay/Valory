@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ADMIN-011",
+  "title": "Admin Read-Only Access to Any Student Course Material",
+  "description": "The admin module shall return any student's syllabi, sections, homework, submissions, and grades without permitting mutations.",
+  "rationale": "Admins need full read visibility into every student's course material for support and quality oversight, but editing or regenerating content is explicitly deferred to the interactive authoring flow; read-only access prevents accidental data changes while preserving the audit trail. The RLS policy must allow admins to read across all student rows while preserving strict per-student isolation so no student can read another student's data; verification must be performed under SET ROLE valory_app to prevent the superuser from masking RLS policy gaps.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-005", "REQ-SYS-023"]
+}

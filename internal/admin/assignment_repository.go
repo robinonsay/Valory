@@ -26,8 +26,12 @@ type AssignmentRow struct {
 	Topic      string
 	Level      string
 	Parameters json.RawMessage
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// DraftID is non-nil when the assignment was published from an admin-authored
+	// draft tree. The draft's nodes are copied into course_nodes on student assign
+	// (api-sse §7.2 / G2-S3-T4 Publish→assign copy path).
+	DraftID   *uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // AssignmentListRow is the summary shape returned by ListAssignments.
@@ -119,7 +123,7 @@ func (r *AssignmentRepository) CreateAssignment(ctx context.Context, adminID uui
 func (r *AssignmentRepository) GetAssignment(ctx context.Context, id uuid.UUID) (AssignmentRow, error) {
 	var row AssignmentRow
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, admin_id, title, topic, level, parameters, created_at, updated_at
+		`SELECT id, admin_id, title, topic, level, parameters, draft_id, created_at, updated_at
 		 FROM course_assignments WHERE id = $1`,
 		id,
 	).Scan(
@@ -129,6 +133,7 @@ func (r *AssignmentRepository) GetAssignment(ctx context.Context, id uuid.UUID) 
 		&row.Topic,
 		&row.Level,
 		&row.Parameters,
+		&row.DraftID,
 		&row.CreatedAt,
 		&row.UpdatedAt,
 	)
@@ -286,6 +291,94 @@ func (r *AssignmentRepository) CreateAssignedCourse(ctx context.Context, student
 		return uuid.UUID{}, err
 	}
 	return courseID, nil
+}
+
+// CopyDraftNodesToCourse copies all draft_nodes from draftID into course_nodes
+// for courseID using the provided querier (must be a server-role connection or
+// transaction). The copy resets every node's status to 'pending' (students grow
+// the tree through the normal HITL flow) and preserves node_type, ordering, and
+// payload. Parent references are remapped so the new course_nodes form a
+// structurally equivalent tree (draft_node.id → new course_node.id).
+//
+// The querier must satisfy the server_write RLS policy on course_nodes (i.e., it
+// must carry app.current_role='server'). The caller is responsible for wrapping
+// this call in a transaction so the course creation and node copy are atomic (D13).
+//
+// @{"req": ["REQ-ASSIGN-003", "REQ-ASSIGN-005", "REQ-AGENT-047", "REQ-SYS-077"]}
+func (r *AssignmentRepository) CopyDraftNodesToCourse(ctx context.Context, q db.Querier, draftID, courseID uuid.UUID) error {
+	// 1. Load all draft nodes ordered so parents always appear before children.
+	// created_at is a reliable topological order because the expand precondition
+	// requires every node in a layer to be fully approved before the next layer is
+	// inserted, meaning ancestors always have an earlier created_at than descendants.
+	// id ASC is a stable secondary tiebreak for nodes inserted in the same instant.
+	rows, err := q.Query(ctx,
+		`SELECT id, parent_id, node_type, ordering, payload, created_at
+		 FROM draft_nodes
+		 WHERE draft_id = $1
+		 ORDER BY created_at ASC, id ASC`,
+		draftID,
+	)
+	if err != nil {
+		return fmt.Errorf("admin: copy draft nodes: query draft_nodes: %w", err)
+	}
+	defer rows.Close()
+
+	type draftNodeMini struct {
+		ID        uuid.UUID
+		ParentID  *uuid.UUID
+		NodeType  string
+		Ordering  int
+		Payload   json.RawMessage
+		CreatedAt time.Time
+	}
+
+	var draftNodes []draftNodeMini
+	for rows.Next() {
+		var n draftNodeMini
+		if err := rows.Scan(&n.ID, &n.ParentID, &n.NodeType, &n.Ordering, &n.Payload, &n.CreatedAt); err != nil {
+			return fmt.Errorf("admin: copy draft nodes: scan: %w", err)
+		}
+		draftNodes = append(draftNodes, n)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("admin: copy draft nodes: rows: %w", err)
+	}
+
+	// 2. Insert each draft node as a course_node, building a draft_id → course_node_id map
+	//    so child parent references can be resolved to new IDs.
+	idMap := make(map[uuid.UUID]uuid.UUID, len(draftNodes))
+	for _, dn := range draftNodes {
+		var newParentID *uuid.UUID
+		if dn.ParentID != nil {
+			newID, ok := idMap[*dn.ParentID]
+			if !ok {
+				// A missing parent means the ordering invariant was violated.
+				// Return an error immediately so a future ordering regression
+				// fails loudly instead of silently producing a corrupt flat tree.
+				return fmt.Errorf("admin: copy draft nodes: parent draft_node %s not yet mapped (ordering invariant violated) for child %s", *dn.ParentID, dn.ID)
+			}
+			newParentID = &newID
+		}
+
+		payload := dn.Payload
+		if len(payload) == 0 {
+			payload = json.RawMessage("{}")
+		}
+
+		var newNodeID uuid.UUID
+		scanErr := q.QueryRow(ctx,
+			`INSERT INTO course_nodes (course_id, parent_id, node_type, ordering, status, payload)
+			 VALUES ($1, $2, $3::node_type_enum, $4, 'pending', $5)
+			 RETURNING id`,
+			courseID, newParentID, dn.NodeType, dn.Ordering, payload,
+		).Scan(&newNodeID)
+		if scanErr != nil {
+			return fmt.Errorf("admin: copy draft nodes: insert course_node (draft_node=%s): %w", dn.ID, scanErr)
+		}
+		idMap[dn.ID] = newNodeID
+	}
+
+	return nil
 }
 
 // InsertApprovedSyllabus inserts a syllabi row with approved_at = now().

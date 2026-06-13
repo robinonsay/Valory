@@ -322,10 +322,11 @@ func TestMessages_TokenCapExceeded_ReturnsErrTokenCapExceeded(t *testing.T) {
 	courseID := createTestCourse(ctx, t, studentID, "Economics", "intake")
 
 	// Pre-seed agent_token_usage so the student has exhausted the cap.
+	// Use the post-022 partial index predicate (WHERE draft_id IS NULL).
 	_, err := pool.Exec(ctx,
 		`INSERT INTO agent_token_usage (student_id, course_id, total_tokens_used)
 		 VALUES ($1, $2, $3)
-		 ON CONFLICT (student_id, course_id)
+		 ON CONFLICT (student_id, course_id) WHERE draft_id IS NULL
 		 DO UPDATE SET total_tokens_used = EXCLUDED.total_tokens_used`,
 		studentID, courseID, tokenCap,
 	)

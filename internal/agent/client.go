@@ -163,11 +163,17 @@ func (c *ThrottledClient) Messages(ctx context.Context, studentID, courseID uuid
 	}
 
 	// Step 4: Track token usage via an UPSERT so the cap check stays accurate.
+	// Migration 022 dropped the uq_token_usage_student_course table constraint and
+	// replaced it with a partial unique index:
+	//   agent_token_usage_student_course_idx ON (student_id, course_id) WHERE draft_id IS NULL
+	// Postgres requires the ON CONFLICT predicate to match the index predicate
+	// exactly; omitting WHERE draft_id IS NULL causes a runtime error
+	// ("no unique or exclusion constraint matching the ON CONFLICT specification").
 	totalTokens := msg.Usage.InputTokens + msg.Usage.OutputTokens
 	_, err := c.pool.Exec(ctx,
 		`INSERT INTO agent_token_usage (student_id, course_id, total_tokens_used)
 		 VALUES ($1, $2, $3)
-		 ON CONFLICT (student_id, course_id)
+		 ON CONFLICT (student_id, course_id) WHERE draft_id IS NULL
 		 DO UPDATE SET total_tokens_used = agent_token_usage.total_tokens_used + EXCLUDED.total_tokens_used`,
 		studentID, courseID, totalTokens,
 	)

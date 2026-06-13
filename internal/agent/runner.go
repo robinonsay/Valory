@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -69,6 +70,7 @@ type AgentRunner struct {
 	chair          *Chair
 	professor      *Professor
 	reviewer       *Reviewer
+	layeredRunner  *LayeredRunner // nil when tree-mode feature is disabled
 	submissionRepo submissionRepository
 	gradeSvc       gradeService
 	aiClient       aiMessenger
@@ -77,9 +79,16 @@ type AgentRunner struct {
 		GetInt64(string) int64
 		GetFloat64(string) float64
 	}
+	// inFlightLayered is an in-process guard for the layered-generation poller
+	// (Bug 5 fix). Two consecutive 30-second ticks while GenerateLayer is still
+	// running for a course would otherwise dispatch duplicate goroutines, causing
+	// duplicate layer_awaiting_review SSE events and a staleness-boundary race.
+	// Keys are course UUID strings; presence means a goroutine is in flight.
+	// Single-instance server, so in-process is sufficient.
+	inFlightLayered sync.Map
 }
 
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-006", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-AGENT-011", "REQ-AGENT-013", "REQ-AGENT-014"]}
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-006", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-AGENT-011", "REQ-AGENT-013", "REQ-AGENT-014", "REQ-AGENT-037", "REQ-AGENT-038", "REQ-AGENT-039"]}
 func NewAgentRunner(
 	pool *pgxpool.Pool,
 	agentRepo *AgentRepository,
@@ -107,6 +116,16 @@ func NewAgentRunner(
 	}
 }
 
+// SetLayeredRunner injects the LayeredRunner so that the poller can dispatch
+// tree-mode courses. Called after construction by cmd/server/main.go when the
+// tree-mode feature is enabled. Nil-safe: when not set, tree-mode courses are
+// skipped silently and a warning is logged.
+//
+// @{"req": ["REQ-AGENT-037", "REQ-AGENT-038", "REQ-AGENT-039", "REQ-SYS-073"]}
+func (r *AgentRunner) SetLayeredRunner(lr *LayeredRunner) {
+	r.layeredRunner = lr
+}
+
 // SetImageRepository injects the image repository so the grading runner can
 // load attached images and pass them as vision blocks to Claude (REQ-AGENT-025).
 // Called from main after both packages are wired. Nil-safe: when not set the
@@ -121,17 +140,22 @@ func (r *AgentRunner) SetImageRepository(repo *image.Repository) {
 //   - every 30s: detects syllabus-approved courses and starts content generation (REQ-AGENT-003)
 //   - every 60s: scans for untriggered feedback and kicks off section regeneration (REQ-AGENT-010)
 //   - every 30s: polls for pending-grading submissions and grades each with Claude (REQ-AGENT-003)
+//   - every 30s: detects tree-mode courses in generating/awaiting_regeneration state (REQ-AGENT-037)
 //
 // It blocks until ctx is cancelled.
 //
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-010"]}
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-010", "REQ-AGENT-037", "REQ-AGENT-038", "REQ-AGENT-041"]}
 func (r *AgentRunner) Start(ctx context.Context) {
 	genTicker := time.NewTicker(30 * time.Second)
 	fbTicker := time.NewTicker(60 * time.Second)
 	gradeTicker := time.NewTicker(30 * time.Second)
+	// layerTicker drives the tree-mode layer generation pipeline (REQ-AGENT-037).
+	// It does NOT call ExpandToNextLayer — that is the HTTP handler's responsibility (D11/§4.3).
+	layerTicker := time.NewTicker(30 * time.Second)
 	defer genTicker.Stop()
 	defer fbTicker.Stop()
 	defer gradeTicker.Stop()
+	defer layerTicker.Stop()
 
 	for {
 		select {
@@ -143,6 +167,8 @@ func (r *AgentRunner) Start(ctx context.Context) {
 			r.pollFeedback(ctx)
 		case <-gradeTicker.C:
 			r.pollGradingQueue(ctx)
+		case <-layerTicker.C:
+			r.pollLayeredGeneration(ctx)
 		}
 	}
 }
@@ -220,9 +246,14 @@ func (r *AgentRunner) HandleSectionRegen(ctx context.Context, courseID, studentI
 }
 
 // pollAndGenerate queries for courses with approved syllabi that have no
-// content_generation run and starts one for each.
+// triggered run and starts one for each.
 //
-// @{"req": ["REQ-AGENT-003"]}
+// For tree-mode courses (c.TreeMode == true), it calls seedTreeAndGenerateRoot
+// to initialise the knowledge tree and generate the first layer (section_goal).
+// For flat courses (c.TreeMode == false), it calls RunContentGeneration as before.
+// This branching is the sole dispatch point — flat-course behaviour is unchanged.
+//
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-037", "REQ-AGENT-043"]}
 func (r *AgentRunner) pollAndGenerate(ctx context.Context) {
 	courses, err := r.agentRepo.ListUntriggeredApprovals(ctx)
 	if err != nil {
@@ -230,11 +261,25 @@ func (r *AgentRunner) pollAndGenerate(ctx context.Context) {
 		return
 	}
 	for _, c := range courses {
-		go func(courseID, studentID uuid.UUID) {
-			if err := r.RunContentGeneration(ctx, courseID, studentID); err != nil {
-				log.Printf("runner: content generation for course %s: %v", courseID, err)
+		if c.TreeMode {
+			// Tree-mode path: seed root/syllabus nodes, generate section_goal layer.
+			if r.layeredRunner == nil {
+				log.Printf("runner: tree-mode course %s skipped — LayeredRunner not wired", c.CourseID)
+				continue
 			}
-		}(c.CourseID, c.StudentID)
+			go func(courseID, studentID uuid.UUID) {
+				if err := r.layeredRunner.seedTreeAndGenerateRoot(ctx, courseID, studentID); err != nil {
+					log.Printf("runner: seed tree for course %s: %v", courseID, err)
+				}
+			}(c.CourseID, c.StudentID)
+		} else {
+			// Flat-course path: unchanged behaviour.
+			go func(courseID, studentID uuid.UUID) {
+				if err := r.RunContentGeneration(ctx, courseID, studentID); err != nil {
+					log.Printf("runner: content generation for course %s: %v", courseID, err)
+				}
+			}(c.CourseID, c.StudentID)
+		}
 	}
 }
 
@@ -258,12 +303,17 @@ func (r *AgentRunner) pollFeedback(ctx context.Context) {
 		log.Printf("runner: poll feedback: acquire server conn: %v", err)
 		return
 	}
+	// AND c.tree_mode = false: tree-backed courses use the explicit HITL feedback
+	// endpoint (PATCH .../nodes/{id}/feedback) instead of keyword-heuristic polling
+	// (design §5.5 / REQ-CONTENT-004). Skipping them here keeps the flat-course
+	// path byte-for-byte unchanged while preventing double-processing.
 	rows, err := conn.Query(ctx,
 		`SELECT sf.id, sf.student_id, sf.course_id, sf.section_index, sf.feedback_text
 		 FROM section_feedback sf
 		 JOIN courses c ON c.id = sf.course_id
 		 WHERE sf.regeneration_triggered = false
 		   AND c.status = 'active'
+		   AND c.tree_mode = false
 		 ORDER BY sf.submitted_at ASC
 		 LIMIT 20`,
 	)
@@ -301,6 +351,140 @@ func (r *AgentRunner) pollFeedback(ctx context.Context) {
 		}(fb)
 	}
 	conn.Release()
+}
+
+// pollLayeredGeneration finds tree-mode courses with status 'generating' or
+// 'awaiting_regeneration' that have a current_layer set, runs the stuck-node
+// staleness reset, and dispatches LayeredRunner.GenerateLayer per course.
+//
+// It does NOT call ExpandToNextLayer — that is the HTTP handler's sole
+// responsibility (D11 / design §4.3 / REQ-AGENT-039). The poller only picks up
+// courses where the human has already called /expand (status='generating') or
+// where rejected nodes need re-generation (status='awaiting_regeneration').
+//
+// @{"req": ["REQ-AGENT-037", "REQ-AGENT-038", "REQ-AGENT-039", "REQ-AGENT-041", "REQ-SYS-073"]}
+func (r *AgentRunner) pollLayeredGeneration(ctx context.Context) {
+	if r.layeredRunner == nil {
+		return
+	}
+
+	type layeredCourseRow struct {
+		CourseID     uuid.UUID
+		StudentID    uuid.UUID
+		CurrentLayer string
+	}
+
+	conn, err := db.AcquireServerConn(ctx, r.pool)
+	if err != nil {
+		log.Printf("runner: poll layered generation: acquire conn: %v", err)
+		return
+	}
+	rows, err := conn.Query(ctx,
+		`SELECT c.id, c.student_id, c.current_layer::text
+		 FROM courses c
+		 WHERE c.tree_mode = true
+		   AND c.status IN ('generating', 'awaiting_regeneration')
+		   AND c.current_layer IS NOT NULL
+		 LIMIT 20`,
+	)
+	if err != nil {
+		conn.Release()
+		log.Printf("runner: poll layered generation: query: %v", err)
+		return
+	}
+
+	var pending []layeredCourseRow
+	for rows.Next() {
+		var row layeredCourseRow
+		if err := rows.Scan(&row.CourseID, &row.StudentID, &row.CurrentLayer); err != nil {
+			log.Printf("runner: poll layered generation: scan: %v", err)
+			continue
+		}
+		pending = append(pending, row)
+	}
+	rows.Close()
+	conn.Release()
+
+	for _, c := range pending {
+		layer := NodeType(c.CurrentLayer)
+
+		// In-process guard: skip dispatch if a goroutine for this course is already
+		// running (Bug 5 fix). Without this, two consecutive 30s ticks while
+		// GenerateLayer is in flight would dispatch duplicate goroutines, producing
+		// duplicate layer_awaiting_review SSE events and a node-reset race.
+		if _, alreadyRunning := r.inFlightLayered.LoadOrStore(c.CourseID.String(), struct{}{}); alreadyRunning {
+			continue
+		}
+
+		go func(courseID, studentID uuid.UUID, layer NodeType) {
+			// Remove the in-flight guard when this goroutine exits so the next
+			// poller tick can dispatch again after work completes.
+			defer r.inFlightLayered.Delete(courseID.String())
+
+			// Reset any stuck generating nodes before dispatching (REQ-AGENT-041).
+			if err := r.layeredRunner.resetStaleGeneratingNodes(ctx, courseID); err != nil {
+				log.Printf("runner: reset stale nodes for course %s: %v", courseID, err)
+			}
+
+			// For awaiting_regeneration: reset rejected nodes back to pending so
+			// GenerateLayer picks them up, then advance course to 'generating'.
+			sconn, connErr := db.AcquireServerConn(ctx, r.pool)
+			if connErr != nil {
+				log.Printf("runner: poll layered: acquire conn for regen reset course %s: %v", courseID, connErr)
+				return
+			}
+			// If course is awaiting_regeneration, move rejected nodes → pending and
+			// course status → generating so GenerateLayer treats them normally.
+			_, execErr := sconn.Exec(ctx,
+				`UPDATE course_nodes
+				 SET status = 'pending', updated_at = now()
+				 WHERE course_id = $1 AND node_type = $2::node_type_enum AND status = 'rejected'`,
+				courseID, string(layer),
+			)
+			if execErr != nil {
+				sconn.Release()
+				log.Printf("runner: poll layered: reset rejected nodes for course %s: %v", courseID, execErr)
+				return
+			}
+			// Transition course from awaiting_regeneration → generating so the poller
+			// does not dispatch again before this goroutine finishes.
+			_, execErr = sconn.Exec(ctx,
+				`UPDATE courses
+				 SET status = 'generating', updated_at = now()
+				 WHERE id = $1 AND status = 'awaiting_regeneration'`,
+				courseID,
+			)
+			sconn.Release()
+			if execErr != nil {
+				log.Printf("runner: poll layered: transition regen course %s: %v", courseID, execErr)
+			}
+
+			// Load course meta for GenerateLayer call.
+			meta, metaErr := r.layeredRunner.loadCourseMeta(ctx, courseID)
+			if metaErr != nil {
+				log.Printf("runner: poll layered: load meta for course %s: %v", courseID, metaErr)
+				return
+			}
+
+			// Create (or reuse) the run for this layer generation.
+			run, runErr := r.agentRepo.CreateRun(ctx, courseID, "tree_layer_generation")
+			if runErr != nil {
+				log.Printf("runner: poll layered: create run for course %s: %v", courseID, runErr)
+				return
+			}
+
+			if genErr := r.layeredRunner.GenerateLayer(
+				ctx, run.ID, courseID, studentID, layer,
+				meta.Topic, meta.Level, meta.Parameters,
+			); genErr != nil {
+				log.Printf("runner: layered generation for course %s layer %s: %v", courseID, layer, genErr)
+				errMsg := genErr.Error()
+				_ = r.agentRepo.SetRunStatus(ctx, run.ID, "failed", &errMsg)
+				return
+			}
+			_ = r.agentRepo.SetRunStatus(ctx, run.ID, "completed", nil)
+		}(c.CourseID, c.StudentID, layer)
+	}
 }
 
 // containsRegenKeyword returns true when the feedback text contains words that

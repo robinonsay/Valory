@@ -217,6 +217,23 @@ func main() {
 	agentRunner := agent.NewAgentRunner(serverPool, agentRepo, chair, professor, reviewer, submissionRepo, gradeSvc, throttledClient, configSvc)
 	agentHandler := agent.NewAgentHandler(agentRunner, chair, chatRepo, agentRepo)
 
+	// @{"req": ["REQ-AGENT-027", "REQ-AGENT-032", "REQ-AGENT-037", "REQ-AGENT-038",
+	//          "REQ-AGENT-039", "REQ-AGENT-040", "REQ-AGENT-058", "REQ-SYS-073"]}
+	// --- Knowledge-tree wiring (G2-S3-T3: student HITL surface) ---
+	// treeRepo is connection-source-agnostic: every method receives its querier from
+	// the caller so reads can use the request-scoped conn (RLS read-own) and writes
+	// can use the server pool (D12).
+	treeRepo := agent.NewTreeRepository()
+	// layeredRunner drives layer-by-layer generation; ExpandToNextLayer is called by
+	// the HTTP handler (T3) — never by the poller (D11/§4.3).
+	layeredRunner := agent.NewLayeredRunner(serverPool, treeRepo, agentRepo, chair, reviewer, configSvc)
+	// Inject layeredRunner into agentRunner so the 30s poller can call GenerateLayer
+	// on tree-mode courses that are already in 'generating' state.
+	agentRunner.SetLayeredRunner(layeredRunner)
+	// nodeHandler serves the student-building HITL surface (§5.2): list, generate,
+	// refine, approve, feedback, regenerate, chat history, expand.
+	nodeHandler := agent.NewNodeHandler(serverPool, treeRepo, agentRepo, chair, layeredRunner)
+
 	// Start background polling goroutines (30s gen poll, 60s feedback poll, 30s grade poll).
 	go agentRunner.Start(ctx)
 
@@ -327,10 +344,39 @@ func main() {
 	// chair satisfies admin.syllabusGenerator via Chair.GenerateSyllabusFromParams.
 	// Uses the plain pool (admin session connection carries app.current_role='admin',
 	// which satisfies courses_admin_policy for the GetAssignmentStudents query).
-	// @{"req": ["REQ-ASSIGN-001", "REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-006", "REQ-ASSIGN-007", "REQ-ASSIGN-009", "REQ-ASSIGN-010", "REQ-ASSIGN-011"]}
+	// serverPool is injected so the draft-backed assign path (api-sse §7.2) can
+	// write course_nodes under the server_write RLS policy (D12/D13).
+	// @{"req": ["REQ-ASSIGN-001", "REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-006", "REQ-ASSIGN-007", "REQ-ASSIGN-009", "REQ-ASSIGN-010", "REQ-ASSIGN-011", "REQ-AGENT-047", "REQ-SYS-077"]}
 	assignmentRepo := admin.NewAssignmentRepository(pool)
 	assignmentSvc := admin.NewAssignmentService(assignmentRepo, chair)
+	assignmentSvc.SetServerPool(serverPool)
 	assignmentHandler := admin.NewAssignmentHandler(assignmentSvc, auditRepo, pool)
+
+	// --- Admin draft handler (G2-S3-T4: admin-authoring HITL surface) ---
+	// DraftHandler serves POST/GET/DELETE on /admin/drafts and all node+layer+
+	// publish+SSE sub-endpoints (api-sse §5.1, §5.3.1). Mounted under the same
+	// admin role + CSRF group as the assignment routes.
+	// draftRepo uses the plain pool (request-scoped conn from auth middleware
+	// carries app.current_user_id + app.current_role='admin' for RLS reads).
+	// serverPool is passed for all draft_nodes writes (D12).
+	// agentRepo uses serverPool (same as the rest of the agent pipeline).
+	// @{"req": ["REQ-SYS-077", "REQ-SYS-074", "REQ-AGENT-047", "REQ-AGENT-048",
+	//          "REQ-AGENT-049", "REQ-AGENT-050", "REQ-AGENT-051", "REQ-AGENT-052",
+	//          "REQ-AGENT-053", "REQ-AGENT-054", "REQ-AGENT-055", "REQ-AGENT-056",
+	//          "REQ-AGENT-057", "REQ-AGENT-058", "REQ-AGENT-060"]}
+	draftRepo := admin.NewDraftRepository(pool)
+	draftHandler := admin.NewDraftHandler(serverPool, draftRepo, chair, agentRepo)
+
+	// --- Admin oversight handler (REQ-ADMIN-011) ---
+	// Provides the read-only GET /admin/courses/{id}/overview endpoint.
+	// Uses the plain pool; the admin session connection carries
+	// app.current_role='admin' (set by NewAuthMiddleware), which satisfies the
+	// admin SELECT policies added in migration 021 for syllabi, homework, and
+	// submissions, as well as those already present for lesson_content and grades.
+	// @{"req": ["REQ-ADMIN-011"]}
+	oversightRepo := admin.NewOversightRepository(pool)
+	oversightSvc := admin.NewOversightService(oversightRepo)
+	oversightHandler := admin.NewOversightHandler(oversightSvc)
 
 	// --- Admin secrets handler (REQ-ADMIN-005..008, REQ-SECURITY-006..008) ---
 	// Mounted under the same admin role + CSRF group as adminConfigHandler.
@@ -446,6 +492,18 @@ func main() {
 				r.Route("/{id}", func(r chi.Router) {
 					// @{"req": ["REQ-AGENT-001", "REQ-AGENT-006", "REQ-AGENT-015"]}
 					agentHandler.Routes(r)
+					// @{"req": ["REQ-AGENT-032", "REQ-AGENT-034", "REQ-AGENT-039", "REQ-AGENT-040",
+					//          "REQ-AGENT-050", "REQ-AGENT-051", "REQ-AGENT-052", "REQ-AGENT-053",
+					//          "REQ-AGENT-055", "REQ-AGENT-058", "REQ-SYS-073"]}
+					// Student knowledge-tree HITL endpoints: list/generate/refine/approve/
+					// feedback/regenerate/chat + layers/{layer}/expand. CSRF and authMW are
+					// already applied by the enclosing group; RequireRole("student") makes the
+					// intent explicit and matches the pattern used for /profile (defense-in-depth;
+					// courseOwnedBy already closes the exploit at the data layer).
+					r.Group(func(r chi.Router) {
+						r.Use(auth.RequireRole("student"))
+						nodeHandler.Routes(r)
+					})
 					// @{"req": ["REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
 					r.Route("/content", func(r chi.Router) {
 						contentHandler.Routes(r)
@@ -527,6 +585,37 @@ func main() {
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireRole("admin"))
 					assignmentHandler.Routes(r)
+				})
+			})
+
+			// @{"req": ["REQ-SYS-077", "REQ-SYS-074", "REQ-AGENT-047", "REQ-AGENT-048",
+			//          "REQ-AGENT-049", "REQ-AGENT-050", "REQ-AGENT-051", "REQ-AGENT-052",
+			//          "REQ-AGENT-053", "REQ-AGENT-054", "REQ-AGENT-055", "REQ-AGENT-056",
+			//          "REQ-AGENT-057", "REQ-AGENT-058", "REQ-AGENT-060"]}
+			// --- Admin draft routes (G2-S3-T4) ---
+			// Mounted under /admin/drafts with RequireRole("admin") + CSRF (GET
+			// endpoints are CSRF-exempt via the middleware's safe-method check).
+			// Provides the 13 admin-authoring HITL endpoints: create/list/get/delete
+			// + per-node generate/refine/approve/feedback/regenerate/expand
+			// + publish + chat history + SSE event stream (api-sse §5.1, §5.3.1).
+			r.Route("/admin/drafts", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireRole("admin"))
+					draftHandler.Routes(r)
+				})
+			})
+
+			// @{"req": ["REQ-ADMIN-011"]}
+			// --- Admin oversight routes ---
+			// Read-only GET /admin/courses/{id}/overview; CSRF is enforced by the
+			// enclosing group; RequireRole("admin") ensures only admins can reach
+			// this endpoint. The request-scoped connection carries
+			// app.current_role='admin' (set by NewAuthMiddleware), satisfying the
+			// admin SELECT RLS policies added by migration 021.
+			r.Route("/admin/courses", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireRole("admin"))
+					oversightHandler.Routes(r)
 				})
 			})
 

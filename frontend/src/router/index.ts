@@ -26,6 +26,7 @@ import UserManagementView from '@/views/admin/UserManagementView.vue'
 import AuditLogView from '@/views/admin/AuditLogView.vue'
 import SystemConfigView from '@/views/admin/SystemConfigView.vue'
 import CourseOversightView from '@/views/admin/CourseOversightView.vue'
+import CourseDetailView from '@/views/admin/CourseDetailView.vue'
 import AdminAssignmentsView from '@/views/admin/AdminAssignmentsView.vue'
 import AdminAssignmentDetailView from '@/views/admin/AdminAssignmentDetailView.vue'
 
@@ -211,6 +212,13 @@ const router = createRouter({
           path: 'courses',
           name: 'admin-courses',
           component: CourseOversightView,
+          meta: { requiresAuth: true, requiredRole: 'admin' }
+        },
+        {
+          // @{"req": ["REQ-FEADMIN-707"]}
+          path: 'courses/:id',
+          name: 'admin-course-detail',
+          component: CourseDetailView,
           meta: { requiresAuth: true, requiredRole: 'admin' }
         },
         {

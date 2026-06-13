@@ -17,13 +17,17 @@ plan/
   goals/               # level 1 — G<n>.md, major outcomes
   sprints/             # level 2 — G<n>-S<m>.md, work batches per goal
   tasks/               # level 4 — G<n>-S<m>-T<k>.md, the design/requirements/acceptance triplet
+  files/               # level 5a — <task>-F<NN>-<slug>.md, ONE per source file (a File = the dispatch grain)
+  units/               # level 5b — <task>-F<NN>-U<MM>-<slug>.md, ONE per chunk (a Unit = a reviewable piece of a File)
   artifacts/           # level 5 — <task-id>/, worker output + acceptance results
   .snapshots/          # PreCompact backups of state.json (gitignored)
   state.json           # LIVE coordination state — validates against schemas/plan-state.schema.json
 ```
 
 (Level 3 — the task list — lives inside each sprint file and in `state.json`. Level 4 is the
-per-task triplet file; level 5 is its artifact directory.)
+per-task triplet file; level 5 is its artifact directory. Files/Units (5a/5b) are the
+*implementation grain* of a task — present only when a task spans multiple files; a single-file
+task is one File with no separate Unit docs.)
 
 ## Who owns what
 
@@ -35,11 +39,19 @@ per-task triplet file; level 5 is its artifact directory.)
 | 3 Tasks | task list in the sprint file + `state.json` | `software-lead` (orchestrator) |
 | 4 Design / Requirements / Acceptance | `tasks/G<n>-S<m>-T<k>.md` | `design-author` / `requirements-author` / `test-author` + reviewers |
 | 5 Implementation | `artifacts/<task-id>/` | `senior-engineer` / `junior-engineer` |
+| 5a File (one source file) | `files/<task>-F<NN>-<slug>.md` | `design-author` breaks it down; one worker realizes each File |
+| 5b Unit (a chunk within a File) | `units/<task>-F<NN>-U<MM>-<slug>.md` | `design-author` + `test-author`; realized by the worker |
 
 ## Conventions
 
-- **IDs are canonical:** goal `G<n>`, sprint `G<n>-S<m>`, task `G<n>-S<m>-T<k>`. Task ids in
-  `state.json` must match `schemas/plan-state.schema.json`.
+- **IDs are canonical:** goal `G<n>`, sprint `G<n>-S<m>`, task `G<n>-S<m>-T<k>`, File
+  `G<n>-S<m>-T<k>-F<NN>`, Unit `G<n>-S<m>-T<k>-F<NN>-U<MM>`. Task ids (and any File/Unit grain)
+  in `state.json` must match `schemas/plan-state.schema.json`.
+- **A File is one source file; a Unit is a chunk within it.** Dispatch one worker per File so
+  "no two workers edit the same file" holds by construction. A Unit is the smallest reviewable
+  piece (a function, type, handler, migration block, test group, or `include::` section) and
+  carries its own requirement(s) + acceptance check. **"Module" is not this** — in Valory a
+  module is a Go package/directory (where `requirements/` lives); a module contains many Files.
 - **A task file *is* the worker's contract.** The orchestrator fills in the triplet (design +
   requirements + acceptance); the worker reads it as its entire mandate and reports back a
   pointer + acceptance verdict (never full output).
@@ -53,3 +65,5 @@ per-task triplet file; level 5 is its artifact directory.)
 ## Templates
 
 Copy `goals/_TEMPLATE.md`, `sprints/_TEMPLATE.md`, and `tasks/_TEMPLATE.md` when adding nodes.
+For the implementation grain, copy `files/_TEMPLATE.md` (per source file) and
+`units/_TEMPLATE.md` (per chunk) — only when a task is large enough to need them.

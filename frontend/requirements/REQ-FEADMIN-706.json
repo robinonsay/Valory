@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-706",
+  "title": "Unassign Student with Conflict Handling",
+  "description": "The frontend module shall display a per-student unassign control that surfaces a conflict message when generation has already started.",
+  "rationale": "Admins need a clear signal when unassignment is blocked by an in-progress or active course; a silent failure or generic error would leave the admin uncertain about the course state.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-067", "REQ-ASSIGN-007"]
+}

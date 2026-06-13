@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-005",
+  "title": "SMTP Password via Managed Secrets with Env Fallback",
+  "description": "The email module shall source the SMTP password from managed secrets, with the environment variable as fallback.",
+  "rationale": "The managed-secrets subsystem stores credentials AES-256-GCM encrypted at rest; storing the SMTP password there is required to prevent plaintext credentials from appearing in the database or config responses.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-061"]
+}

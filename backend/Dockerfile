@@ -12,12 +12,29 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/valory 
 # Runtime stage
 FROM debian:bookworm-slim
 
+# Native dependencies for asciidoctor-mathematical, which converts STEM blocks
+# to SVG math glyphs in PDF export (REQ-CONTENT-012). The mathematical gem
+# requires cairo, pango, cmake, bison, flex, libffi, libxml2 and gdk-pixbuf
+# for its C extension build. fonts-lyx provides the Latin Modern fonts that
+# asciidoctor-mathematical uses for TeX rendering.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         openssl \
         ruby \
-    && gem install asciidoctor asciidoctor-pdf --no-document \
+        ruby-dev \
+        build-essential \
+        cmake \
+        bison \
+        flex \
+        libffi-dev \
+        libxml2-dev \
+        libgdk-pixbuf2.0-dev \
+        libcairo2-dev \
+        libpango1.0-dev \
+        fonts-lyx \
+    && gem install asciidoctor asciidoctor-pdf asciidoctor-mathematical \
+          --no-document \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

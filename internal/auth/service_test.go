@@ -39,13 +39,39 @@ func newTestService(lockoutDuration, sessionMaxDuration time.Duration) *Service 
 	return NewService(NewRepository(pool), lockoutDuration, sessionMaxDuration)
 }
 
+// loginGetRawToken calls Login and returns the raw session token for callers
+// that only need the token. Returns empty string on 2FA-pending responses so
+// that tests written before 2FA can still function when 2FA is off (the
+// default in tests, which do not call SetTwoFactor).
+//
+// @{"req": ["REQ-AUTH-001", "REQ-AUTH-002", "REQ-AUTH-015"]}
+func loginGetRawToken(t *testing.T, svc *Service, ctx context.Context, username, password string) (string, error) {
+	t.Helper()
+	result, err := svc.Login(ctx, username, password)
+	if err != nil {
+		return "", err
+	}
+	if result.Session == nil {
+		return "", errors.New("2FA pending — no session issued (unexpected in this test context)")
+	}
+	return result.RawToken, nil
+}
+
+// loginGetResult calls Login and returns the full result for callers that need
+// to inspect whether 2FA was triggered.
+//
+// @{"req": ["REQ-AUTH-015"]}
+func loginGetResult(svc *Service, ctx context.Context, username, password string) (*LoginResult, error) {
+	return svc.Login(ctx, username, password)
+}
+
 // @{"verifies": ["REQ-AUTH-001", "REQ-AUTH-006"]}
 func TestLogin_BlankUsername(t *testing.T) {
 	if pool == nil {
 		t.Skip("DATABASE_URL not set")
 	}
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	_, _, err := svc.Login(context.Background(), "", "password")
+	_, err := svc.Login(context.Background(), "", "password")
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -57,7 +83,7 @@ func TestLogin_BlankPassword(t *testing.T) {
 		t.Skip("DATABASE_URL not set")
 	}
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	_, _, err := svc.Login(context.Background(), "user", "")
+	_, err := svc.Login(context.Background(), "user", "")
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -69,7 +95,7 @@ func TestLogin_UnknownUser(t *testing.T) {
 		t.Skip("DATABASE_URL not set")
 	}
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	_, _, err := svc.Login(context.Background(), "doesnotexist", "irrelevant")
+	_, err := svc.Login(context.Background(), "doesnotexist", "irrelevant")
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -89,7 +115,7 @@ func TestLogin_InactiveAccount(t *testing.T) {
 	}
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	_, _, err := svc.Login(ctx, "inactive_user", "secret")
+	_, err := svc.Login(ctx, "inactive_user", "secret")
 	if !errors.Is(err, ErrAccountDisabled) {
 		t.Fatalf("expected ErrAccountDisabled, got %v", err)
 	}
@@ -104,18 +130,18 @@ func TestLogin_Success(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "success_user", "correctpass", "admin")
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	rawToken, session, err := svc.Login(ctx, "success_user", "correctpass")
+	result, err := svc.Login(ctx, "success_user", "correctpass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
-	if rawToken == "" {
+	if result.RawToken == "" {
 		t.Fatal("expected non-empty rawToken")
 	}
-	if session == nil {
+	if result.Session == nil {
 		t.Fatal("expected session to be returned")
 	}
-	if session.Role != "admin" {
-		t.Errorf("expected role %q, got %q", "admin", session.Role)
+	if result.Session.Role != "admin" {
+		t.Errorf("expected role %q, got %q", "admin", result.Session.Role)
 	}
 }
 
@@ -131,13 +157,13 @@ func TestTC_AUTH_016_LockedAfterFiveFailures(t *testing.T) {
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
 	for i := 0; i < 5; i++ {
-		_, _, err := svc.Login(ctx, "carol", "wrongpass")
+		_, err := svc.Login(ctx, "carol", "wrongpass")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("attempt %d: expected ErrInvalidCredentials, got %v", i+1, err)
 		}
 	}
 
-	_, _, err := svc.Login(ctx, "carol", "rightpass")
+	_, err := svc.Login(ctx, "carol", "rightpass")
 	if !errors.Is(err, ErrAccountLocked) {
 		t.Fatalf("expected ErrAccountLocked after 5 failures, got %v", err)
 	}
@@ -155,20 +181,20 @@ func TestTC_AUTH_017_NotLockedAfterFourFailures(t *testing.T) {
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
 	for i := 0; i < 4; i++ {
-		_, _, err := svc.Login(ctx, "dave", "wrongpass")
+		_, err := svc.Login(ctx, "dave", "wrongpass")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("attempt %d: expected ErrInvalidCredentials, got %v", i+1, err)
 		}
 	}
 
-	rawToken, session, err := svc.Login(ctx, "dave", "rightpass")
+	result, err := svc.Login(ctx, "dave", "rightpass")
 	if err != nil {
 		t.Fatalf("expected success after 4 failures, got %v", err)
 	}
-	if rawToken == "" {
+	if result.RawToken == "" {
 		t.Fatal("expected non-empty rawToken")
 	}
-	if session == nil {
+	if result.Session == nil {
 		t.Fatal("expected session to be returned")
 	}
 }
@@ -185,7 +211,7 @@ func TestTC_AUTH_018_LockoutExpires(t *testing.T) {
 
 	svc := newTestService(50*time.Millisecond, 24*time.Hour)
 	for i := 0; i < 5; i++ {
-		_, _, err := svc.Login(ctx, "eve", "wrongpass")
+		_, err := svc.Login(ctx, "eve", "wrongpass")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("attempt %d: expected ErrInvalidCredentials, got %v", i+1, err)
 		}
@@ -193,14 +219,14 @@ func TestTC_AUTH_018_LockoutExpires(t *testing.T) {
 
 	time.Sleep(60 * time.Millisecond)
 
-	rawToken, session, err := svc.Login(ctx, "eve", "rightpass")
+	result, err := svc.Login(ctx, "eve", "rightpass")
 	if err != nil {
 		t.Fatalf("expected success after lockout expired, got %v", err)
 	}
-	if rawToken == "" {
+	if result.RawToken == "" {
 		t.Fatal("expected non-empty rawToken")
 	}
-	if session == nil {
+	if result.Session == nil {
 		t.Fatal("expected session to be returned")
 	}
 }
@@ -219,33 +245,33 @@ func TestTC_AUTH_019_SuccessResetsCounter(t *testing.T) {
 
 	// Accumulate 3 failures.
 	for i := 0; i < 3; i++ {
-		_, _, err := svc.Login(ctx, "frank", "wrongpass")
+		_, err := svc.Login(ctx, "frank", "wrongpass")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("attempt %d: expected ErrInvalidCredentials, got %v", i+1, err)
 		}
 	}
 
 	// Successful login resets counter.
-	if _, _, err := svc.Login(ctx, "frank", "rightpass"); err != nil {
+	if _, err := svc.Login(ctx, "frank", "rightpass"); err != nil {
 		t.Fatalf("expected successful login, got %v", err)
 	}
 
 	// Four more failures must not lock the account (counter was reset to 0).
 	for i := 0; i < 4; i++ {
-		_, _, err := svc.Login(ctx, "frank", "wrongpass")
+		_, err := svc.Login(ctx, "frank", "wrongpass")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("post-reset attempt %d: expected ErrInvalidCredentials, got %v", i+1, err)
 		}
 	}
 
-	rawToken, session, err := svc.Login(ctx, "frank", "rightpass")
+	result, err := svc.Login(ctx, "frank", "rightpass")
 	if err != nil {
 		t.Fatalf("expected account still unlocked after reset, got %v", err)
 	}
-	if rawToken == "" {
+	if result.RawToken == "" {
 		t.Fatal("expected non-empty rawToken")
 	}
-	if session == nil {
+	if result.Session == nil {
 		t.Fatal("expected session to be returned")
 	}
 }
@@ -272,18 +298,18 @@ func TestLogout_DeletesSession(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "logout_user", "pass123", "student")
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	rawToken, session, err := svc.Login(ctx, "logout_user", "pass123")
+	result, err := svc.Login(ctx, "logout_user", "pass123")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	tokenHash := HashToken(rawToken)
+	tokenHash := HashToken(result.RawToken)
 	if err := svc.Logout(ctx, tokenHash); err != nil {
 		t.Fatalf("Logout failed: %v", err)
 	}
 
 	// Confirm the session is gone.
-	_, err = svc.repo.GetSessionByTokenHash(ctx, session.TokenHash)
+	_, err = svc.repo.GetSessionByTokenHash(ctx, result.Session.TokenHash)
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("expected session to be deleted, got: %v", err)
 	}

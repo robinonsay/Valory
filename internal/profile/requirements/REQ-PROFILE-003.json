@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-003",
+  "title": "Profile Source Distinguishes Onboarding from Manual Edit",
+  "description": "The profile module shall record whether each profile summary originated from onboarding or a manual edit.",
+  "rationale": "Distinguishing the origin of a profile summary allows future features (such as re-onboarding prompts or audit views) to act differently based on how the profile was produced, without adding schema columns later.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

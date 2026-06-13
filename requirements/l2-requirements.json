@@ -910,5 +910,147 @@
     "uses": [
       "REQ-ADMIN-001"
     ]
+  },
+  {
+    "id": "REQ-ADMIN-010",
+    "title": "Configurable Section Generation Output Token Limit",
+    "description": "The admin module shall allow an admin to set the maximum output tokens per section-generation model call, applying a safe default when unset and rejecting values that would truncate or time out generation.",
+    "rationale": "A fixed output cap below the prompted content length truncated sections mid-word, causing every review to fail and generation runs to burn their full timeout; operators need to tune the cap without code changes as content length requirements evolve.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-ADMIN-001",
+      "REQ-AGENT-003"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-071",
+    "title": "Known Agent Event Types Rendered as Human-Readable Sentences",
+    "description": "The frontend module shall render each known agent event type as a human-readable English sentence incorporating relevant payload fields.",
+    "rationale": "Users currently see raw JSON envelopes for agent events such as section_generating and generation_started; plain English sentences make the generation log meaningful without requiring technical knowledge.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-AGENT-006",
+      "REQ-SYS-015"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-072",
+    "title": "Unknown Event Types Rendered via Graceful Fallback",
+    "description": "The frontend module shall render any unrecognized event type as a generic readable message without displaying the raw data payload.",
+    "rationale": "New event types added to the backend must never surface raw JSON envelopes to users; a fallback ensures forward compatibility without breaking the generation log display.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-AGENT-006",
+      "REQ-SYS-015"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-073",
+    "title": "Progress Event Updates Progress Bar",
+    "description": "The frontend module shall update the progress bar and append the message when a progress event is received.",
+    "rationale": "The progress bar is the primary visual indicator of generation status; its behavior must be preserved when the event-mapping layer is introduced so existing functionality is not regressed.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-AGENT-006",
+      "REQ-SYS-015"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-074",
+    "title": "Status Change Event Navigates to Course Hub",
+    "description": "The frontend module shall navigate to the course hub when a status_change event carries status active.",
+    "rationale": "Navigation on status_change is the handoff from generation to active course use; it must remain intact when the event-mapping layer is added so students are not left on the generating screen after content is ready.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-AGENT-021",
+      "REQ-SYS-015"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-561",
+    "title": "Unit Tests Cover All Known Event Type Mappings",
+    "description": "The frontend module shall have unit tests that assert the human-readable output for every known agent event type.",
+    "rationale": "Without per-event-type test cases, a mapping regression for any single event type could go undetected before reaching users; exhaustive coverage ensures each mapping is independently verified.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-071"
+    ]
+  },
+  {
+    "id": "REQ-FECOURSE-562",
+    "title": "Unit Test Covers Unknown Event Type Fallback",
+    "description": "The frontend module shall have a unit test asserting that an unrecognized event type does not expose the raw payload.",
+    "rationale": "The fallback path has no named event type to trigger it in production until a new backend event appears; an explicit test case is the only way to verify the path executes correctly before that occurs.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-FECOURSE-072"
+    ]
+  },
+  {
+    "id": "REQ-INFRA-003",
+    "title": "Operator-Supplied TLS Certificate Loaded at Startup",
+    "description": "The infra module shall use the TLS certificate pair named by VALORY_TLS_CERT_FILE and VALORY_TLS_KEY_FILE when both are set.",
+    "rationale": "Operators running self-hosted production deployments need to supply their own CA-signed certificates to avoid browser SSL warnings; the env-var pair is the standard twelve-factor mechanism for injecting file paths into containerised services.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-AUTH-007",
+      "REQ-SYS-040"
+    ]
+  },
+  {
+    "id": "REQ-INFRA-004",
+    "title": "Invalid Operator Certificate Pair Fails Startup with Clear Error",
+    "description": "The infra module shall abort startup with a descriptive error when the operator-supplied certificate pair is incomplete, unreadable, or invalid.",
+    "rationale": "Silent fallback to a self-signed certificate on a misconfigured BYO-cert path would leave a production server running with an untrusted certificate without operator awareness; failing fast surfaces the misconfiguration immediately.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-INFRA-003"
+    ]
+  },
+  {
+    "id": "REQ-INFRA-005",
+    "title": "TLS Mode Precedence: BYO Certificate over ACME over Self-Signed",
+    "description": "The infra module shall apply TLS mode precedence: operator-supplied certificate over ACME_DOMAIN over self-signed dev fallback.",
+    "rationale": "A clear and documented precedence order prevents ambiguous or unexpected TLS configuration when multiple env vars are set, and ensures the most explicitly operator-supplied credential always wins.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-INFRA-003",
+      "REQ-AUTH-007",
+      "REQ-SYS-040"
+    ]
+  },
+  {
+    "id": "REQ-INFRA-006",
+    "title": "Reverse-Proxy Mode Serves Plain HTTP",
+    "description": "The infra module shall serve plain HTTP without TLS when VALORY_BEHIND_PROXY=true is set.",
+    "rationale": "Operators deploying behind a TLS-terminating reverse proxy must be able to opt the application into plain-HTTP mode so the proxy handles all TLS and the application receives cleartext traffic.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-SYS-057"
+    ]
+  },
+  {
+    "id": "REQ-INFRA-008",
+    "title": "Proxy Mode and TLS Mode Combination Fails Startup",
+    "description": "The infra module shall abort startup when reverse-proxy mode is set alongside any TLS or ACME configuration variable.",
+    "rationale": "Enabling both proxy mode and a TLS mode simultaneously is a logical misconfiguration; failing fast at startup prevents a silently misconfigured server from serving production traffic.",
+    "verification_method": "Test",
+    "uses": [
+      "REQ-INFRA-006",
+      "REQ-INFRA-005"
+    ]
+  },
+  {
+    "id": "REQ-INFRA-007",
+    "title": "Startup Log States Active TLS or Proxy Mode",
+    "description": "The infra module shall log which TLS or proxy mode is active at startup before accepting connections.",
+    "rationale": "Operators need an immediate, human-readable confirmation of the active transport security mode at startup so misconfiguration can be detected without inspecting runtime certificate state.",
+    "verification_method": "Inspection",
+    "uses": [
+      "REQ-INFRA-003",
+      "REQ-INFRA-005",
+      "REQ-INFRA-006",
+      "REQ-INFRA-008"
+    ]
   }
 ]

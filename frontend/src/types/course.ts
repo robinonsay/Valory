@@ -1,9 +1,11 @@
 export type CourseStatus =
   | 'intake'
   | 'syllabus_draft'
+  | 'syllabus_approved'
   | 'generating'
   | 'active'
   | 'archived'
+  | 'completed'
 
 export interface Course {
   id: string
@@ -13,6 +15,7 @@ export interface Course {
   student_id: string
   created_at: string
   updated_at: string
+  assignment_id?: string | null
 }
 
 export interface CourseListResponse {

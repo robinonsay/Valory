@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-330", "REQ-FEADMIN-510", "REQ-FEADMIN-511", "REQ-FEADMIN-512", "REQ-FEADMIN-513", "REQ-FEADMIN-514", "REQ-FEADMIN-515", "REQ-FEADMIN-516"]}
+// @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-330", "REQ-FEADMIN-510", "REQ-FEADMIN-511", "REQ-FEADMIN-512", "REQ-FEADMIN-513", "REQ-FEADMIN-514", "REQ-FEADMIN-515", "REQ-FEADMIN-516", "REQ-FEADMIN-600", "REQ-FEADMIN-601", "REQ-FEADMIN-602", "REQ-FEADMIN-603", "REQ-FEADMIN-604"]}
 
 export const CONFIG_KEYS = [
   'agent_retry_limit',
@@ -11,10 +11,26 @@ export const CONFIG_KEYS = [
   'account_lockout_seconds',
   'max_upload_bytes',
   'content_generation_timeout_seconds',
+  'professor_max_tokens',
   'audit_retention_days',
   'notification_retention_days',
   'consent_version',
-  'anthropic_base_url'
+  'anthropic_base_url',
+  'two_factor_enabled',
+  'smtp_host',
+  'smtp_port',
+  'smtp_from',
+  'smtp_username',
+  'smtp_encryption'
+] as const
+
+// @{"req": ["REQ-FEADMIN-600", "REQ-FEADMIN-601", "REQ-FEADMIN-602", "REQ-FEADMIN-603", "REQ-FEADMIN-604"]}
+export const EMAIL_CONFIG_KEYS = [
+  'smtp_host',
+  'smtp_port',
+  'smtp_from',
+  'smtp_username',
+  'smtp_encryption'
 ] as const
 
 export const WEIGHT_KEYS = [
@@ -36,10 +52,17 @@ export const CONFIG_LABELS: Record<string, string> = {
   'account_lockout_seconds': 'Account Lockout (seconds)',
   'max_upload_bytes': 'Max Upload Size (bytes)',
   'content_generation_timeout_seconds': 'Content Generation Timeout (seconds)',
+  'professor_max_tokens': 'Section Generation Max Output Tokens',
   'audit_retention_days': 'Audit Retention (days)',
   'notification_retention_days': 'Notification Retention (days)',
   'consent_version': 'Consent Version',
-  'anthropic_base_url': 'Anthropic API Endpoint URL'
+  'anthropic_base_url': 'Anthropic API Endpoint URL',
+  'two_factor_enabled': 'Enable two-factor authentication',
+  'smtp_host': 'SMTP Server Host',
+  'smtp_port': 'SMTP Server Port',
+  'smtp_from': 'SMTP From Address',
+  'smtp_username': 'SMTP Username',
+  'smtp_encryption': 'Encryption Mode'
 }
 
 // @{"req": ["REQ-FEADMIN-043", "REQ-FEADMIN-330", "REQ-FEADMIN-331", "REQ-FEADMIN-332", "REQ-FEADMIN-333", "REQ-FEADMIN-334", "REQ-FEADMIN-335", "REQ-FEADMIN-336", "REQ-FEADMIN-337", "REQ-FEADMIN-338", "REQ-FEADMIN-339", "REQ-FEADMIN-340", "REQ-FEADMIN-341", "REQ-FEADMIN-342", "REQ-FEADMIN-343"]}
@@ -54,10 +77,17 @@ export const CONFIG_HINTS: Record<string, string> = {
   'account_lockout_seconds': 'integer >= 1',
   'max_upload_bytes': 'integer >= 1024',
   'content_generation_timeout_seconds': 'integer >= 1',
+  'professor_max_tokens': 'integer between 1024 and 16384',
   'audit_retention_days': 'integer >= 1',
   'notification_retention_days': 'integer >= 1',
   'consent_version': 'non-empty string',
-  'anthropic_base_url': 'optional; empty or absolute http(s) URL'
+  'anthropic_base_url': 'optional; empty or absolute http(s) URL',
+  'two_factor_enabled': 'true or false',
+  'smtp_host': 'hostname or IP; leave empty to disable',
+  'smtp_port': 'integer 1–65535; default 587',
+  'smtp_from': 'email address',
+  'smtp_username': 'leave empty for no AUTH',
+  'smtp_encryption': 'none, starttls, or tls'
 }
 
 // @{"req": ["REQ-FEADMIN-043", "REQ-FEADMIN-330"]}
@@ -108,6 +138,9 @@ export const EXPLANATIONS: Record<string, string> = {
   'content_generation_timeout_seconds':
     'Maximum time for the full section-generation pipeline per course. Default: 300 (5 minutes). Minimum: 1. If generation does not complete within this window, the run is cancelled and the student is notified.',
 
+  'professor_max_tokens':
+    'Maximum output tokens the Professor agent may generate per lesson-section API call. Default: 16384. Valid range: 1024 to 16384. Values too low for the prompted section length (200-500 lines of AsciiDoc) cause the model to stop mid-word; the run now fails fast with a clear error instead of looping through doomed reviews. The ceiling exists because generation calls are non-streaming and larger outputs risk HTTP timeouts. Changes take effect on the next generation run.',
+
   'audit_retention_days':
     'No automated purge is currently implemented. This key is stored and validated but no background worker reads it to delete aged audit entries. The audit log is append-only by design (the `valory_app` DB role holds no DELETE privilege on `audit_log`). This key is a placeholder for a future retention worker. Default: 365. Minimum: 1.',
 
@@ -125,4 +158,25 @@ export const EXPLANATIONS: Record<string, string> = {
 
   'brave_api_key':
     'The Brave Search API key used to ground lesson content in current internet search results. If absent (neither managed nor env var), web search grounding is silently skipped and the Professor generates content without internet context. Changes take effect within 30 seconds without a restart.',
+
+  'smtp_host':
+    'The hostname or IP address of your SMTP server. Leave empty to disable email. Examples: smtp.gmail.com (Gmail with an App Password), email-smtp.us-east-1.amazonaws.com (Amazon SES), localhost (local postfix/exim relay — no auth needed, use encryption: none).',
+
+  'smtp_port':
+    'The SMTP server port. Common values: 587 (STARTTLS — recommended for external providers), 465 (implicit TLS / SMTPS), 25 (unauthenticated local relay). Default: 587.',
+
+  'smtp_from':
+    'The envelope sender address shown in the From: header of all outbound emails (e.g. noreply@yourschool.edu). Must be an address your SMTP server is authorized to send from. Leave empty if SMTP host is not configured.',
+
+  'smtp_username':
+    'The username for SMTP authentication. Leave empty to skip authentication entirely — required for localhost relays (postfix/exim) that do not need credentials. For Gmail, enter your full Gmail address and use an App Password (not your account password).',
+
+  'smtp_encryption':
+    'How the connection to the SMTP server is secured. STARTTLS (recommended): starts a plain connection then upgrades it to TLS — use this for most external providers on port 587. TLS: wraps the entire connection in TLS from the start (implicit TLS) — use this for providers that require port 465. None: no encryption — only safe for a loopback relay on localhost. Using None over a routable network sends credentials and message content in plaintext.',
+
+  'smtp_password':
+    'The SMTP password or app-specific password for authentication. If set here, this value takes precedence over the SMTP_PASSWORD environment variable. Leave the username empty if your relay does not require authentication. For Gmail: generate an App Password in your Google Account security settings — do NOT use your Gmail account password here. Changes take effect immediately on the next email send.',
+
+  'two_factor_enabled':
+    '2FA requires all users to enter a one-time code sent to their email address when signing in. Before enabling: email must be configured and a test message must have been sent successfully, and all admin accounts must have an email address on file.',
 }

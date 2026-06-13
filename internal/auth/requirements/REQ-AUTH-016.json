@@ -1,0 +1,9 @@
+{
+  "id": "REQ-AUTH-016",
+  "title": "OTP Properties: 6-Digit, Hashed, Single-Use, 10-Minute TTL",
+  "description": "The auth module shall generate a single-use 6-digit OTP with a ten-minute expiry, storing only its hash.",
+  "rationale": "Short TTL and single-use enforcement prevent replay attacks; storing only the hash ensures the OTP value cannot be recovered from a database compromise; 6 digits balance usability with the attempt-cap defense.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015"],
+  "implements": ["REQ-AUTH-024"]
+}

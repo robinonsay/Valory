@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-705",
+  "title": "Assign Students Modal",
+  "description": "The frontend module shall provide a searchable modal for selecting and assigning active student accounts to an assignment.",
+  "rationale": "Admins managing large cohorts need to search and multi-select students efficiently; an inline searchable modal avoids leaving the assignment detail view and reduces assignment friction.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-067", "REQ-ASSIGN-002"]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FEPROFILE-003",
+  "title": "Skip Button Dismisses Onboarding and Routes to Courses",
+  "description": "The frontend module shall redirect the student to the courses page when the onboarding skip action is confirmed.",
+  "rationale": "Students who choose not to complete onboarding must reach the main application immediately; blocking or requiring an extra step after skip would undermine the soft-gate design and frustrate students who want to explore first.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070", "REQ-PROFILE-015"],
+  "implements": []
+}

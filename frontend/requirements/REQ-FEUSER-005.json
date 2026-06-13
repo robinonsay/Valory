@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEUSER-005",
+  "title": "Forced Change-Password Journey Test",
+  "description": "The frontend module shall pass an automated test covering login-with-must-change, forced screen appearance, successful change, and unrestricted navigation afterward.",
+  "rationale": "The forced change-password flow spans multiple components and router guards; a dedicated journey test is the only mechanism that can verify the complete sequence behaves correctly end-to-end.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-064", "REQ-FEUSER-001", "REQ-FEUSER-002"]
+}

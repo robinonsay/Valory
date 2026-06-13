@@ -48,7 +48,7 @@ func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "mw_valid", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "mw_valid", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "mw_valid", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestAuthMiddleware_TamperedToken_Returns401(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "mw_tamper", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "mw_tamper", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "mw_tamper", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestRequireRole_WrongRole_Returns403(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "mw_student", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "mw_student", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "mw_student", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestRequireRole_CorrectRole_PassesThrough(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "mw_admin", "pass", "admin")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "mw_admin", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "mw_admin", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestAuthMiddleware_TamperedRoleClaim_Returns401(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "mw_role_tamper", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "mw_role_tamper", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "mw_role_tamper", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestAuthMiddleware_RLSParamsSetInContext(t *testing.T) {
 	userID := createTestUserWithPassword(ctx, t, pool, "mw_rls", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "mw_rls", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "mw_rls", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestAuthMiddleware_StudentWithoutConsent_Returns403(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "consent_missing", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "consent_missing", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "consent_missing", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestAuthMiddleware_StudentWithMatchingConsent_Passes(t *testing.T) {
 	}
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "consent_match", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "consent_match", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -551,7 +551,7 @@ func TestAuthMiddleware_StudentWithStaleConsent_Returns403(t *testing.T) {
 	}
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "consent_stale", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "consent_stale", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -594,7 +594,7 @@ func TestAuthMiddleware_AdminSkipsConsentGate(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "consent_admin", "pass", "admin")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "consent_admin", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "consent_admin", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -629,7 +629,7 @@ func TestAuthMiddleware_NilConsentProvider_SkipsGate(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "consent_nil_provider", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "consent_nil_provider", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "consent_nil_provider", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}

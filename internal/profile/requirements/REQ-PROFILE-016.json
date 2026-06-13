@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-016",
+  "title": "Student Can Re-Run Onboarding After Initial Completion",
+  "description": "The profile module shall allow a student to restart the onboarding conversation after the initial session.",
+  "rationale": "A student's learning preferences evolve across courses; restricting onboarding to a single lifetime run would leave the profile permanently outdated for returning students whose needs have changed.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070"],
+  "implements": []
+}

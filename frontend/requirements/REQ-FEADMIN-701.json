@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-701",
+  "title": "Toggle-Blocked-Without-Test-Send UI Test",
+  "description": "The frontend module shall pass an automated test verifying the 2FA toggle is disabled when the test-send prerequisite is unmet.",
+  "rationale": "The prerequisite guard is a safety control that prevents operator lockout; an automated UI test is the only mechanism that can verify the disabled toggle state and prerequisite message render correctly together.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-FEADMIN-700", "REQ-AUTH-018"]
+}

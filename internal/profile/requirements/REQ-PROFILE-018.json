@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-018",
+  "title": "Student Can Update Own Profile Summary",
+  "description": "The profile module shall allow an authenticated student to replace their own profile summary.",
+  "rationale": "Students must be able to correct or refine their profile text without re-running the full onboarding conversation; a direct edit path gives them control over the personalization context used in their courses.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

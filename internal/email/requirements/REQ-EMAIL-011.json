@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-011",
+  "title": "SMTP Error Detail Returned with Password Redacted",
+  "description": "The email module shall include SMTP error detail in the test-send response with the password value redacted.",
+  "rationale": "Diagnostic error strings from the SMTP connection are essential for operators to identify misconfiguration; however, any inadvertent password leakage in an error string must be suppressed before it reaches the HTTP response.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-062"]
+}

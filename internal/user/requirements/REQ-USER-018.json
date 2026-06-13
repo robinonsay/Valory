@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-018",
+  "title": "Audit Event for Welcome Email Resend",
+  "description": "The user module shall append a credential-free audit entry when an admin resends a welcome email.",
+  "rationale": "Resending regenerates a temporary password and resets account access; recording the event gives admins an audit trail without exposing the newly generated credential.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-012", "REQ-SYS-042"]
+}

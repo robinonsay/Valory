@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-005",
+  "title": "Content-Generation Pipeline Can Read Any Profile",
+  "description": "The profile module shall allow the content-generation pipeline to read any student's learning profile.",
+  "rationale": "Professor, chair, and syllabus agents run outside a student HTTP session; they must be able to fetch the profile for the course owner in order to inject it into prompts, and they must do so without impersonating the student.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

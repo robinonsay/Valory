@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-030",
+  "title": "Section Reader Typesets STEM and Dollar-Delimited Math",
+  "description": "The frontend module shall typeset both AsciiDoc STEM and dollar-delimited math in the section reader.",
+  "rationale": "Stored sections written before the STEM convention contain dollar-delimited math; sections generated after the convention use STEM. The reader must handle both forms so that all existing and future course content renders as typeset glyphs rather than raw source text.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-059"]
+}

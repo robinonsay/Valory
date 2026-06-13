@@ -414,5 +414,125 @@
     "rationale": "Malformed or misrepresented files can cause content-injection risks and automated grading failures; format validation at the boundary ensures only parseable submissions reach the grading pipeline.",
     "verification_method": "Test",
     "implements": ["REQ-SUBMISSION-003"]
+  },
+  {
+    "id": "REQ-SYS-056",
+    "title": "Operator-Supplied TLS Certificate Support",
+    "description": "The system shall accept an operator-supplied TLS certificate and key pair for production deployments.",
+    "rationale": "Self-signed certificates cause browser SSL warnings in production self-hosting; allowing operators to supply CA-signed certificates is the standard resolution for this class of deployment problem.",
+    "verification_method": "Test",
+    "implements": ["REQ-INFRA-003", "REQ-INFRA-004", "REQ-INFRA-005"]
+  },
+  {
+    "id": "REQ-SYS-057",
+    "title": "Plain-HTTP Reverse-Proxy Mode",
+    "description": "The system shall serve plain HTTP when configured for operation behind a TLS-terminating reverse proxy.",
+    "rationale": "Operators deploying behind a reverse proxy that handles TLS termination need to opt the server into plain-HTTP mode; without this, double-TLS wrapping or connection failures occur.",
+    "verification_method": "Test",
+    "implements": ["REQ-INFRA-006", "REQ-INFRA-008", "REQ-INFRA-007"]
+  },
+  {
+    "id": "REQ-SYS-058",
+    "title": "Generation Log Displays Human-Readable Agent Events",
+    "description": "The system shall display all agent pipeline events as human-readable sentences in the generation log.",
+    "rationale": "Raw JSON event payloads are not comprehensible to students; readable sentences convey meaningful progress information and build trust that generation is proceeding correctly.",
+    "verification_method": "Demonstration",
+    "implements": ["REQ-FECOURSE-071", "REQ-FECOURSE-072", "REQ-FECOURSE-073", "REQ-FECOURSE-074"]
+  },
+  {
+    "id": "REQ-SYS-059",
+    "title": "Math Renders as Typeset Output Everywhere Content Is Displayed or Exported",
+    "description": "The system shall render mathematical expressions as typeset glyphs in the section reader, HTML export, and PDF export.",
+    "rationale": "Course content containing math currently displays raw source text with dollar signs and backslashes in all three render paths. Students cannot learn from unreadable math notation; typesetting is required for the platform to be academically useful for any quantitative subject.",
+    "verification_method": "Demonstration",
+    "implements": ["REQ-CONTENT-010", "REQ-CONTENT-011", "REQ-CONTENT-012", "REQ-AGENT-026", "REQ-FECONTENT-030", "REQ-FECONTENT-031", "REQ-FECONTENT-032", "REQ-FECONTENT-033", "REQ-FECONTENT-035", "REQ-FECONTENT-038"]
+  },
+  {
+    "id": "REQ-SYS-060",
+    "title": "Math Content Cannot Introduce XSS",
+    "description": "The system shall prevent math content from introducing cross-site scripting payloads in the section reader.",
+    "rationale": "Adding a math typesetting library to the section-render pipeline introduces a new surface through which malformed or adversarial LaTeX could smuggle executable content or phishing overlays into the DOM. Security must be preserved as an invariant of the math feature, not deferred.",
+    "verification_method": "Test",
+    "implements": ["REQ-FECONTENT-034", "REQ-FECONTENT-036", "REQ-FECONTENT-037"]
+  },
+  {
+    "id": "REQ-SYS-061",
+    "title": "Operational Email via Operator-Configured Transport",
+    "description": "The system shall deliver operational email via operator-configured SMTP transport settings.",
+    "rationale": "Self-hosted deployments use diverse SMTP relays (loopback, external providers, implicit-TLS gateways) with varying authentication and encryption requirements; hardwired transport configuration fails on any relay that differs from the default assumption and cannot be corrected without a container restart.",
+    "verification_method": "Test",
+    "implements": ["REQ-EMAIL-001", "REQ-EMAIL-002", "REQ-EMAIL-003", "REQ-EMAIL-004", "REQ-EMAIL-005", "REQ-EMAIL-006", "REQ-EMAIL-007", "REQ-FEADMIN-600", "REQ-FEADMIN-601", "REQ-FEADMIN-602", "REQ-FEADMIN-604"]
+  },
+  {
+    "id": "REQ-SYS-062",
+    "title": "Admin Email Configuration Verification",
+    "description": "The system shall allow an admin to verify that the email configuration successfully delivers mail.",
+    "rationale": "SMTP misconfiguration is silent in production \u2014 the only observable effect is that users never receive emails. Admins need an explicit verification mechanism so they can confirm correct configuration immediately after making changes, without waiting for a real user-triggered send.",
+    "verification_method": "Demonstration",
+    "implements": ["REQ-EMAIL-008", "REQ-EMAIL-009", "REQ-EMAIL-010", "REQ-EMAIL-011", "REQ-FEADMIN-603"]
+  },
+  {
+    "id": "REQ-SYS-063",
+    "title": "Admin-Created Account Lifecycle with Temporary Password",
+    "description": "The system shall provision accounts with a system-generated temporary password that must be changed at first login.",
+    "rationale": "Accounts provisioned by admins on behalf of others must not use a durable credential supplied by the admin; a system-generated temporary password that expires on first use eliminates the exposure of a shared admin-chosen credential while the email-delivery path ensures the new user receives it securely.",
+    "verification_method": "Test",
+    "implements": ["REQ-USER-008", "REQ-USER-009", "REQ-USER-010", "REQ-USER-011", "REQ-USER-012", "REQ-USER-013", "REQ-USER-014", "REQ-USER-015", "REQ-USER-016", "REQ-USER-017", "REQ-USER-018", "REQ-USER-019", "REQ-FEADMIN-610", "REQ-FEADMIN-611", "REQ-FEADMIN-612", "REQ-FEADMIN-613", "REQ-FEADMIN-614", "REQ-FEUSER-003", "REQ-FEUSER-004"]
+  },
+  {
+    "id": "REQ-SYS-064",
+    "title": "Restricted Session Until Forced Password Change Completes",
+    "description": "The system shall restrict a must-change-password session to the change-password and logout operations until the password change succeeds.",
+    "rationale": "Granting unrestricted access on a temporary credential undermines the intent of the forced-change model; restricting the session at the API layer, mirrored by a navigation guard in the UI, ensures the account cannot be used until it holds a durable user-chosen password.",
+    "verification_method": "Test",
+    "implements": ["REQ-AUTH-013", "REQ-AUTH-014", "REQ-FEUSER-001", "REQ-FEUSER-002", "REQ-FEUSER-005"]
+  },
+  {
+    "id": "REQ-SYS-065",
+    "title": "Email-Based Two-Factor Authentication Gated by Admin Toggle",
+    "description": "The system shall require a second factor via email OTP for all users when the global two-factor toggle is enabled.",
+    "rationale": "Password-only authentication is insufficient for higher-assurance deployments; a global toggle gives operators a controlled, reversible mechanism to mandate a second factor without requiring per-user configuration.",
+    "verification_method": "Test",
+    "implements": ["REQ-AUTH-015", "REQ-AUTH-016", "REQ-AUTH-017", "REQ-AUTH-018", "REQ-AUTH-021", "REQ-AUTH-022", "REQ-AUTH-023", "REQ-AUTH-024", "REQ-AUTH-025", "REQ-AUTH-026", "REQ-FEAUTH-200", "REQ-FEAUTH-201", "REQ-FEAUTH-202", "REQ-FEADMIN-700", "REQ-FEADMIN-701"]
+  },
+  {
+    "id": "REQ-SYS-066",
+    "title": "2FA Lockout Recovery",
+    "description": "The system shall allow recovery from 2FA lockout for admin accounts and for users who exhaust the OTP attempt cap.",
+    "rationale": "Without recovery mechanisms, a user who exhausts OTP attempts or an admin who loses access to their email is permanently locked out; recovery paths with appropriate audit trails ensure the system remains operable under realistic failure conditions.",
+    "verification_method": "Test",
+    "implements": ["REQ-AUTH-019", "REQ-AUTH-020"]
+  },
+  {
+    "id": "REQ-SYS-067",
+    "title": "Admin Course Assignment Creation and Distribution",
+    "description": "The system shall let admins provision course assignments to selected students.",
+    "rationale": "Admins need to pre-load structured curricula for cohorts without requiring each student to initiate their own intake session; this is the foundational administrative capability for managed course delivery.",
+    "verification_method": "Test",
+    "implements": ["REQ-ASSIGN-001", "REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-006", "REQ-ASSIGN-007", "REQ-ASSIGN-010", "REQ-ASSIGN-011", "REQ-FEADMIN-702", "REQ-FEADMIN-703", "REQ-FEADMIN-704", "REQ-FEADMIN-705", "REQ-FEADMIN-706"]
+  },
+  {
+    "id": "REQ-SYS-068",
+    "title": "Per-Student Isolation for Admin-Assigned Courses",
+    "description": "The system shall preserve per-student data isolation for admin-assigned course instances.",
+    "rationale": "Assigned courses share the courses table and RLS model with self-initiated courses; isolation must be explicitly verified to ensure the assignment flow does not introduce a cross-student data visibility gap.",
+    "verification_method": "Test",
+    "implements": ["REQ-ASSIGN-008", "REQ-ASSIGN-009", "REQ-FECOURSE-601", "REQ-FECOURSE-602", "REQ-FECOURSE-603"]
+  },
+  {
+    "id": "REQ-SYS-069",
+    "title": "Persistent Per-Student Learning Profile",
+    "description": "The system shall maintain a persistent learning profile per student that personalizes course generation.",
+    "rationale": "Students currently re-explain their learning preferences on every new course; a persistent profile amortizes that effort across all courses and improves personalization quality without additional student input per course.",
+    "verification_method": "Test",
+    "implements": ["REQ-PROFILE-001", "REQ-PROFILE-002", "REQ-PROFILE-003", "REQ-PROFILE-004", "REQ-PROFILE-005", "REQ-PROFILE-006", "REQ-PROFILE-007", "REQ-PROFILE-008", "REQ-PROFILE-009", "REQ-PROFILE-010", "REQ-PROFILE-017", "REQ-PROFILE-018", "REQ-PROFILE-019", "REQ-PROFILE-020"]
+  },
+  {
+    "id": "REQ-SYS-070",
+    "title": "Student Onboarding to Capture Learning Preferences",
+    "description": "The system shall guide each new student through an onboarding interaction to capture learning preferences.",
+    "rationale": "Without a structured first-login interaction, students would need to re-explain their learning style in every course intake chat; onboarding captures preferences once and makes them available to all subsequent course generation.",
+    "verification_method": "Test",
+    "implements": ["REQ-PROFILE-011", "REQ-PROFILE-012", "REQ-PROFILE-013", "REQ-PROFILE-014", "REQ-PROFILE-015", "REQ-PROFILE-016", "REQ-FEPROFILE-001", "REQ-FEPROFILE-002", "REQ-FEPROFILE-003", "REQ-FEPROFILE-004"]
   }
 ]

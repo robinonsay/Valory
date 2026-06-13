@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-036",
+  "title": "Test Covers KaTeX-Classed Overlay Probe",
+  "description": "The frontend module shall have a test asserting that a katex-classed span with position:fixed style is sanitized.",
+  "rationale": "A KaTeX-classed element bypasses the unconditional style-strip path and enters the property-scoped allowlist. Without a dedicated probe confirming that position:fixed fails the allowlist on katex-classed elements, a regression in the allowlist logic could re-open the phishing-overlay attack surface undetected.",
+  "verification_method": "Test",
+  "uses": ["REQ-FECONTENT-031", "REQ-FECONTENT-034"]
+}

@@ -60,6 +60,15 @@ const handleLogout = async (): Promise<void> => {
           >
             Course Oversight
           </RouterLink>
+          <!-- @{"req": ["REQ-FEADMIN-702", "REQ-FEADMIN-703"]} -->
+          <RouterLink
+            to="/admin/assignments"
+            active-class="active"
+            exact-active-class="active"
+            class="nav-link"
+          >
+            Assignments
+          </RouterLink>
           <!-- @{"req": ["REQ-FEONBOARD-002"]} -->
           <RouterLink
             to="/admin/getting-started"

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEUSER-003",
+  "title": "Account Settings Change-Password Form Fields",
+  "description": "The frontend module shall render a change-password form in account settings with current, new, and confirm-new-password fields.",
+  "rationale": "Users changing their password voluntarily must confirm their current credential and verify the new one matches before submission; separate fields for each value are the minimum for correct change-password UX.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-063", "REQ-USER-014"]
+}

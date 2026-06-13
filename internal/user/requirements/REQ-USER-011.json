@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-011",
+  "title": "Account Creation Succeeds With No-Email Indication When Unconfigured",
+  "description": "The user module shall complete account creation and indicate no email was sent when email is not configured.",
+  "rationale": "Email delivery is an optional side-effect; blocking account creation when no mailer is configured would prevent admins from provisioning users on deployments without email, violating the fail-soft posture established by REQ-EMAIL-007.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-008", "REQ-EMAIL-007"]
+}

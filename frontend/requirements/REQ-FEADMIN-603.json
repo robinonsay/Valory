@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-603",
+  "title": "Test-Send Control with Result Display",
+  "description": "The frontend module shall provide a recipient input and button to invoke the test-send endpoint and display the result.",
+  "rationale": "Admins need immediate visual confirmation of whether a configuration change successfully delivers mail, without requiring a separate tool or inspecting server logs.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-062", "REQ-FEADMIN-600"]
+}

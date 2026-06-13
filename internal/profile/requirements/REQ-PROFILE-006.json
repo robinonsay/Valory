@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-006",
+  "title": "Profile Injected into Section-Generation Prompt",
+  "description": "The profile module shall inject the student's learning profile into the section-generation system prompt.",
+  "rationale": "Section content is the primary learning artifact; without the profile the professor agent generates the same content for every student regardless of their stated level, style, and time budget.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

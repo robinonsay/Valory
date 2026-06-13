@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-008",
+  "title": "Admin-Requested System-Generated Temporary Password",
+  "description": "The user module shall accept an account-creation request that omits the password and generates a temporary one.",
+  "rationale": "Admins provisioning accounts for others should not invent a password and share it out-of-band; a system-generated temporary password ensures the credential is strong and delivered only through the designated secure channel.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-SYS-003"]
+}

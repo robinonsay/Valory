@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-014",
+  "title": "Onboarding Nudge Shown Once After First Login",
+  "description": "The profile module shall present the onboarding nudge exactly once per student, after first login.",
+  "rationale": "A recurring nudge on every login would be disruptive for students who chose to skip; a one-time nudge respects the student's decision while ensuring every new student is aware that personalization is available.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070"],
+  "implements": []
+}

@@ -168,15 +168,20 @@ func applyMigrations(ctx context.Context, p *pgxpool.Pool) error {
 	INSERT INTO schema_migrations (version) VALUES ('003_course')
 	    ON CONFLICT (version) DO NOTHING;
 
-	CREATE TYPE IF NOT EXISTS course_status AS ENUM (
-	    'intake',
-	    'syllabus_draft',
-	    'syllabus_approved',
-	    'generating',
-	    'active',
-	    'archived',
-	    'completed'
-	);
+	-- CREATE TYPE has no IF NOT EXISTS form; use the duplicate_object guard
+	-- like the other enum types below.
+	DO $$ BEGIN
+	    CREATE TYPE course_status AS ENUM (
+	        'intake',
+	        'syllabus_draft',
+	        'syllabus_approved',
+	        'generating',
+	        'active',
+	        'archived',
+	        'completed'
+	    );
+	EXCEPTION WHEN duplicate_object THEN NULL;
+	END $$;
 
 	CREATE TABLE IF NOT EXISTS courses (
 	    id                     UUID          PRIMARY KEY DEFAULT gen_random_uuid(),

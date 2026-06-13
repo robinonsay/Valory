@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEUSER-002",
+  "title": "Forced Change-Password Screen Blocks All App Navigation",
+  "description": "The frontend module shall block navigation to all routes except change-password until the forced password change succeeds.",
+  "rationale": "The restriction on the must-change-password session at the API layer must be mirrored in the UI; without a navigation guard the user would see permission errors on every page before understanding what action is required.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-064", "REQ-FEUSER-001", "REQ-AUTH-014"]
+}

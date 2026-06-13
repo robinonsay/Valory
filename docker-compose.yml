@@ -52,6 +52,10 @@ services:
       - uploads:/app/uploads
       - acme_cache:/app/acme-cache
     healthcheck:
+      # In reverse-proxy mode (VALORY_BEHIND_PROXY=true) the app serves plain
+      # HTTP on :8443, so this probe must become http:// (and -k can be
+      # dropped) or the service never reports healthy. See
+      # docs/runbooks/tls-production.md, Option C.
       test: ["CMD", "curl", "-kf", "https://localhost:8443/health"]
       interval: 10s
       timeout: 5s

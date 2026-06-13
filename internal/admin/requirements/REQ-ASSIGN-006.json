@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-006",
+  "title": "Admin Views Per-Student Generation Status",
+  "description": "The assignment module shall return each assigned student's course generation status for a given assignment.",
+  "rationale": "Admins need visibility into whether each student's course has been picked up, is generating, or has failed so they can identify and remediate problems without accessing individual student accounts.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

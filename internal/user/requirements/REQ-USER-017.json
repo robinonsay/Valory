@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-017",
+  "title": "Audit Event for Create-With-Temp-Password",
+  "description": "The user module shall append a credential-free audit entry when an account is created with a generated temporary password.",
+  "rationale": "Admins must be able to verify when a temp-password account was created and by whom; the payload must never include the password itself to prevent credential exposure in the audit log.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-008", "REQ-SYS-042"]
+}

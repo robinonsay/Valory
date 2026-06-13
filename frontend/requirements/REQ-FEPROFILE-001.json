@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FEPROFILE-001",
+  "title": "Onboarding Chat View Renders on First Login",
+  "description": "The frontend module shall render the onboarding chat interface when the student has not yet been prompted for onboarding.",
+  "rationale": "The onboarding view is the entry point for profile creation; it must be reachable via the router guard on first login so students encounter the personalization opportunity before starting a course.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070", "REQ-PROFILE-014"],
+  "implements": []
+}

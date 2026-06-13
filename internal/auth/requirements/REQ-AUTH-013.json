@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-013",
+  "title": "Session Responses Surface Must-Change-Password Flag",
+  "description": "The auth module shall include a must_change_password field in the login and session-restore responses when the flag is set.",
+  "rationale": "The frontend interposes the forced change-password screen from the auth store, which is populated both at login and on every boot/reload from the session-restore endpoint; omitting the flag from either leaves the router guard reading a stale false on that path.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-064", "REQ-USER-009"]
+}

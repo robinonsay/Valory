@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-019",
+  "title": "Admin Per-User 2FA State Reset",
+  "description": "The auth module shall allow an admin to clear a user's pending-2FA state, enabling the user to restart login.",
+  "rationale": "A user who exhausts the OTP attempt cap cannot complete login; without an admin reset path that user is permanently locked out until expiry, which is unacceptable for production deployments.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-066", "REQ-AUTH-015"]
+}

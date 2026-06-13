@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-010",
+  "title": "Welcome Email on Account Creation When Email Is Configured",
+  "description": "The user module shall send a welcome email with credentials and first-login instructions when email is configured.",
+  "rationale": "The new user has no other way to receive their credentials; the welcome email is the designated secure delivery channel for the temporary password.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-008", "REQ-EMAIL-007"]
+}

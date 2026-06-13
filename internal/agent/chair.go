@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valory/valory/internal/db"
 	"github.com/valory/valory/internal/image"
+	"github.com/valory/valory/internal/profile"
 )
 
 // intakeSentinel is included verbatim in the assistant reply when the Chair
@@ -28,16 +29,29 @@ const intakeSentinel = "INTAKE_COMPLETE"
 // (REQ-AGENT-001), generates the course syllabus, assigns homework due dates
 // (REQ-AGENT-009), and handles all natural-language chat (REQ-AGENT-015)
 // throughout the course lifecycle.
+// serverPool is used by the profile loader (REQ-PROFILE-008, REQ-PROFILE-009)
+// to read the student's learning profile with a server-role connection.
 type Chair struct {
-	client    *ThrottledClient
-	pool      *pgxpool.Pool
-	agentRepo *AgentRepository
-	chatRepo  *ChatRepository
+	client     *ThrottledClient
+	pool       *pgxpool.Pool
+	serverPool *pgxpool.Pool
+	agentRepo  *AgentRepository
+	chatRepo   *ChatRepository
 }
 
-// @{"req": ["REQ-AGENT-001", "REQ-AGENT-009", "REQ-AGENT-015"]}
+// @{"req": ["REQ-AGENT-001", "REQ-AGENT-009", "REQ-AGENT-015", "REQ-PROFILE-008", "REQ-PROFILE-009"]}
 func NewChair(client *ThrottledClient, pool *pgxpool.Pool, agentRepo *AgentRepository, chatRepo *ChatRepository) *Chair {
-	return &Chair{client: client, pool: pool, agentRepo: agentRepo, chatRepo: chatRepo}
+	return &Chair{client: client, pool: pool, serverPool: pool, agentRepo: agentRepo, chatRepo: chatRepo}
+}
+
+// SetServerPool injects the server-role pool used by the profile loader.
+// Called from cmd/server/main.go after construction. The server pool's
+// BeforeAcquire hook sets app.current_role='server' so profile reads pass
+// the server-select RLS policy on learning_profiles.
+//
+// @{"req": ["REQ-PROFILE-008", "REQ-PROFILE-009"]}
+func (c *Chair) SetServerPool(serverPool *pgxpool.Pool) {
+	c.serverPool = serverPool
 }
 
 // RunIntakeStep advances the intake questionnaire by one turn.
@@ -92,7 +106,12 @@ func (c *Chair) RunIntakeStepWithImages(ctx context.Context, courseID, studentID
 		}
 	}
 
-	replyText, err := c.callClaude(ctx, studentID, courseID, intakeSystemPrompt(topic), msgs, 512)
+	// REQ-PROFILE-008: load the student's learning profile and inject it into
+	// the intake system prompt. Returns "" (no-op) when absent (REQ-PROFILE-010).
+	profileSummary := profile.LoadProfileSummary(ctx, c.serverPool, studentID)
+	intakePrompt := profile.AppendProfileBlock(intakeSystemPrompt(topic), profileSummary)
+
+	replyText, err := c.callClaude(ctx, studentID, courseID, intakePrompt, msgs, 512)
 	if err != nil {
 		return false, "", fmt.Errorf("chair: intake step: %w", err)
 	}
@@ -122,7 +141,13 @@ func (c *Chair) GenerateSyllabus(ctx context.Context, courseID, studentID uuid.U
 
 	messages := buildMessagesForSyllabus(history, topic)
 
-	syllabusAdoc, err := c.callClaude(ctx, studentID, courseID, syllabusSystemPrompt(topic), messages, 4096)
+	// REQ-PROFILE-008: inject the student's learning profile into the syllabus
+	// prompt so the syllabus is personalised to their learning style.
+	// Returns "" (no-op) when absent (REQ-PROFILE-010).
+	profileSummary := profile.LoadProfileSummary(ctx, c.serverPool, studentID)
+	syllabusPrompt := profile.AppendProfileBlock(syllabusSystemPrompt(topic), profileSummary)
+
+	syllabusAdoc, err := c.callClaude(ctx, studentID, courseID, syllabusPrompt, messages, 4096)
 	if err != nil {
 		return uuid.UUID{}, fmt.Errorf("chair: generate syllabus: call claude: %w", err)
 	}
@@ -142,6 +167,86 @@ func (c *Chair) GenerateSyllabus(ctx context.Context, courseID, studentID uuid.U
 	}
 
 	return syllabusID, nil
+}
+
+// GenerateSyllabusFromParams generates a course syllabus from admin-supplied
+// parameters, without any prior intake chat history.  Called by the admin
+// assignment handler when pre-seeding courses for assigned students.
+//
+// The admin's topic, level, and parameters substitute for the intake-chat
+// outputs that a normal course would produce.  The generated AsciiDoc is
+// returned to the caller; the caller inserts it into the syllabi table with
+// approved_at set (SDD-022 §4.2).
+//
+// Token usage is charged against agent_token_usage(student_id, course_id)
+// exactly as any other Claude call — ThrottledClient enforces the per-student
+// cap.
+//
+// Sprint 23 seam: when a per-student learning profile is available, inject it
+// into the prompt via a profileRepo.GetProfile(ctx, studentID) call here and
+// append the result to the system prompt alongside level/parameters.  The
+// studentID parameter is already threaded through; no interface change is needed.
+//
+// @{"req": ["REQ-ASSIGN-003", "REQ-ASSIGN-004"]}
+func (c *Chair) GenerateSyllabusFromParams(
+	ctx context.Context,
+	courseID, studentID uuid.UUID,
+	topic, level string,
+	parameters json.RawMessage,
+) (string, error) {
+	// REQ-PROFILE-009: inject the student's learning profile into the
+	// assignment syllabus prompt. studentID is already available as a parameter.
+	// Returns "" (no-op) when absent (REQ-PROFILE-010).
+	profileSummary := profile.LoadProfileSummary(ctx, c.serverPool, studentID)
+	prompt := profile.AppendProfileBlock(assignmentSyllabusPrompt(topic, level, parameters), profileSummary)
+
+	msgs := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock(
+			"Please generate the course syllabus for " + topic + " at the " + level + " level.",
+		)),
+	}
+
+	syllabusAdoc, err := c.callClaude(ctx, studentID, courseID, prompt, msgs, 4096)
+	if err != nil {
+		return "", fmt.Errorf("chair: generate syllabus from params: call claude: %w", err)
+	}
+
+	// Claude sometimes wraps the document in ```asciidoc fences; strip them so
+	// stored content is clean AsciiDoc without literal fence lines.
+	syllabusAdoc = stripCodeFence(syllabusAdoc)
+	return syllabusAdoc, nil
+}
+
+// assignmentSyllabusPrompt builds the system prompt for admin-assigned syllabus
+// generation.  It mirrors syllabusSystemPrompt but replaces intake-conversation
+// context with the admin-supplied level and parameters.
+//
+// @{"req": ["REQ-ASSIGN-003", "REQ-ASSIGN-004"]}
+func assignmentSyllabusPrompt(topic, level string, parameters json.RawMessage) string {
+	var paramStr string
+	// Include parameters only when the caller passed a non-empty object.  An
+	// empty object {} or nil both map to "none provided".
+	if len(parameters) > 0 && string(parameters) != "{}" && string(parameters) != "null" {
+		paramStr = "\n\nAdditional parameters provided by the instructor:\n" + string(parameters)
+	}
+
+	return fmt.Sprintf(`You are the University Chair at Valory creating a course syllabus for an admin-assigned course.
+
+Topic: %q
+Level: %s%s
+
+Write an AsciiDoc course syllabus that includes:
+- A course title (= Title) and one-paragraph description
+- 5–8 numbered sections with clear, descriptive titles (== Section N: Title)
+- Two or three learning objectives per section
+- Estimated time for each section
+
+Tailor the depth and pacing to the stated level (%s):
+- beginner: assume no prior knowledge, introduce concepts from scratch
+- intermediate: assume familiarity with basics, focus on applying concepts
+- advanced: assume solid domain knowledge, focus on nuanced and complex topics
+
+Format strictly as valid AsciiDoc. Keep the document under 300 lines.`, topic, level, paramStr, level)
 }
 
 // AssignDueDates parses the approved syllabus to extract section titles, creates

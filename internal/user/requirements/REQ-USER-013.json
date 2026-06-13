@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-013",
+  "title": "Previous Temporary Password Invalidated on Resend",
+  "description": "The user module shall invalidate the previous temporary password when a resend generates a new one.",
+  "rationale": "Allowing the old temporary password to remain valid after a resend means two credentials exist simultaneously, doubling the attack window; invalidation ensures only the most recently issued credential works.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-012"]
+}

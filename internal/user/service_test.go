@@ -12,6 +12,14 @@ import (
 	"github.com/valory/valory/internal/auth"
 )
 
+// errorEmail always returns an error from SendPasswordReset to exercise the
+// anti-enumeration path where a transport failure must not propagate to callers.
+//
+// @{"verifies": ["REQ-EMAIL-007"]}
+type errorEmail struct{ err error }
+
+func (e *errorEmail) SendPasswordReset(_ context.Context, _, _ string) error { return e.err }
+
 // noopTerminator is the Sprint 2 stub that always succeeds immediately.
 //
 // @{"verifies": ["REQ-USER-007"]}
@@ -420,5 +428,34 @@ func TestServiceRecordConsent(t *testing.T) {
 	}
 	if version != "2.0" {
 		t.Errorf("expected consent version 2.0, got %q", version)
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-007"]}
+func TestServiceRequestPasswordReset_SendErrorNotPropagated(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+
+	// Wire a transport that always fails so we can confirm the error is swallowed.
+	svc := NewService(
+		pool,
+		NewRepository(pool),
+		audit.NewRepository(pool),
+		&errorEmail{err: errors.New("smtp: connection refused")},
+		1*time.Hour,
+		&noopTerminator{},
+	)
+
+	email := "reset_err_" + uuid.New().String() + "@example.com"
+	username := "student_senderror_" + uuid.New().String()
+	createTestUser(ctx, t, username, &email, "hash", "student")
+
+	// RequestPasswordReset must return nil even though the transport failed.
+	// Propagating the error would violate anti-enumeration (SDD-019 §8.1).
+	if err := svc.RequestPasswordReset(ctx, username); err != nil {
+		t.Fatalf("expected nil when transport fails, got %v", err)
 	}
 }

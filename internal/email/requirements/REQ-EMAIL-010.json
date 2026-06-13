@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-010",
+  "title": "Test-Send Audit Event Without Secret Values",
+  "description": "The email module shall record an audit event for each test-send attempt with no secret values in the payload.",
+  "rationale": "Admin actions must be auditable; including the password or any secret in the audit payload would create a plaintext credential exposure vector in the audit log.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-062"]
+}

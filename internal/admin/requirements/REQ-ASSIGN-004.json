@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-004",
+  "title": "Admin-Assigned Courses Skip Intake Chat",
+  "description": "The assignment module shall create course instances that bypass the student intake chat phase.",
+  "rationale": "When an admin defines the curriculum, the intake conversation that collects learning preferences from the student is redundant; skipping it removes unnecessary friction and allows generation to begin immediately.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

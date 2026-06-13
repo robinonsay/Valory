@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-035",
+  "title": "Math Typesetting Assets Load from Application Bundle",
+  "description": "The frontend module shall load all math typesetting assets from the application bundle.",
+  "rationale": "Self-hosted deployments may operate in fully offline environments with no external network access. Loading math typesetting assets from a CDN would cause math rendering to fail silently in those deployments and violates the no-CDN constraint established for the platform.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-059", "REQ-FECONTENT-030"]
+}

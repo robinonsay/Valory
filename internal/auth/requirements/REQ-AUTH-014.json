@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-014",
+  "title": "Must-Change-Password Session Restricted to Change-Password and Logout",
+  "description": "The auth module shall reject all API requests from a must-change-password session except the change-password and logout operations.",
+  "rationale": "A user with a temporary password must change it before accessing any application data; allowing unrestricted access would defeat the temporary-credential model and expose the account to misuse if the email was intercepted.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-064", "REQ-AUTH-013", "REQ-USER-009"]
+}

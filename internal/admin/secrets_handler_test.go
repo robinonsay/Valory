@@ -33,8 +33,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	authpkg "github.com/valory/valory/internal/auth"
 	"github.com/valory/valory/internal/audit"
+	authpkg "github.com/valory/valory/internal/auth"
 )
 
 // ── test fixtures ─────────────────────────────────────────────────────────────
@@ -793,4 +793,3 @@ func TestGetSecret_ResponseBodyNeverContainsEncryptedBytesAsString(t *testing.T)
 		t.Error("GET /secrets response contains 'nonce' field — must not be exposed")
 	}
 }
-

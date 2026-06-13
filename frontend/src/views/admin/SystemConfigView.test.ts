@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330", "REQ-FEADMIN-331", "REQ-FEADMIN-332", "REQ-FEADMIN-333", "REQ-FEADMIN-334", "REQ-FEADMIN-335", "REQ-FEADMIN-336", "REQ-FEADMIN-337", "REQ-FEADMIN-338", "REQ-FEADMIN-339", "REQ-FEADMIN-340", "REQ-FEADMIN-341", "REQ-FEADMIN-342", "REQ-FEADMIN-343", "REQ-FEADMIN-500", "REQ-FEADMIN-501", "REQ-FEADMIN-502", "REQ-FEADMIN-503", "REQ-FEADMIN-504", "REQ-FEADMIN-510", "REQ-FEADMIN-511", "REQ-FEADMIN-512", "REQ-FEADMIN-513", "REQ-FEADMIN-514", "REQ-FEADMIN-515", "REQ-FEADMIN-516"]}
+// @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330", "REQ-FEADMIN-331", "REQ-FEADMIN-332", "REQ-FEADMIN-333", "REQ-FEADMIN-334", "REQ-FEADMIN-335", "REQ-FEADMIN-336", "REQ-FEADMIN-337", "REQ-FEADMIN-338", "REQ-FEADMIN-339", "REQ-FEADMIN-340", "REQ-FEADMIN-341", "REQ-FEADMIN-342", "REQ-FEADMIN-343", "REQ-FEADMIN-500", "REQ-FEADMIN-501", "REQ-FEADMIN-502", "REQ-FEADMIN-503", "REQ-FEADMIN-504", "REQ-FEADMIN-510", "REQ-FEADMIN-511", "REQ-FEADMIN-512", "REQ-FEADMIN-513", "REQ-FEADMIN-514", "REQ-FEADMIN-515", "REQ-FEADMIN-516", "REQ-FEADMIN-600", "REQ-FEADMIN-601", "REQ-FEADMIN-602", "REQ-FEADMIN-603", "REQ-FEADMIN-604", "REQ-FEADMIN-700", "REQ-FEADMIN-701"]}
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -14,6 +14,7 @@ vi.mock('@/api/client', () => ({
   patch: vi.fn(),
   put: vi.fn(),
   del: vi.fn(),
+  post: vi.fn(),
   ApiError: class extends Error {
     status: number
     body: unknown
@@ -26,7 +27,7 @@ vi.mock('@/api/client', () => ({
   }
 }))
 
-const { get, patch, put, del } = await import('@/api/client')
+const { get, patch, put, del, post } = await import('@/api/client')
 
 const FULL_CONFIG = {
   agent_retry_limit: '3',
@@ -39,10 +40,16 @@ const FULL_CONFIG = {
   account_lockout_seconds: '900',
   max_upload_bytes: '10485760',
   content_generation_timeout_seconds: '300',
+  professor_max_tokens: '16384',
   audit_retention_days: '365',
   notification_retention_days: '90',
   consent_version: '1.0',
-  anthropic_base_url: ''
+  anthropic_base_url: '',
+  smtp_host: '',
+  smtp_port: '587',
+  smtp_from: '',
+  smtp_username: '',
+  smtp_encryption: 'starttls'
 }
 
 beforeEach(() => {
@@ -66,6 +73,13 @@ const EMPTY_SECRETS: SecretStatus[] = [
   },
   {
     name: 'brave_api_key',
+    configured: false,
+    last4: null,
+    updated_at: null,
+    source: 'none'
+  },
+  {
+    name: 'smtp_password',
     configured: false,
     last4: null,
     updated_at: null,
@@ -96,7 +110,7 @@ async function flushAll() {
 
 describe('SystemConfigView', () => {
   // @{"req": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042"]}
-  it('fetches config on mount and renders all 14 fields', async () => {
+  it('fetches config on mount and renders all 20 config fields (15 + 5 email)', async () => {
     vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
 
     const wrapper = mountWithAuth()
@@ -106,7 +120,8 @@ describe('SystemConfigView', () => {
     expect(vi.mocked(get)).toHaveBeenCalledWith('/api/v1/admin/config')
 
     const inputs = wrapper.findAll('input.config-input')
-    expect(inputs).toHaveLength(14)
+    const selects = wrapper.findAll('select.config-input')
+    expect(inputs.length + selects.length).toBe(20)
 
     const expectedKeys = [
       'agent_retry_limit',
@@ -119,15 +134,21 @@ describe('SystemConfigView', () => {
       'account_lockout_seconds',
       'max_upload_bytes',
       'content_generation_timeout_seconds',
+      'professor_max_tokens',
       'audit_retention_days',
       'notification_retention_days',
       'consent_version',
-      'anthropic_base_url'
+      'anthropic_base_url',
+      'smtp_host',
+      'smtp_port',
+      'smtp_from',
+      'smtp_username',
+      'smtp_encryption'
     ]
 
     for (const key of expectedKeys) {
       const input = wrapper.find(`#config-${key}`)
-      expect(input.exists(), `Input for ${key} should exist`).toBe(true)
+      expect(input.exists(), `Input or select for ${key} should exist`).toBe(true)
     }
   })
 
@@ -426,7 +447,7 @@ describe('SystemConfigView', () => {
   })
 
   // @{"req": ["REQ-FEADMIN-510"]}
-  it('all 14 config fields render with explanation blocks', async () => {
+  it('all 20 config fields render with explanation blocks', async () => {
     vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
     vi.mocked(get).mockImplementation((path) => {
       if (path === '/api/v1/admin/secrets') {
@@ -440,7 +461,7 @@ describe('SystemConfigView', () => {
     await wrapper.vm.$nextTick()
 
     const toggleButtons = wrapper.findAll('.explanation-toggle')
-    expect(toggleButtons).toHaveLength(14)
+    expect(toggleButtons).toHaveLength(20)
   })
 
   // @{"req": ["REQ-FEADMIN-511"]}
@@ -457,24 +478,23 @@ describe('SystemConfigView', () => {
     await flushAll()
     await wrapper.vm.$nextTick()
 
-    const toggleButtons = wrapper.findAll('.explanation-toggle')
-    const sessionInactivityIndex = 6
+    const toggles = wrapper.findAll('.explanation-toggle')
+    for (let i = 0; i < toggles.length; i++) {
+      await toggles[i].trigger('click')
+      await wrapper.vm.$nextTick()
 
-    await toggleButtons[sessionInactivityIndex].trigger('click')
-    await wrapper.vm.$nextTick()
-
-    const allExplanationBlocks = wrapper.findAll('.explanation-block')
-    let foundSession = false
-    for (const block of allExplanationBlocks) {
-      const text = block.text()
-      if (text.includes('AUTH_INACTIVITY_PERIOD')) {
-        foundSession = true
-        expect(text).toContain('Changing this value has no effect on the running server')
-        expect(text).toContain('AUTH_INACTIVITY_PERIOD')
-        break
+      const allExplanationBlocks = wrapper.findAll('.explanation-block')
+      for (const block of allExplanationBlocks) {
+        const text = block.text()
+        if (text.includes('AUTH_INACTIVITY_PERIOD')) {
+          expect(text).toContain('Changing this value has no effect on the running server')
+          expect(text).toContain('AUTH_INACTIVITY_PERIOD')
+          return
+        }
       }
     }
-    expect(foundSession).toBe(true)
+
+    expect.fail('session_inactivity_seconds explanation not found')
   })
 
   // @{"req": ["REQ-FEADMIN-512"]}
@@ -491,23 +511,23 @@ describe('SystemConfigView', () => {
     await flushAll()
     await wrapper.vm.$nextTick()
 
-    const toggleButtons = wrapper.findAll('.explanation-toggle')
-    const auditRetentionIndex = 10
-    await toggleButtons[auditRetentionIndex].trigger('click')
-    await wrapper.vm.$nextTick()
+    const toggles = wrapper.findAll('.explanation-toggle')
+    for (let i = 0; i < toggles.length; i++) {
+      await toggles[i].trigger('click')
+      await wrapper.vm.$nextTick()
 
-    const allExplanationBlocks = wrapper.findAll('.explanation-block')
-    let foundAudit = false
-    for (const block of allExplanationBlocks) {
-      const text = block.text()
-      if (text.includes('No automated purge')) {
-        foundAudit = true
-        expect(text).toContain('No automated purge is currently implemented')
-        expect(text).toContain('no background worker')
-        break
+      const allExplanationBlocks = wrapper.findAll('.explanation-block')
+      for (const block of allExplanationBlocks) {
+        const text = block.text()
+        if (text.includes('No automated purge')) {
+          expect(text).toContain('No automated purge is currently implemented')
+          expect(text).toContain('no background worker')
+          return
+        }
       }
     }
-    expect(foundAudit).toBe(true)
+
+    expect.fail('audit_retention_days explanation not found')
   })
 
   // @{"req": ["REQ-FEADMIN-510"]}
@@ -546,25 +566,477 @@ describe('SystemConfigView', () => {
     await flushAll()
     await wrapper.vm.$nextTick()
 
-    const toggleButtons = wrapper.findAll('.explanation-toggle')
-    const baseUrlToggleIndex = 13
+    const toggles = wrapper.findAll('.explanation-toggle')
+    for (let i = 0; i < toggles.length; i++) {
+      await toggles[i].trigger('click')
+      await wrapper.vm.$nextTick()
 
-    await toggleButtons[baseUrlToggleIndex].trigger('click')
+      const allExplanationBlocks = wrapper.findAll('.explanation-block')
+      for (const block of allExplanationBlocks) {
+        const text = block.text()
+        if (text.includes('Anthropic API endpoint URL')) {
+          expect(text).toContain('Leave empty to use Anthropic\'s hosted endpoint')
+          expect(text).toContain('self-hosting a compatible gateway or proxy')
+          expect(text).toContain('course generation, chat, grading')
+          expect(text).toContain('Takes effect immediately after saving — no container restart needed')
+          return
+        }
+      }
+    }
+
+    expect.fail('anthropic_base_url explanation not found')
+  })
+
+  // @{"req": ["REQ-FEADMIN-600"]}
+  it('renders Email section with five SMTP config fields and password secret', async () => {
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({
+          secrets: [
+            {
+              name: 'anthropic_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'brave_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'smtp_password',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            }
+          ]
+        })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
     await wrapper.vm.$nextTick()
 
-    const allExplanationBlocks = wrapper.findAll('.explanation-block')
-    let foundBaseUrl = false
-    for (const block of allExplanationBlocks) {
-      const text = block.text()
-      if (text.includes('Anthropic API endpoint URL')) {
-        foundBaseUrl = true
-        expect(text).toContain('Leave empty to use Anthropic\'s hosted endpoint')
-        expect(text).toContain('self-hosting a compatible gateway or proxy')
-        expect(text).toContain('course generation, chat, grading')
-        expect(text).toContain('Takes effect immediately after saving — no container restart needed')
+    const emailCard = wrapper.find('.email-card')
+    expect(emailCard.exists()).toBe(true)
+
+    const emailTitle = emailCard.find('h2')
+    expect(emailTitle.text()).toBe('Email')
+
+    const emailInputs = emailCard.findAll('input.config-input')
+    expect(emailInputs.length).toBeGreaterThanOrEqual(4)
+
+    const select = emailCard.find('select.config-input')
+    expect(select.exists()).toBe(true)
+  })
+
+  // @{"req": ["REQ-FEADMIN-601"]}
+  it('smtp_encryption field renders as dropdown with three options', async () => {
+    const configWithEmail = {
+      ...FULL_CONFIG,
+      smtp_host: 'smtp.example.com',
+      smtp_port: '587',
+      smtp_from: 'noreply@example.com',
+      smtp_username: 'user@example.com',
+      smtp_encryption: 'starttls'
+    }
+    vi.mocked(get).mockResolvedValue({ config: configWithEmail })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const select = wrapper.find('#config-smtp_encryption')
+    expect(select.exists()).toBe(true)
+    expect(select.element.tagName).toBe('SELECT')
+
+    const options = select.findAll('option')
+    expect(options.length).toBeGreaterThanOrEqual(4)
+
+    const optionTexts = options.map(o => o.text())
+    expect(optionTexts).toContain('None — plaintext SMTP')
+    expect(optionTexts).toContain('STARTTLS — upgrade after connect (recommended)')
+    expect(optionTexts).toContain('TLS — implicit TLS (port 465)')
+  })
+
+  // @{"req": ["REQ-FEADMIN-602"]}
+  it('smtp_password secret renders with write-only masked badge pattern and empty input', async () => {
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({
+          secrets: [
+            {
+              name: 'anthropic_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'brave_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'smtp_password',
+              configured: true,
+              last4: 'xxxx1234',
+              updated_at: '2024-06-12T10:00:00Z',
+              source: 'managed'
+            }
+          ]
+        })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const smtpPasswordInput = wrapper.find('#secret-smtp_password')
+    expect(smtpPasswordInput.exists()).toBe(true)
+    expect(smtpPasswordInput.attributes('type')).toBe('password')
+    expect(smtpPasswordInput.element.value).toBe('')
+
+    const badges = wrapper.findAll('.secret-badge')
+    let foundSmtpBadge = false
+    for (const badge of badges) {
+      if (badge.text().includes('xxxx1234')) {
+        foundSmtpBadge = true
         break
       }
     }
-    expect(foundBaseUrl).toBe(true)
+    expect(foundSmtpBadge).toBe(true)
+  })
+
+  // @{"req": ["REQ-FEADMIN-603"]}
+  it('test-send button sends POST request and displays success result', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({
+          secrets: [
+            {
+              name: 'anthropic_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'brave_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'smtp_password',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            }
+          ]
+        })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    vi.mocked(post).mockResolvedValue({
+      ok: true,
+      message: 'Test email sent successfully.'
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const testEmailInput = wrapper.find('.test-email-input')
+    await testEmailInput.setValue('admin@example.com')
+
+    const testEmailButton = wrapper.find('.test-email-button')
+    await testEmailButton.trigger('click')
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    expect(vi.mocked(post)).toHaveBeenCalledWith(
+      '/api/v1/admin/config/email/test',
+      { to: 'admin@example.com' }
+    )
+
+    const resultBanner = wrapper.find('.test-email-result.success')
+    expect(resultBanner.exists()).toBe(true)
+    expect(resultBanner.text()).toContain('Test email sent successfully.')
+  })
+
+  // @{"req": ["REQ-FEADMIN-603"]}
+  it('test-send shows error result when SMTP fails', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({
+          secrets: [
+            {
+              name: 'anthropic_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'brave_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'smtp_password',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            }
+          ]
+        })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    vi.mocked(post).mockResolvedValue({
+      ok: false,
+      smtp_error: 'dial tcp 127.0.0.1:587: connection refused'
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const testEmailInput = wrapper.find('.test-email-input')
+    await testEmailInput.setValue('admin@example.com')
+
+    const testEmailButton = wrapper.find('.test-email-button')
+    await testEmailButton.trigger('click')
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const resultBanner = wrapper.find('.test-email-result.error')
+    expect(resultBanner.exists()).toBe(true)
+    expect(resultBanner.text()).toContain('Test failed:')
+    expect(resultBanner.text()).toContain('connection refused')
+  })
+
+  // @{"req": ["REQ-FEADMIN-603"]}
+  it('test-send handles 429 rate limit response', async () => {
+    vi.mocked(get).mockResolvedValue({ config: FULL_CONFIG })
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({
+          secrets: [
+            {
+              name: 'anthropic_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'brave_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'smtp_password',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            }
+          ]
+        })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const apiError = new (clientModule.ApiError as any)(429, {
+      error: 'test-send rate limit exceeded; try again in 60 seconds'
+    })
+    vi.mocked(post).mockRejectedValue(apiError)
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const testEmailInput = wrapper.find('.test-email-input')
+    await testEmailInput.setValue('admin@example.com')
+
+    const testEmailButton = wrapper.find('.test-email-button')
+    await testEmailButton.trigger('click')
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const resultBanner = wrapper.find('.test-email-result.error')
+    expect(resultBanner.exists()).toBe(true)
+    expect(resultBanner.text()).toContain('Rate limited')
+    expect(resultBanner.text()).toContain('60 seconds')
+  })
+
+  // @{"req": ["REQ-FEADMIN-604"]}
+  it('email config fields render with explanation blocks', async () => {
+    const configWithEmail = {
+      ...FULL_CONFIG,
+      smtp_host: 'smtp.example.com',
+      smtp_port: '587',
+      smtp_from: 'noreply@example.com',
+      smtp_username: 'user@example.com',
+      smtp_encryption: 'starttls'
+    }
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({
+          secrets: [
+            {
+              name: 'anthropic_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'brave_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'smtp_password',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            }
+          ]
+        })
+      }
+      return Promise.resolve({ config: configWithEmail })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const emailCard = wrapper.find('.email-card')
+    const toggleButtons = emailCard.findAll('.explanation-toggle')
+
+    expect(toggleButtons.length).toBeGreaterThanOrEqual(5)
+
+    await toggleButtons[0].trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const explanationBlocks = emailCard.findAll('.explanation-block')
+    expect(explanationBlocks.length).toBeGreaterThan(0)
+    const firstExplanation = explanationBlocks[0].text()
+    expect(firstExplanation.length).toBeGreaterThan(0)
+  })
+
+  // @{"req": ["REQ-FEADMIN-604"]}
+  it('smtp_password explanation is displayed when visible', async () => {
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({
+          secrets: [
+            {
+              name: 'anthropic_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'brave_api_key',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            },
+            {
+              name: 'smtp_password',
+              configured: false,
+              last4: null,
+              updated_at: null,
+              source: 'none'
+            }
+          ]
+        })
+      }
+      return Promise.resolve({ config: FULL_CONFIG })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const emailCard = wrapper.find('.email-card')
+    const secretExplanations = emailCard.findAll('.secret-explanation')
+    expect(secretExplanations.length).toBeGreaterThan(0)
+
+    let foundSmtpPasswordExplanation = false
+    for (const explanation of secretExplanations) {
+      const text = explanation.text()
+      if (text.includes('SMTP password') || text.includes('App Password')) {
+        foundSmtpPasswordExplanation = true
+        break
+      }
+    }
+    expect(foundSmtpPasswordExplanation).toBe(true)
+  })
+
+  // @{"verifies": ["REQ-FEADMIN-701"]}
+  it('2FA toggle is disabled when test-send prerequisite is unmet', async () => {
+    const configWithPrerequisitesUnmet = {
+      ...FULL_CONFIG,
+      two_factor_enabled: 'false'
+    }
+
+    vi.mocked(get).mockImplementation((path) => {
+      if (path === '/api/v1/admin/secrets') {
+        return Promise.resolve({ secrets: EMPTY_SECRETS })
+      }
+      return Promise.resolve({
+        config: configWithPrerequisitesUnmet,
+        two_fa_prerequisites: {
+          email_configured: true,
+          test_send_verified: false,
+          admins_without_email: 0,
+          students_without_email: 0
+        }
+      })
+    })
+
+    const wrapper = mountWithAuth()
+    await flushAll()
+    await wrapper.vm.$nextTick()
+
+    const twoFAToggle = wrapper.find('#config-two_factor_enabled')
+    expect(twoFAToggle.exists()).toBe(true)
+    expect((twoFAToggle.element as HTMLInputElement).disabled).toBe(true)
+
+    const disabledReason = wrapper.find('.toggle-disabled-reason')
+    expect(disabledReason.exists()).toBe(true)
+    expect(disabledReason.text()).toContain('Test-send has not been verified')
   })
 })

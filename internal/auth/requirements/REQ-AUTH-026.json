@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-026",
+  "title": "OTP Resend Throttle: 60-Second and 10-Per-Day Limits",
+  "description": "The auth module shall reject OTP resend within sixty seconds of the last resend or beyond ten per twenty-four hours.",
+  "rationale": "An unthrottled resend endpoint can be used to flood a user's inbox or exhaust the email provider's sending quota; the per-minute and per-day caps prevent both denial-of-service and harassment scenarios.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015"]
+}

@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-012", "REQ-FEAUTH-100", "REQ-FEAUTH-101", "REQ-FEAUTH-102", "REQ-FEAUTH-110", "REQ-FEAUTH-115", "REQ-FEAUTH-120", "REQ-FEAUTH-171"]}
+// @{"req": ["REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-012", "REQ-FEAUTH-100", "REQ-FEAUTH-101", "REQ-FEAUTH-102", "REQ-FEAUTH-110", "REQ-FEAUTH-115", "REQ-FEAUTH-120", "REQ-FEAUTH-171", "REQ-FEAUTH-200"]}
 
 <script setup lang="ts">
 import { ref } from 'vue'
@@ -20,18 +20,31 @@ async function handleSubmit() {
 
   try {
     // The API authenticates by username (POST /api/v1/auth/login expects
-    // {username, password} — see internal/auth/handler.go). The server sets
-    // the __Host-session cookie on success; we do not read the token from the
-    // body (REQ-FEAUTH-171). auth.login() calls restoreSession() which
-    // populates the store from GET /api/v1/auth/session via the cookie.
-    await post<void>('/api/v1/auth/login', {
+    // {username, password}). The server sets the __Host-session cookie on
+    // success; we do not read the token from the body (REQ-FEAUTH-171).
+    // When 2FA is enabled, the response is 202 with a pending_token.
+    const response = await post<{
+      two_factor_required?: boolean
+      pending_token?: string
+      expires_at?: string
+    }>('/api/v1/auth/login', {
       username: username.value,
       password: password.value
     })
 
+    // Handle 2FA flow: 202 response with pending token
+    if (response.two_factor_required && response.pending_token && response.expires_at) {
+      auth.setPendingTwoFactor(response.pending_token, response.expires_at)
+      router.push('/login/verify')
+      return
+    }
+
+    // Normal flow: 200 with session cookie set
     await auth.login()
 
-    if (auth.isAdmin) {
+    if (auth.mustChangePassword) {
+      router.push('/change-password')
+    } else if (auth.isAdmin) {
       router.push('/admin/users')
     } else {
       router.push('/courses')

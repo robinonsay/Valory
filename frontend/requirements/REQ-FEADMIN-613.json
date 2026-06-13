@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-613",
+  "title": "Temporary Password Not Displayed When Email Is Configured",
+  "description": "The frontend module shall not display the temporary password when email is configured and the welcome email was sent.",
+  "rationale": "When email delivery succeeds the password has been transmitted through the secure, single-use channel; displaying it in the UI a second time creates an additional exposure vector in browser history, screen captures, and shoulder-surfing.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-010", "REQ-FEADMIN-611"]
+}

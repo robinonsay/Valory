@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-002",
+  "title": "Profile Summary Stored as Natural-Language Text",
+  "description": "The profile module shall store the profile summary as unstructured natural-language prose.",
+  "rationale": "Course-generation agents consume the profile as part of a system prompt; natural-language text is directly usable by the model without a translation layer, unlike a structured key-value representation.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

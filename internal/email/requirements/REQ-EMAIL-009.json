@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-009",
+  "title": "Test-Send Rate Limit",
+  "description": "The email module shall reject test-send requests exceeding five per admin per sixty-second window.",
+  "rationale": "Without a rate limit, a misconfigured test-send loop could generate substantial outbound SMTP traffic or exhaust provider sending quotas.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-062"]
+}

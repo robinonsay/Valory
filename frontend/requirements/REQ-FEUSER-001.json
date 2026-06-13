@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEUSER-001",
+  "title": "Forced Change-Password Screen After Login When Flagged",
+  "description": "The frontend module shall display a change-password screen immediately after login when the must_change_password flag is true.",
+  "rationale": "The forced change-password screen must be the first thing the user sees after authenticating with a temporary credential; delaying it would allow the user to navigate away without completing the mandatory step.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-064", "REQ-AUTH-013"]
+}

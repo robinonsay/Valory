@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-004",
+  "title": "Admin Config Precedence Over Environment Variables",
+  "description": "The email module shall use the admin-configured SMTP value over the corresponding environment variable when both are present.",
+  "rationale": "Admin-supplied configuration must take effect without a container restart; environment variables are the fallback for operators who have not yet configured values via the UI.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-061"]
+}

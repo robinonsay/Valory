@@ -325,6 +325,10 @@ func envVarName(name string) string {
 		return "ANTHROPIC_API_KEY"
 	case "brave_api_key":
 		return "BRAVE_API_KEY"
+	case "smtp_password":
+		// REQ-EMAIL-005: SMTP_PASSWORD env var is the fallback when no managed
+		// secret row exists and VALORY_SECRET_KEY is absent or invalid.
+		return "SMTP_PASSWORD"
 	default:
 		// Unreachable for names that passed the knownSecrets gate.
 		return ""

@@ -23,8 +23,8 @@ import (
 // Feedback is stored and the runner polls asynchronously to decide whether
 // to trigger regeneration based on keywords (REQ-CONTENT-004).
 type ContentHandler struct {
-	repo       *ContentRepository
-	courseSvc  *course.CourseService
+	repo      *ContentRepository
+	courseSvc *course.CourseService
 }
 
 // @{"req": ["REQ-CONTENT-001", "REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-004"]}
@@ -205,7 +205,21 @@ func (h *ContentHandler) submitFeedback(w http.ResponseWriter, r *http.Request) 
 // exportSection converts a section's AsciiDoc content to HTML or PDF using
 // asciidoctor/asciidoctor-pdf subprocesses and streams the result to the client.
 //
-// @{"req": ["REQ-CONTENT-002", "REQ-CONTENT-003"]}
+// Before invoking asciidoctor the raw content is run through
+// normalizeDollarMathAdoc (REQ-CONTENT-010) to convert any legacy $…$ / $$…$$
+// dollar-delimited math to AsciiDoc STEM notation, and injectStemHeader
+// prepends `:stem: latexmath` so Asciidoctor wraps STEM content in \(…\)/\[…\]
+// delimiters that KaTeX can typeset.
+//
+// For HTML export, injectKatexAssets (REQ-CONTENT-011) embeds the KaTeX CSS,
+// fonts (woff2/woff/ttf base64-inlined), and auto-render JS so the exported
+// file opens without any external network access.
+//
+// For PDF export, asciidoctor-pdf is invoked with -r asciidoctor-mathematical
+// and -a mathematical-format=svg so STEM blocks are typeset as SVG vector
+// glyphs (REQ-CONTENT-012).
+//
+// @{"req": ["REQ-CONTENT-002", "REQ-CONTENT-003", "REQ-CONTENT-010", "REQ-CONTENT-011", "REQ-CONTENT-012"]}
 func (h *ContentHandler) exportSection(w http.ResponseWriter, r *http.Request) {
 	courseID, ok := parseCourseID(r)
 	if !ok {
@@ -242,6 +256,11 @@ func (h *ContentHandler) exportSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Apply render-time normalization: convert legacy dollar-delimited math to
+	// AsciiDoc STEM notation (REQ-CONTENT-010) and ensure the stem header is
+	// present so Asciidoctor emits \(…\)/\[…\] delimiters for KaTeX.
+	normalized := injectStemHeader(normalizeDollarMathAdoc(row.ContentAdoc))
+
 	tmpFile, err := os.CreateTemp("", "valory-export-*.adoc")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
@@ -249,7 +268,7 @@ func (h *ContentHandler) exportSection(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.Remove(tmpFile.Name())
 
-	if _, err := tmpFile.WriteString(row.ContentAdoc); err != nil {
+	if _, err := tmpFile.WriteString(normalized); err != nil {
 		tmpFile.Close()
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
@@ -261,11 +280,28 @@ func (h *ContentHandler) exportSection(w http.ResponseWriter, r *http.Request) {
 	var filename string
 
 	if format == "html" {
-		cmd = exec.CommandContext(r.Context(), "asciidoctor", "-o", "-", tmpFile.Name())
+		// Pass -a stem=latexmath explicitly so that Asciidoctor wraps STEM
+		// content in \(…\)/\[…\] delimiters regardless of whether the document
+		// header injection took effect (belt-and-suspenders).
+		cmd = exec.CommandContext(r.Context(), "asciidoctor",
+			"-a", "stem=latexmath",
+			"-o", "-",
+			tmpFile.Name())
 		contentType = "text/html; charset=utf-8"
 		filename = fmt.Sprintf("section-%d.html", sectionIndex)
 	} else {
-		cmd = exec.CommandContext(r.Context(), "asciidoctor-pdf", "-o", "-", tmpFile.Name())
+		// -r asciidoctor-mathematical loads the gem that converts STEM blocks
+		// to typeset SVG images embedded in the PDF (REQ-CONTENT-012).
+		// -a mathematical-format=svg produces vector glyphs that scale cleanly
+		// at all print sizes (vs. raster PNG).
+		// -a stem=latexmath ensures Asciidoctor wraps STEM content in \[…\]/\(…\)
+		// that asciidoctor-mathematical then picks up.
+		cmd = exec.CommandContext(r.Context(), "asciidoctor-pdf",
+			"-r", "asciidoctor-mathematical",
+			"-a", "stem=latexmath",
+			"-a", "mathematical-format=svg",
+			"-o", "-",
+			tmpFile.Name())
 		contentType = "application/pdf"
 		filename = fmt.Sprintf("section-%d.pdf", sectionIndex)
 	}
@@ -284,6 +320,18 @@ func (h *ContentHandler) exportSection(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, "EXPORT_FAILED", "export conversion failed")
 		return
+	}
+
+	// For HTML export: embed KaTeX assets inline so the file is fully
+	// self-contained and renders math without any external network access
+	// (REQ-CONTENT-011).
+	if format == "html" {
+		output, err = injectKatexAssets(output)
+		if err != nil {
+			log.Printf("KaTeX asset injection failed: %v", err)
+			writeError(w, http.StatusInternalServerError, "EXPORT_FAILED", "export conversion failed")
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", contentType)

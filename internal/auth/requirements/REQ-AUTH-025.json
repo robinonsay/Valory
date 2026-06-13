@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-025",
+  "title": "Wrong-Code Lockout Automated Test",
+  "description": "The auth module shall pass an automated test verifying that five consecutive wrong OTPs invalidate the pending-2FA state.",
+  "rationale": "The attempt cap is the primary online brute-force defense; an automated test driving the cap to exhaustion is required to ensure the lockout behavior cannot regress silently.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-017"]
+}

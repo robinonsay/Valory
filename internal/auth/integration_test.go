@@ -198,7 +198,7 @@ func TestInteg_SessionRoleCheckConstraint_RejectsInvalidRole(t *testing.T) {
 
 	// CreateSession with an invalid role must surface a check-violation error
 	// from the database (role CHECK on the sessions table), not silently succeed.
-	_, createErr := repo.CreateSession(ctx, userID, "integ_bad_role_token", "moderator", time.Now().Add(time.Hour))
+	_, createErr := repo.CreateSession(ctx, userID, "integ_bad_role_token", "moderator", time.Now().Add(time.Hour), false)
 	if createErr == nil {
 		t.Fatal("expected CHECK constraint violation for invalid session role, got nil error")
 	}
@@ -233,12 +233,12 @@ func TestInteg_SessionTokenHashUnique_ConstraintViolation(t *testing.T) {
 	dupTokenHash := "integ_dup_token_hash_abc123"
 
 	// First CreateSession must succeed.
-	if _, err := repo.CreateSession(ctx, userID, dupTokenHash, "student", expiresAt); err != nil {
+	if _, err := repo.CreateSession(ctx, userID, dupTokenHash, "student", expiresAt, false); err != nil {
 		t.Fatalf("first CreateSession: %v", err)
 	}
 
 	// Second CreateSession with the same token_hash must fail.
-	_, dupErr := repo.CreateSession(ctx, userID, dupTokenHash, "student", expiresAt)
+	_, dupErr := repo.CreateSession(ctx, userID, dupTokenHash, "student", expiresAt, false)
 	if dupErr == nil {
 		t.Fatal("expected unique-constraint violation on token_hash, got nil error")
 	}
@@ -270,7 +270,7 @@ func TestInteg_DeleteUser_CascadesToSessionsAndLoginAttempts(t *testing.T) {
 	}
 
 	// Create a session and a login_attempt row for this user.
-	if _, err := repo.CreateSession(ctx, userID, "integ_cascade_token", "student", time.Now().Add(time.Hour)); err != nil {
+	if _, err := repo.CreateSession(ctx, userID, "integ_cascade_token", "student", time.Now().Add(time.Hour), false); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	if err := repo.RecordLoginAttempt(ctx, userID, true); err != nil {

@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-017",
+  "title": "Student Cannot Write Another Student's Profile",
+  "description": "The profile module shall reject a student's attempt to create or modify another student's learning profile.",
+  "rationale": "Allowing cross-student writes would let a malicious student overwrite a peer's personalization context, corrupting course generation for the victim; explicit write isolation is required for data integrity.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

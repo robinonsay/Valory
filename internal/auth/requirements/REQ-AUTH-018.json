@@ -1,0 +1,9 @@
+{
+  "id": "REQ-AUTH-018",
+  "title": "Global 2FA Toggle Gated by Email Config and Test-Send",
+  "description": "The auth module shall reject enabling the global 2FA flag unless email is configured and a test-send has previously succeeded.",
+  "rationale": "Enabling 2FA before email delivery is verified operational would lock all users out with no path to receive an OTP; the prerequisites guarantee the delivery mechanism works before the second factor becomes mandatory.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015"],
+  "implements": ["REQ-AUTH-021", "REQ-FEADMIN-700", "REQ-FEADMIN-701"]
+}

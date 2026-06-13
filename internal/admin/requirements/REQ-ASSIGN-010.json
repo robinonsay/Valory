@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-010",
+  "title": "Admin Policy Covers All Assigned Course Rows",
+  "description": "The assignment module shall allow an admin session to read all course rows regardless of assignment_id.",
+  "rationale": "Admins must be able to query generation status across all students for an assignment; the existing admin RLS policy already covers all courses rows and must verifiably extend to assigned rows.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

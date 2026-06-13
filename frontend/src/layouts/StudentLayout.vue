@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-118", "REQ-FEONBOARD-002"]}
+// @{"req": ["REQ-FEAUTH-019", "REQ-FEAUTH-118", "REQ-FEONBOARD-002", "REQ-FEPROFILE-002"]}
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
@@ -37,6 +37,14 @@ const handleLogout = async (): Promise<void> => {
             class="nav-link"
           >
             Getting Started
+          </RouterLink>
+          <!-- @{"req": ["REQ-FEPROFILE-002"]} -->
+          <RouterLink
+            to="/profile"
+            active-class="active"
+            class="nav-link"
+          >
+            Profile
           </RouterLink>
         </nav>
         <button class="logout-button" @click="handleLogout">

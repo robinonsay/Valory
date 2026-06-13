@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-704",
+  "title": "Assignment Detail View with Per-Student Status Table",
+  "description": "The frontend module shall render an assignment detail view showing per-student username, course status, and assigned date.",
+  "rationale": "Admins must monitor each student's generation progress for an assignment; a per-student status table surfaces failures and completion without requiring the admin to inspect individual student accounts.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-067", "REQ-ASSIGN-006"]
+}

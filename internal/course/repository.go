@@ -28,8 +28,11 @@ type CourseRow struct {
 	Topic               string
 	Status              string
 	PreWithdrawalStatus *string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// AssignmentID is non-nil when the course was created via the admin
+	// assignment flow (REQ-ASSIGN-003).  Nil means student-initiated.
+	AssignmentID *uuid.UUID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type SyllabusRow struct {
@@ -114,7 +117,7 @@ func (r *CourseRepository) CreateCourse(ctx context.Context, studentID uuid.UUID
 	err := r.conn(ctx).QueryRow(ctx,
 		`INSERT INTO courses (student_id, topic, status)
 		 VALUES ($1, $2, 'intake')
-		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
+		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at`,
 		studentID, topic).
 		Scan(
 			&course.ID,
@@ -123,6 +126,7 @@ func (r *CourseRepository) CreateCourse(ctx context.Context, studentID uuid.UUID
 			&course.Topic,
 			&course.Status,
 			&course.PreWithdrawalStatus,
+			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
 		)
@@ -136,7 +140,7 @@ func (r *CourseRepository) CreateCourse(ctx context.Context, studentID uuid.UUID
 func (r *CourseRepository) GetCourseByID(ctx context.Context, id uuid.UUID) (CourseRow, error) {
 	var course CourseRow
 	err := r.conn(ctx).QueryRow(ctx,
-		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at
+		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at
 		 FROM courses WHERE id = $1`,
 		id).
 		Scan(
@@ -146,6 +150,7 @@ func (r *CourseRepository) GetCourseByID(ctx context.Context, id uuid.UUID) (Cou
 			&course.Topic,
 			&course.Status,
 			&course.PreWithdrawalStatus,
+			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
 		)
@@ -163,7 +168,7 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 	var query string
 	var args []interface{}
 
-	baseQuery := `SELECT id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at
+	baseQuery := `SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at
 	             FROM courses
 	             WHERE ($1::uuid IS NULL OR student_id = $1)
 	               AND ($2 = '' OR status::text = $2)`
@@ -215,6 +220,7 @@ func (r *CourseRepository) ListCourses(ctx context.Context, studentID *uuid.UUID
 			&course.Topic,
 			&course.Status,
 			&course.PreWithdrawalStatus,
+			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
 		); err != nil {
@@ -255,7 +261,7 @@ func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowed
 		     updated_at = now()
 		 WHERE id = $1
 		   AND status::text = ANY($3::text[])
-		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
+		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at`,
 		id, newStatus, allowedFrom, preWithdrawalStatus).
 		Scan(
 			&course.ID,
@@ -264,6 +270,7 @@ func (r *CourseRepository) Transition(ctx context.Context, id uuid.UUID, allowed
 			&course.Topic,
 			&course.Status,
 			&course.PreWithdrawalStatus,
+			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
 		)
@@ -398,7 +405,7 @@ func (r *CourseRepository) InsertSyllabusTx(ctx context.Context, tx pgx.Tx, cour
 func (r *CourseRepository) getCourseByIDTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (CourseRow, error) {
 	var course CourseRow
 	err := tx.QueryRow(ctx,
-		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at
+		`SELECT id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at
 		 FROM courses WHERE id = $1`,
 		id).
 		Scan(
@@ -408,6 +415,7 @@ func (r *CourseRepository) getCourseByIDTx(ctx context.Context, tx pgx.Tx, id uu
 			&course.Topic,
 			&course.Status,
 			&course.PreWithdrawalStatus,
+			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
 		)
@@ -430,7 +438,7 @@ func (r *CourseRepository) TransitionTx(ctx context.Context, tx pgx.Tx, id uuid.
 		     updated_at = now()
 		 WHERE id = $1
 		   AND status::text = ANY($3::text[])
-		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, created_at, updated_at`,
+		 RETURNING id, student_id, title, topic, status, pre_withdrawal_status, assignment_id, created_at, updated_at`,
 		id, newStatus, allowedFrom, preWithdrawalStatus).
 		Scan(
 			&course.ID,
@@ -439,6 +447,7 @@ func (r *CourseRepository) TransitionTx(ctx context.Context, tx pgx.Tx, id uuid.
 			&course.Topic,
 			&course.Status,
 			&course.PreWithdrawalStatus,
+			&course.AssignmentID,
 			&course.CreatedAt,
 			&course.UpdatedAt,
 		)

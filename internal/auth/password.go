@@ -11,13 +11,13 @@ import (
 )
 
 const (
-	argonTime      = 1
-	argonMemory    = 65536
-	argonThreads   = 4
-	argonKeyLen    = 32
-	argonSaltLen   = 16
-	maxArgonMemory = 1 << 20 // 1 GiB in KiB
-	maxArgonTime   = 10
+	argonTime       = 1
+	argonMemory     = 65536
+	argonThreads    = 4
+	argonKeyLen     = 32
+	argonSaltLen    = 16
+	maxArgonMemory  = 1 << 20 // 1 GiB in KiB
+	maxArgonTime    = 10
 	maxArgonThreads = 16
 )
 

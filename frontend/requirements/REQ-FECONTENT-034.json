@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-034",
+  "title": "Sanitizer Is Final Stage After Math Typesetting",
+  "description": "The frontend module shall apply the HTML sanitizer as the last step after math typesetting in the section-render pipeline.",
+  "rationale": "KaTeX and Asciidoctor can introduce attribute injections or malformed markup when processing adversarial or malformed input. Sanitizing before typesetting would leave any XSS payload introduced by the math renderer unstripped; the sanitizer must be the final gate to close that window.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-060", "REQ-FECONTENT-030", "REQ-FECONTENT-031"]
+}

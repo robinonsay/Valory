@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-020",
+  "title": "Break-Glass 2FA Bypass for Admins via Environment Variable",
+  "description": "The auth module shall skip the OTP challenge for admins and issue a full session when break-glass is set.",
+  "rationale": "A sole admin locked out by 2FA has no in-product recovery path; an environment variable accessible only to the operator provides recovery without bypassing the password check, and the mandatory audit event provides accountability.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-066", "REQ-AUTH-015"]
+}

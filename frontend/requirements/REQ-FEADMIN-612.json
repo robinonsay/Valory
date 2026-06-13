@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-612",
+  "title": "Temporary Password Shown Once to Admin When Email Is Unconfigured",
+  "description": "The frontend module shall display the temporary password once to the admin when email is not configured.",
+  "rationale": "When no mailer is available the admin is the only available delivery channel; displaying the password once in the UI enables the admin to pass it to the user securely while the one-time display policy limits the exposure window.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-011", "REQ-FEADMIN-611"]
+}

@@ -346,3 +346,77 @@ func TestIntakeSystemPrompt_PreservesSentinelRules(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// assignmentSyllabusPrompt (REQ-ASSIGN-003, REQ-ASSIGN-004)
+// ---------------------------------------------------------------------------
+
+// TestAssignmentSyllabusPrompt_ContainsTopic verifies the topic and level
+// appear in the generated prompt.
+//
+// @{"verifies": ["REQ-ASSIGN-003", "REQ-ASSIGN-004"]}
+func TestAssignmentSyllabusPrompt_ContainsTopic(t *testing.T) {
+	prompt := assignmentSyllabusPrompt("Linear Algebra", "intermediate", nil)
+	if !strings.Contains(prompt, "Linear Algebra") {
+		t.Errorf("prompt must contain the topic, got: %q", prompt)
+	}
+	if !strings.Contains(prompt, "intermediate") {
+		t.Errorf("prompt must contain the level, got: %q", prompt)
+	}
+}
+
+// TestAssignmentSyllabusPrompt_AsciiDocFormat verifies the format instruction
+// is present.
+//
+// @{"verifies": ["REQ-ASSIGN-003"]}
+func TestAssignmentSyllabusPrompt_AsciiDocFormat(t *testing.T) {
+	prompt := assignmentSyllabusPrompt("Rust", "beginner", nil)
+	if !strings.Contains(prompt, "AsciiDoc") {
+		t.Errorf("prompt must request AsciiDoc format, got: %q", prompt)
+	}
+	if !strings.Contains(prompt, "5") {
+		t.Errorf("prompt must request at least 5 sections, got: %q", prompt)
+	}
+}
+
+// TestAssignmentSyllabusPrompt_EmptyParameters_NoParameterBlock verifies that
+// an empty parameters object does not inject a parameter block.
+//
+// @{"verifies": ["REQ-ASSIGN-003"]}
+func TestAssignmentSyllabusPrompt_EmptyParameters_NoParameterBlock(t *testing.T) {
+	prompt := assignmentSyllabusPrompt("Python", "beginner", []byte("{}"))
+	if strings.Contains(prompt, "Additional parameters") {
+		t.Errorf("empty parameters should not inject parameter block, got: %q", prompt)
+	}
+}
+
+// TestAssignmentSyllabusPrompt_NonEmptyParameters_InjectsBlock verifies that
+// non-empty parameters appear in the prompt.
+//
+// @{"verifies": ["REQ-ASSIGN-003"]}
+func TestAssignmentSyllabusPrompt_NonEmptyParameters_InjectsBlock(t *testing.T) {
+	params := []byte(`{"required_topics": ["closures", "goroutines"]}`)
+	prompt := assignmentSyllabusPrompt("Go", "intermediate", params)
+	if !strings.Contains(prompt, "Additional parameters") {
+		t.Errorf("non-empty parameters must inject parameter block, got: %q", prompt)
+	}
+	if !strings.Contains(prompt, "closures") {
+		t.Errorf("parameter values must appear in prompt, got: %q", prompt)
+	}
+}
+
+// TestAssignmentSyllabusPrompt_StripCodeFence_AsciiDoc verifies that
+// stripCodeFence removes AsciiDoc fences from generated content — this is the
+// cleanup applied to the returned syllabus before storage.
+//
+// @{"verifies": ["REQ-ASSIGN-003"]}
+func TestAssignmentSyllabusPrompt_StripCodeFence_AsciiDoc(t *testing.T) {
+	fenced := "```asciidoc\n= Course Title\n\n== Section 1\n```"
+	got := stripCodeFence(fenced)
+	if strings.HasPrefix(got, "```") || strings.HasSuffix(got, "```") {
+		t.Errorf("AsciiDoc fences not stripped: %q", got)
+	}
+	if !strings.Contains(got, "= Course Title") {
+		t.Errorf("content must survive fence stripping: %q", got)
+	}
+}

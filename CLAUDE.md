@@ -49,6 +49,13 @@ Requirements live as JSON files alongside the code they govern:
 <module-directory>/requirements/REQ-<MODULE>-<NNN>.json
 ```
 
+Legacy exception (Sprint ≤17): requirements authored before Sprint 24 live in
+the central `requirements/l1-requirements.json` and
+`requirements/l2-requirements.json` files. All NEW L2 requirements go in
+module directories per the rule above; L1 (system-level) requirements stay in
+`requirements/l1-requirements.json`. Do not migrate the legacy entries
+piecemeal — that reconciliation is a dedicated future refactor.
+
 All requirement files must validate against `schemas/requirements.schema.json`. The `requirements-author` agent owns this schema and all requirement files.
 
 ## Tech stack

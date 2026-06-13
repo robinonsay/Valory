@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-037",
+  "title": "Test Covers KaTeX Operator-Symbol Style Pass-Probe",
+  "description": "The frontend module shall have a test asserting that a katex-classed span with position:relative style is preserved.",
+  "rationale": "KaTeX emits position:relative inline on single-symbol operator spans such as those produced by \\int, \\sum, and \\prod. Without a test confirming this declaration passes the allowlist, a future allowlist change could strip it silently, breaking operator spacing and baseline alignment for integral and summation expressions.",
+  "verification_method": "Test",
+  "uses": ["REQ-FECONTENT-031", "REQ-FECONTENT-034"]
+}

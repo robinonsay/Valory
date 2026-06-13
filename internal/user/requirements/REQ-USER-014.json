@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-014",
+  "title": "Authenticated Change-Password Requires Current Password",
+  "description": "The user module shall reject a change-password request that does not supply the correct current password.",
+  "rationale": "Requiring the current password proves the caller controls the account at the time of the change, preventing session-hijacking attacks from silently rotating a victim's credentials.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063"]
+}

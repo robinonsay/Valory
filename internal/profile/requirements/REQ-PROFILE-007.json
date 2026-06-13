@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-007",
+  "title": "Profile Injected into Section-Regeneration Prompt",
+  "description": "The profile module shall inject the student's learning profile into the section-regeneration system prompt.",
+  "rationale": "Regeneration rewrites a section based on student feedback; omitting the profile during regeneration would produce content that ignores the student's learning style preferences on the revised pass.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

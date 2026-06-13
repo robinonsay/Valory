@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-008",
+  "title": "Profile Injected into Intake System Prompt",
+  "description": "The profile module shall inject the student's learning profile into the intake system prompt.",
+  "rationale": "The intake conversation shapes the course syllabus; injecting the profile at this stage allows the chair agent to tailor its questions and recommendations to the student's already-stated preferences, avoiding redundant re-questioning.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

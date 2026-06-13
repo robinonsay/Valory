@@ -1,7 +1,7 @@
 // @{"verifies": ["REQ-FEADMIN-040", "REQ-FEADMIN-041", "REQ-FEADMIN-042", "REQ-FEADMIN-043", "REQ-FEADMIN-044", "REQ-FEADMIN-045", "REQ-FEADMIN-210", "REQ-FEADMIN-215", "REQ-FEADMIN-240", "REQ-FEADMIN-250", "REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312", "REQ-FEADMIN-320", "REQ-FEADMIN-321", "REQ-FEADMIN-322", "REQ-FEADMIN-323", "REQ-FEADMIN-324", "REQ-FEADMIN-325", "REQ-FEADMIN-330"]}
 //
 // admin-config.spec.ts — System configuration page:
-//   • All 13 labeled config fields render with non-empty values.
+//   • All 14 labeled config fields render with non-empty values.
 //   • Changing agent_retry_limit 3→4, saving, reloading confirms persistence.
 //   • Restoring original value and saving leaves the system in its original state.
 //   • Setting homework_weight=0.9 (project_weight unchanged at 0.3) triggers the
@@ -10,8 +10,9 @@
 import { test, expect } from '@playwright/test'
 import { login, ADMIN_USER, ADMIN_PASS } from './helpers'
 
-// All 13 config keys and their labels as defined in systemConfig.ts.
+// All 14 config keys and their labels as defined in systemConfig.ts.
 // The test iterates over these to assert every field renders non-empty.
+// anthropic_base_url is deliberately excluded: empty is its valid default.
 const CONFIG_LABELS: Record<string, string> = {
   agent_retry_limit: 'Agent Retry Limit',
   correction_loop_max_iterations: 'Correction Loop Max Iterations',
@@ -23,13 +24,14 @@ const CONFIG_LABELS: Record<string, string> = {
   account_lockout_seconds: 'Account Lockout (seconds)',
   max_upload_bytes: 'Max Upload Size (bytes)',
   content_generation_timeout_seconds: 'Content Generation Timeout (seconds)',
+  professor_max_tokens: 'Section Generation Max Output Tokens',
   audit_retention_days: 'Audit Retention (days)',
   notification_retention_days: 'Notification Retention (days)',
   consent_version: 'Consent Version'
 }
 
 // @{"verifies": ["REQ-FEADMIN-300", "REQ-FEADMIN-301", "REQ-FEADMIN-302", "REQ-FEADMIN-303", "REQ-FEADMIN-304", "REQ-FEADMIN-305", "REQ-FEADMIN-306", "REQ-FEADMIN-307", "REQ-FEADMIN-308", "REQ-FEADMIN-309", "REQ-FEADMIN-310", "REQ-FEADMIN-311", "REQ-FEADMIN-312"]}
-test('AdminConfig_AllThirteenFieldsRenderWithNonEmptyValues', async ({ page }) => {
+test('AdminConfig_AllFourteenFieldsRenderWithNonEmptyValues', async ({ page }) => {
   await login(page, ADMIN_USER, ADMIN_PASS)
   // In-SPA navigation: the token lives only in memory, so a goto() hard
   // reload would wipe the session and bounce to /login.

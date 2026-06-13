@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-021",
+  "title": "2FA Toggle Blocked When Any Active Admin Lacks Email",
+  "description": "The auth module shall reject enabling 2FA when any active admin account has no email address.",
+  "rationale": "An admin without an email address cannot receive an OTP when 2FA is on, which would permanently lock that admin out of the system with no in-product recovery path.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-018"]
+}

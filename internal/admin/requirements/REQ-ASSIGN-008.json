@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-008",
+  "title": "Assigned Course Appears in Student CourseHub",
+  "description": "The assignment module shall make each assigned course instance visible in the student's course list.",
+  "rationale": "Students must discover and access assigned courses through the same interface as self-initiated courses so the experience is consistent and no separate onboarding flow is required.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-068"]
+}

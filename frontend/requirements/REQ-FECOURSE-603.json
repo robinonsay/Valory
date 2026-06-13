@@ -1,0 +1,11 @@
+{
+  "id": "REQ-FECOURSE-603",
+  "title": "Student A Cannot Read Student B's Assigned Course",
+  "description": "The frontend module shall verify that a student cannot retrieve another student's assigned course instance.",
+  "rationale": "RLS isolation must be verified with a probe test that actively attempts a cross-student read; without this test the isolation guarantee exists only in theory and a regression could go undetected.",
+  "verification_method": "Test",
+  "uses": [
+    "REQ-SYS-068",
+    "REQ-ASSIGN-009"
+  ]
+}

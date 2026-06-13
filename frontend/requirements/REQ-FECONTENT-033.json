@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-033",
+  "title": "Invalid LaTeX Degrades Gracefully",
+  "description": "The frontend module shall render an error span for invalid LaTeX without throwing an exception or blanking the section.",
+  "rationale": "Agent-generated STEM content may occasionally contain malformed LaTeX. A thrown exception or blank section would hide all surrounding content from the student. Graceful degradation keeps the rest of the section readable and makes the error visible without disrupting the learning session.",
+  "verification_method": "Test",
+  "uses": ["REQ-FECONTENT-030"]
+}

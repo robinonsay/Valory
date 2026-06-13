@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-009",
+  "title": "Must-Change-Password Flag on Temp-Password Accounts",
+  "description": "The user module shall set the must-change-password flag on every account created with a generated temporary password.",
+  "rationale": "A temporary password is not a durable credential; flagging the account ensures the system can enforce a password change at first login before the account is used for any other purpose.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-008"]
+}

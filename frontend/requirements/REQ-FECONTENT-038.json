@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-038",
+  "title": "Test Covers Dollar Sign in Code Block Not Typeset",
+  "description": "The frontend module shall have a test asserting that a dollar sign inside a fenced code block is not typeset.",
+  "rationale": "The code-region exclusion regex has two fence variants: four-or-more hyphens and four-or-more dots. The dot-fence variant was broken in a prior draft due to a regex error. Without an explicit negative-case test for each fence variant, that class of regression goes undetected before reaching students whose course sections contain code examples with dollar-prefixed variables.",
+  "verification_method": "Test",
+  "uses": ["REQ-FECONTENT-032"]
+}

@@ -2,7 +2,11 @@ package user
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"fmt"
+	"log"
+	"math/big"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +15,7 @@ import (
 
 	"github.com/valory/valory/internal/audit"
 	"github.com/valory/valory/internal/auth"
+	"github.com/valory/valory/internal/email"
 	"github.com/valory/valory/internal/security"
 )
 
@@ -26,17 +31,18 @@ type AgentTerminator interface {
 	TerminateStudentOperations(ctx context.Context, studentID uuid.UUID) error
 }
 
-// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005"]}
+// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005", "REQ-USER-008", "REQ-USER-009", "REQ-USER-010", "REQ-USER-012", "REQ-USER-015", "REQ-USER-016"]}
 type Service struct {
 	repo            *Repository
 	auditRepo       *audit.Repository
 	emailTransport  EmailTransport
+	mailer          email.Mailer
 	tokenTTL        time.Duration
 	agentTerminator AgentTerminator
 	pool            *pgxpool.Pool
 }
 
-// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005"]}
+// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005", "REQ-USER-008", "REQ-USER-009", "REQ-USER-010", "REQ-USER-012", "REQ-USER-015", "REQ-USER-016"]}
 func NewService(
 	pool *pgxpool.Pool,
 	repo *Repository,
@@ -53,6 +59,15 @@ func NewService(
 		agentTerminator: agentTerminator,
 		pool:            pool,
 	}
+}
+
+// SetMailer injects the email.Mailer used for welcome emails. Called from
+// main.go after both the user service and the mailer are constructed, avoiding
+// a circular dependency at construction time.
+//
+// @{"req": ["REQ-USER-010", "REQ-USER-012"]}
+func (s *Service) SetMailer(m email.Mailer) {
+	s.mailer = m
 }
 
 // isDuplicate returns true when err is a PostgreSQL unique-violation (23505).
@@ -288,7 +303,15 @@ func (s *Service) RequestPasswordReset(ctx context.Context, username string) err
 	if user.Email == nil {
 		return nil
 	}
-	return s.emailTransport.SendPasswordReset(ctx, *user.Email, rawToken)
+	// Send errors are not returned to the caller. The token is already stored, so
+	// the reset can be retried. Surfacing transport failures would let callers
+	// distinguish "account exists with email" from "account exists without email"
+	// or other states, breaking anti-enumeration (SDD-019 §8.1).
+	if err := s.emailTransport.SendPasswordReset(ctx, *user.Email, rawToken); err != nil {
+		// Log without the recipient address to avoid leaking PII to the log sink.
+		log.Printf("user: password reset email send failed: %v", err)
+	}
+	return nil
 }
 
 // ConfirmPasswordReset validates the raw token, then atomically marks it used,
@@ -358,4 +381,279 @@ func (s *Service) GetUserByID(ctx context.Context, id uuid.UUID) (UserRow, error
 // @{"req": ["REQ-SECURITY-005"]}
 func (s *Service) RecordConsent(ctx context.Context, studentID uuid.UUID, version string) error {
 	return s.repo.UpsertConsent(ctx, studentID, version)
+}
+
+// tempPasswordAlphabet is the set of characters used when generating a
+// system-issued temporary password. Characters that look alike (0/O, 1/l/I)
+// are omitted to reduce transcription errors in case the admin reads the
+// password aloud or the user has to type it manually.
+const tempPasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+
+// tempPasswordLen is the length of every system-generated temporary password.
+const tempPasswordLen = 16
+
+// generateTempPassword returns a cryptographically random 16-character string
+// drawn from tempPasswordAlphabet. The result is suitable for use as a
+// one-time credential: it has ~93 bits of entropy (log2(56^16)).
+//
+// @{"req": ["REQ-USER-008", "REQ-SYS-063"]}
+func generateTempPassword() (string, error) {
+	alphabetLen := big.NewInt(int64(len(tempPasswordAlphabet)))
+	buf := make([]byte, tempPasswordLen)
+	for i := range buf {
+		n, err := rand.Int(rand.Reader, alphabetLen)
+		if err != nil {
+			return "", fmt.Errorf("user: generate temp password: %w", err)
+		}
+		buf[i] = tempPasswordAlphabet[n.Int64()]
+	}
+	return string(buf), nil
+}
+
+// WelcomeEmailResult carries the outcome of a welcome email attempt.
+//
+// @{"req": ["REQ-USER-010", "REQ-USER-011"]}
+type WelcomeEmailResult struct {
+	// EmailSent is true when the mailer accepted the message.
+	EmailSent bool
+	// TempPassword is the cleartext temporary password. It is non-empty only
+	// when EmailSent is false, so the admin can display it once in the UI
+	// (REQ-FEADMIN-612/613). When EmailSent is true the plaintext credential
+	// must never leave the server.
+	TempPassword string
+}
+
+// sendWelcomeEmail attempts to deliver the welcome email. It is fail-soft:
+// errors from the mailer are logged but never returned to the caller; the
+// WelcomeEmailResult indicates whether the send succeeded.
+//
+// The email body contains the username, the cleartext temporary password, and
+// a relative instruction to navigate to the login URL. The application does not
+// know its own public URL (no base-URL config exists), so a relative instruction
+// avoids inventing configuration. Operators can set the URL in their welcome
+// email body by customising this string in a future admin template feature.
+//
+// @{"req": ["REQ-USER-010", "REQ-USER-011"]}
+func (s *Service) sendWelcomeEmail(ctx context.Context, toAddress, username, tempPassword string) WelcomeEmailResult {
+	if s.mailer == nil || !s.mailer.IsConfigured() {
+		return WelcomeEmailResult{EmailSent: false, TempPassword: tempPassword}
+	}
+
+	subject := "Your Valory account credentials"
+	body := fmt.Sprintf(
+		"Welcome to Valory!\r\n\r\n"+
+			"Username: %s\r\n"+
+			"Temporary password: %s\r\n\r\n"+
+			"Please log in and change your password immediately. "+
+			"You will be prompted to set a new password on your first login.\r\n",
+		username, tempPassword,
+	)
+
+	if err := s.mailer.Send(ctx, toAddress, subject, body); err != nil {
+		log.Printf("user: welcome email send failed: %v", err)
+		return WelcomeEmailResult{EmailSent: false, TempPassword: tempPassword}
+	}
+	return WelcomeEmailResult{EmailSent: true}
+}
+
+// CreateUserWithTempPassword generates a temporary password, inserts the user
+// with must_change_password=true, and attempts to send a welcome email.
+// Account creation succeeds regardless of email delivery (REQ-EMAIL-007 fail-soft
+// posture). The WelcomeEmailResult in the return value tells the caller whether
+// the email was sent and, when it was not, provides the cleartext temp password
+// for one-time admin display.
+//
+// @{"req": ["REQ-USER-008", "REQ-USER-009", "REQ-USER-010", "REQ-USER-011", "REQ-USER-017"]}
+func (s *Service) CreateUserWithTempPassword(ctx context.Context, adminID uuid.UUID, username string, emailAddr *string, role string) (UserRow, WelcomeEmailResult, error) {
+	tempPwd, err := generateTempPassword()
+	if err != nil {
+		return UserRow{}, WelcomeEmailResult{}, err
+	}
+
+	passwordHash, err := auth.HashPassword(tempPwd)
+	if err != nil {
+		return UserRow{}, WelcomeEmailResult{}, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return UserRow{}, WelcomeEmailResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var user UserRow
+	err = tx.QueryRow(ctx,
+		`INSERT INTO users (username, email, password_hash, role, must_change_password)
+		 VALUES ($1, $2, $3, $4, true)
+		 RETURNING id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at`,
+		username, emailAddr, passwordHash, role).
+		Scan(
+			&user.ID,
+			&user.Username,
+			&user.Email,
+			&user.PasswordHash,
+			&user.Role,
+			&user.IsActive,
+			&user.MustChangePassword,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+	if err != nil {
+		if isDuplicate(err) {
+			return UserRow{}, WelcomeEmailResult{}, ErrDuplicateUsername
+		}
+		return UserRow{}, WelcomeEmailResult{}, err
+	}
+
+	targetID := user.ID
+	if err := s.auditRepo.Append(ctx, tx, audit.Entry{
+		AdminID:    adminID,
+		Action:     "user.create_temp",
+		TargetType: "user",
+		TargetID:   &targetID,
+		// Payload contains name-only fields — the password is never included
+		// (REQ-USER-017: audit payload must be credential-free).
+		Payload: map[string]any{"username": username, "role": role},
+	}); err != nil {
+		return UserRow{}, WelcomeEmailResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return UserRow{}, WelcomeEmailResult{}, err
+	}
+
+	var result WelcomeEmailResult
+	if emailAddr != nil && *emailAddr != "" {
+		result = s.sendWelcomeEmail(ctx, *emailAddr, username, tempPwd)
+	} else {
+		// No email address — surface the temp password to the admin.
+		result = WelcomeEmailResult{EmailSent: false, TempPassword: tempPwd}
+	}
+
+	return user, result, nil
+}
+
+// ResendWelcome regenerates a temporary password for an existing account,
+// overwrites the old hash (invalidating the previous credential per REQ-USER-013),
+// sets must_change_password=true, and attempts to send a welcome email.
+// Fails with ErrUserNotFound when the target user does not exist.
+//
+// @{"req": ["REQ-USER-012", "REQ-USER-013", "REQ-USER-018"]}
+func (s *Service) ResendWelcome(ctx context.Context, adminID, targetID uuid.UUID) (WelcomeEmailResult, error) {
+	user, err := s.repo.GetUserByID(ctx, targetID)
+	if err != nil {
+		return WelcomeEmailResult{}, err
+	}
+
+	tempPwd, err := generateTempPassword()
+	if err != nil {
+		return WelcomeEmailResult{}, err
+	}
+
+	newHash, err := auth.HashPassword(tempPwd)
+	if err != nil {
+		return WelcomeEmailResult{}, err
+	}
+
+	// Overwrite the old hash and re-set the flag atomically; the old password
+	// is no longer valid the moment this UPDATE commits (REQ-USER-013).
+	if err := s.repo.SetTempPassword(ctx, targetID, newHash); err != nil {
+		return WelcomeEmailResult{}, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return WelcomeEmailResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	tid := targetID
+	if err := s.auditRepo.Append(ctx, tx, audit.Entry{
+		AdminID:    adminID,
+		Action:     "user.resend_welcome",
+		TargetType: "user",
+		TargetID:   &tid,
+		// Credential-free payload (REQ-USER-018).
+		Payload: map[string]any{"username": user.Username},
+	}); err != nil {
+		return WelcomeEmailResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return WelcomeEmailResult{}, err
+	}
+
+	var result WelcomeEmailResult
+	if user.Email != nil && *user.Email != "" {
+		result = s.sendWelcomeEmail(ctx, *user.Email, user.Username, tempPwd)
+	} else {
+		result = WelcomeEmailResult{EmailSent: false, TempPassword: tempPwd}
+	}
+
+	return result, nil
+}
+
+// ErrWrongPassword is returned by ChangePassword when current_password does not
+// match the stored hash.
+var ErrWrongPassword = errors.New("user: wrong current password")
+
+// ErrPasswordTooShort is returned when new_password is fewer than 8 characters.
+var ErrPasswordTooShort = errors.New("user: password must be at least 8 characters")
+
+// ChangePassword verifies the caller's current password, enforces the minimum
+// length policy on the new password, then atomically updates the hash, clears
+// must_change_password, and deletes all other sessions. The current session
+// (identified by currentTokenHash) is preserved so the caller stays logged in.
+//
+// @{"req": ["REQ-USER-014", "REQ-USER-015", "REQ-USER-016", "REQ-USER-019"]}
+func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword, currentTokenHash string) error {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	ok, err := auth.CheckPassword(currentPassword, user.PasswordHash)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrWrongPassword
+	}
+
+	// Mirror the frontend's minimum-length check (PasswordResetView enforces
+	// client-side validation but has no server-side policy; we enforce 8 chars
+	// here for consistency across all password-change paths).
+	if len(newPassword) < 8 {
+		return ErrPasswordTooShort
+	}
+
+	newHash, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	// ChangePassword atomically updates hash, clears flag, removes other sessions.
+	if err := s.repo.ChangePassword(ctx, userID, newHash, currentTokenHash); err != nil {
+		return err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	uid := userID
+	if err := s.auditRepo.Append(ctx, tx, audit.Entry{
+		AdminID:    userID, // actor is the user themselves
+		Action:     "user.password_change",
+		TargetType: "user",
+		TargetID:   &uid,
+		// Credential-free payload (REQ-USER-019).
+		Payload: map[string]any{"username": user.Username},
+	}); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

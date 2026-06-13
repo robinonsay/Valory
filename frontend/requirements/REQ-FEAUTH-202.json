@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEAUTH-202",
+  "title": "Router Guard Redirects Pending-2FA Users to OTP Verify Route",
+  "description": "The frontend module shall redirect navigation to protected routes to the OTP verify screen while pending-2FA state is active.",
+  "rationale": "Without a router guard, a user with a pending-2FA token who navigates directly to a protected URL receives a 401 error rather than a prompt to complete verification, degrading usability and obscuring the required action.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015", "REQ-FEAUTH-201"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-602",
+  "title": "SMTP Password Write-Only Masked Badge",
+  "description": "The frontend module shall render the smtp_password field using the write-only masked badge pattern, never displaying the stored value.",
+  "rationale": "The SMTP password is a credential; displaying it in the UI would expose it to shoulder-surfing and browser history, defeating the write-only encrypted storage provided by the managed-secrets subsystem.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-061", "REQ-FEADMIN-600"]
+}

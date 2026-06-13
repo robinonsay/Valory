@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FEAUTH-201",
+  "title": "Auth Store Pending-2FA State Is Not Authenticated",
+  "description": "The frontend module shall track pending-2FA state separately from authenticated state so that pending-2FA is not treated as authenticated.",
+  "rationale": "If the pending-2FA state were treated as authenticated, the router would grant access to protected routes before the second factor is verified, nullifying the 2FA security guarantee.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015"],
+  "implements": ["REQ-FEAUTH-202"]
+}

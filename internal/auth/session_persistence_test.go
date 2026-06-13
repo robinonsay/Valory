@@ -122,7 +122,7 @@ func TestAuthMiddleware_CookieFallback_PassesThrough(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "mw_cookie_fallback", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "mw_cookie_fallback", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "mw_cookie_fallback", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -165,11 +165,11 @@ func TestAuthMiddleware_BearerPreferredOverCookie(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "mw_bearer_pref_B", "pass", "admin")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	tokenA, _, err := svc.Login(ctx, "mw_bearer_pref_A", "pass")
+	tokenA, err := loginGetRawToken(t, svc, ctx, "mw_bearer_pref_A", "pass")
 	if err != nil {
 		t.Fatalf("Login A failed: %v", err)
 	}
-	tokenB, _, err := svc.Login(ctx, "mw_bearer_pref_B", "pass")
+	tokenB, err := loginGetRawToken(t, svc, ctx, "mw_bearer_pref_B", "pass")
 	if err != nil {
 		t.Fatalf("Login B failed: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestGetSession_ValidSession_Returns200WithShape(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "sess_valid_user", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "sess_valid_user", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "sess_valid_user", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -281,6 +281,62 @@ func TestGetSession_ValidSession_Returns200WithShape(t *testing.T) {
 	if resp.ExpiresAt == "" {
 		t.Error("expires_at must not be empty")
 	}
+	// A freshly created (non-temp) user is not flagged.
+	if resp.MustChangePassword {
+		t.Error("must_change_password should be false for a normal account")
+	}
+}
+
+// TestGetSession_MustChangePassword_FlagSurfaced verifies the boot/reload
+// restore path carries must_change_password so the SPA router guard
+// (REQ-FEUSER-002) interposes proactively rather than relying on the backend
+// 403 net. Regression guard for the Sprint 20 senior-gate Finding 1.
+//
+// @{"verifies": ["REQ-AUTH-013", "REQ-FEUSER-002"]}
+func TestGetSession_MustChangePassword_FlagSurfaced(t *testing.T) {
+	if pool == nil {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	createTestUserWithPassword(ctx, t, pool, "sess_mcp_user", "pass", "student")
+	if _, err := pool.Exec(ctx,
+		`UPDATE users SET must_change_password = true WHERE username = $1`,
+		"sess_mcp_user",
+	); err != nil {
+		t.Fatalf("set flag: %v", err)
+	}
+
+	svc := newTestService(30*time.Minute, 24*time.Hour)
+	rawToken, err := loginGetRawToken(t, svc, ctx, "sess_mcp_user", "pass")
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	repo := NewRepository(pool)
+	authMW := NewAuthMiddleware(repo, pool, 30*time.Minute, nil)
+	handler := NewHandlerFull(svc, repo, pool, 24*time.Hour, nil)
+
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		r.Use(authMW)
+		r.Get("/auth/session", handler.GetSession)
+	})
+
+	req := httptest.NewRequest("GET", "/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+rawToken)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp sessionResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp.MustChangePassword {
+		t.Error("must_change_password should be true for a flagged account")
+	}
 }
 
 // @{"verifies": ["REQ-AUTH-012"]}
@@ -316,7 +372,7 @@ func TestGetSession_CookieAuth_Returns200(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "sess_cookie_user", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "sess_cookie_user", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "sess_cookie_user", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -359,7 +415,7 @@ func TestGetSession_AdminAlwaysConsented(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "sess_admin_consent", "pass", "admin")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "sess_admin_consent", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "sess_admin_consent", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -412,7 +468,7 @@ func TestGetSession_StudentWithConsent_ConsentedTrue(t *testing.T) {
 	}
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "sess_student_consented", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "sess_student_consented", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -454,7 +510,7 @@ func TestGetSession_StudentWithoutConsent_ConsentedFalse(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "sess_student_unconsented", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "sess_student_unconsented", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "sess_student_unconsented", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -503,7 +559,7 @@ func TestGetSession_200_ReissuesCSRFCookie(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "sess_csrf_reissue", "pass", "student")
 
 	svc := newTestService(30*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "sess_csrf_reissue", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "sess_csrf_reissue", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -562,7 +618,7 @@ func TestLogout_ClearsSessionCookie(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "logout_cookie_clear", "pass", "student")
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "logout_cookie_clear", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "logout_cookie_clear", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -612,7 +668,7 @@ func TestLogout_CookieAuth_NoHeader_Returns204(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "logout_cookie_only", "pass", "student")
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "logout_cookie_only", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "logout_cookie_only", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -687,7 +743,7 @@ func TestLogout_BearerOnly_NoCsrfCookie_Returns204(t *testing.T) {
 	createTestUserWithPassword(ctx, t, pool, "logout_bearer_only", "pass", "student")
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
-	rawToken, _, err := svc.Login(ctx, "logout_bearer_only", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "logout_bearer_only", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}

@@ -23,10 +23,12 @@ import (
 	"github.com/valory/valory/internal/content"
 	"github.com/valory/valory/internal/course"
 	"github.com/valory/valory/internal/db"
+	"github.com/valory/valory/internal/email"
 	"github.com/valory/valory/internal/grade"
 	"github.com/valory/valory/internal/image"
 	"github.com/valory/valory/internal/infra"
 	"github.com/valory/valory/internal/notify"
+	profilepkg "github.com/valory/valory/internal/profile"
 	"github.com/valory/valory/internal/security"
 	"github.com/valory/valory/internal/submission"
 	"github.com/valory/valory/internal/user"
@@ -48,6 +50,10 @@ func main() {
 	uploadsDir := envOrDefault("UPLOADS_DIR", "/app/uploads")
 	acmeDomain := os.Getenv("ACME_DOMAIN")
 	acmeCacheDir := envOrDefault("ACME_CACHE_DIR", "/app/acme-cache")
+	// REQ-INFRA-003..008: operator-supplied cert pair and reverse-proxy mode.
+	tlsCertFile := os.Getenv("VALORY_TLS_CERT_FILE")
+	tlsKeyFile := os.Getenv("VALORY_TLS_KEY_FILE")
+	behindProxy := os.Getenv("VALORY_BEHIND_PROXY")
 
 	lockoutDuration := parseDuration("AUTH_LOCKOUT_DURATION", 15*time.Minute)
 	sessionMaxDuration := parseDuration("AUTH_SESSION_MAX_DURATION", 24*time.Hour)
@@ -59,7 +65,12 @@ func main() {
 		log.Fatalf("server: SMTP_PORT is not a valid integer: %v", err)
 	}
 	smtpFrom := envOrDefault("SMTP_FROM", "")
-	smtpPassword := envOrDefault("SMTP_PASSWORD", "")
+	// SMTP_USERNAME: new in Sprint 19. Operators who previously relied on
+	// SMTP_FROM as the username (old SMTPTransport) should set this explicitly.
+	smtpUsername := envOrDefault("SMTP_USERNAME", "")
+	// SMTP_PASSWORD is now resolved per-send via SecretProvider (managed_secrets >
+	// SMTP_PASSWORD env). The local variable is removed; resolution moves into the
+	// email package via SecretGetter.Get("smtp_password").
 	passwordResetTTL := parseDuration("PASSWORD_RESET_TTL", 1*time.Hour)
 
 	// --- Database ---
@@ -116,6 +127,14 @@ func main() {
 	// --- Auth wiring ---
 	authRepo := auth.NewRepository(pool)
 	authSvc := auth.NewService(authRepo, lockoutDuration, sessionMaxDuration)
+
+	// @{"req": ["REQ-AUTH-015", "REQ-AUTH-020"]}
+	// VALORY_2FA_BREAK_GLASS startup warning: operators who set this variable to
+	// recover from a sole-admin lockout should be aware the bypass is active.
+	if os.Getenv("VALORY_2FA_BREAK_GLASS") != "" {
+		log.Printf("server: WARN: VALORY_2FA_BREAK_GLASS is set; admin 2FA bypass is active")
+	}
+
 	// NewHandlerFull wires the additional dependencies (repo, pool, sessionMaxDuration,
 	// consentProvider) needed by the login cookie (REQ-AUTH-009) and the
 	// GET /auth/session restore endpoint (REQ-AUTH-012).
@@ -153,9 +172,28 @@ func main() {
 	agentRepo := agent.NewAgentRepository(serverPool)
 	chatRepo := agent.NewChatRepository(serverPool)
 	chair := agent.NewChair(throttledClient, serverPool, agentRepo, chatRepo)
-	// Professor resolves brave_api_key per-call via secretProvider (REQ-ADMIN-006).
-	professor := agent.NewProfessor(throttledClient, serverPool, agentRepo, secretProvider)
+	// Inject the server pool so Chair can load the student's learning profile
+	// for prompt injection (REQ-PROFILE-008, REQ-PROFILE-009). The server pool's
+	// BeforeAcquire sets app.current_role='server', satisfying the server-select
+	// RLS policy on learning_profiles.
+	chair.SetServerPool(serverPool)
+	// Professor resolves brave_api_key per-call via secretProvider (REQ-ADMIN-006)
+	// and professor_max_tokens per-call via configSvc (REQ-ADMIN-010).
+	professor := agent.NewProfessor(throttledClient, serverPool, agentRepo, secretProvider, configSvc)
+	// Inject the server pool so Professor can load the student's learning profile
+	// for prompt injection (REQ-PROFILE-006, REQ-PROFILE-007).
+	professor.SetServerPool(serverPool)
 	reviewer := agent.NewReviewer(throttledClient, serverPool, agentRepo)
+
+	// --- Profile module wiring (REQ-PROFILE-001..016) ---
+	// profileRepo uses the plain pool; the handler always passes in the
+	// request-scoped connection (from auth middleware context) so FORCE RLS
+	// on learning_profiles is satisfied via the conn(ctx) helper.
+	// @{"req": ["REQ-PROFILE-001", "REQ-PROFILE-004", "REQ-PROFILE-005", "REQ-PROFILE-011", "REQ-PROFILE-012", "REQ-PROFILE-014", "REQ-PROFILE-015"]}
+	profileRepo := profilepkg.NewProfileRepository(pool)
+	// secretProvider satisfies profile.SecretResolver (both expose Get(ctx, name) string).
+	onboardingSvc := profilepkg.NewOnboardingService(profileRepo, serverPool, secretProvider)
+	profileHandler := profilepkg.NewHandler(profileRepo, onboardingSvc, serverPool)
 
 	// --- Badge module wiring (required by grade module) ---
 	badgeRepo := badge.NewRepository(pool)
@@ -181,13 +219,47 @@ func main() {
 	// Start background polling goroutines (30s gen poll, 60s feedback poll, 30s grade poll).
 	go agentRunner.Start(ctx)
 
+	// --- Email mailer wiring (REQ-EMAIL-001..011) ---
+	// SMTPEnvVars captures env reads once at startup; per-send resolution in
+	// SMTPMailer reads admin config first and falls back to these values.
+	// Password resolution is handled inside SecretProvider.Get("smtp_password")
+	// which applies the managed_secrets > SMTP_PASSWORD env fallback automatically.
+	smtpEnv := email.SMTPEnvVars{
+		Host:       smtpHost,
+		Port:       smtpPort,
+		From:       smtpFrom,
+		Username:   smtpUsername,
+		Encryption: "starttls", // safe default; operator overrides via admin UI
+	}
+	mailer := email.NewSMTPMailer(configSvc, secretProvider, smtpEnv)
+	if !mailer.IsConfigured() {
+		log.Printf("server: WARN: SMTP is not configured; email features will be unavailable")
+	}
+
 	// --- User module wiring ---
 	userRepo := user.NewRepository(pool)
 	auditRepo := audit.NewRepository(pool)
-	emailTransport := user.NewEmailTransport(smtpHost, smtpPort, smtpFrom, smtpPassword, log.Writer())
+	// mailerAdapter wraps the email.Mailer so it satisfies the legacy
+	// EmailTransport interface consumed by user.Service (REQ-USER-005).
+	emailTransport := user.NewMailerAdapter(mailer)
 	// AgentRunner implements user.AgentTerminator — cancels in-flight runs on account deletion.
 	userSvc := user.NewService(pool, userRepo, auditRepo, emailTransport, passwordResetTTL, agentRunner)
+	// Inject the Mailer directly so user.Service can send welcome emails with
+	// full subject/body control (REQ-USER-010). The mailerAdapter covers only the
+	// password-reset path; welcome emails need the Mailer.Send surface directly.
+	// @{"req": ["REQ-USER-010", "REQ-USER-012"]}
+	userSvc.SetMailer(mailer)
 	userHandler := user.NewHandler(userSvc)
+	// mustChangePwMW rejects requests from flagged accounts on all paths except
+	// change-password, logout, and GET /users/me (REQ-AUTH-014, REQ-SYS-064).
+	mustChangePwMW := auth.MustChangePasswordMiddleware(pool)
+
+	// --- 2FA wiring (REQ-AUTH-015..REQ-AUTH-026) ---
+	// TwoFactorService depends on auditRepo (constructed above via user module
+	// wiring). Wire it here and inject into authSvc so the Login path can branch.
+	// @{"req": ["REQ-AUTH-015", "REQ-AUTH-016", "REQ-AUTH-017", "REQ-AUTH-018", "REQ-AUTH-019", "REQ-AUTH-020", "REQ-AUTH-026"]}
+	twoFactorSvc := auth.NewTwoFactorService(authRepo, auditRepo, pool, configSvc, mailer)
+	authSvc.SetTwoFactor(twoFactorSvc, configSvc)
 
 	// --- Audit module wiring ---
 	auditHandler := audit.NewHandler(auditRepo)
@@ -237,7 +309,18 @@ func main() {
 	submissionHandler.SetImageRepository(imageRepo)
 
 	// --- Admin config handler ---
-	adminConfigHandler := admin.NewConfigHandler(configSvc, auditRepo, pool)
+	// mailer is passed so the test-send endpoint (REQ-EMAIL-008) can send via
+	// the configured Mailer and redact the password from any error response.
+	adminConfigHandler := admin.NewConfigHandler(configSvc, auditRepo, pool, mailer)
+
+	// --- Admin assignment handler (REQ-ASSIGN-001..011, REQ-SYS-067, REQ-SYS-068) ---
+	// chair satisfies admin.syllabusGenerator via Chair.GenerateSyllabusFromParams.
+	// Uses the plain pool (admin session connection carries app.current_role='admin',
+	// which satisfies courses_admin_policy for the GetAssignmentStudents query).
+	// @{"req": ["REQ-ASSIGN-001", "REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-006", "REQ-ASSIGN-007", "REQ-ASSIGN-009", "REQ-ASSIGN-010", "REQ-ASSIGN-011"]}
+	assignmentRepo := admin.NewAssignmentRepository(pool)
+	assignmentSvc := admin.NewAssignmentService(assignmentRepo, chair)
+	assignmentHandler := admin.NewAssignmentHandler(assignmentSvc, auditRepo, pool)
 
 	// --- Admin secrets handler (REQ-ADMIN-005..008, REQ-SECURITY-006..008) ---
 	// Mounted under the same admin role + CSRF group as adminConfigHandler.
@@ -267,6 +350,12 @@ func main() {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			authHandler.Routes(r)
+			// @{"req": ["REQ-AUTH-015", "REQ-AUTH-016", "REQ-AUTH-017", "REQ-AUTH-026"]}
+			// 2FA verify and resend are pre-session endpoints: the pending token (from
+			// the phase-1 login response body) is the credential. They must be mounted
+			// outside the auth middleware group so they are reachable before a full
+			// session exists. The handler itself returns 404 when 2FA is globally off.
+			authHandler.TwoFARoutes(r)
 		})
 
 		// @{"req": ["REQ-USER-005", "REQ-USER-006"]}
@@ -302,11 +391,17 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(authMW)
 			r.Use(security.CSRFMiddleware)
+			// @{"req": ["REQ-AUTH-014", "REQ-SYS-064"]}
+			// mustChangePwMW enforces that flagged (must_change_password=true) sessions
+			// can only reach change-password, logout, and GET /users/me. All other routes
+			// return 403 MUST_CHANGE_PASSWORD. The exempt-path check is exact-path
+			// based and lives inside the middleware (see auth/middleware.go).
+			r.Use(mustChangePwMW)
 
-			// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-007"]}
+			// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-007", "REQ-USER-014", "REQ-USER-015", "REQ-USER-016"]}
 			// --- User routes ---
 			r.Route("/users", func(r chi.Router) {
-				// GET /users/me — any authenticated user reads their own profile.
+				// GET /users/me and POST /users/me/password — any authenticated user.
 				userHandler.MeRoutes(r)
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireRole("admin"))
@@ -386,6 +481,14 @@ func main() {
 				})
 			})
 
+			// @{"req": ["REQ-AUTH-019"]}
+			// Admin per-user 2FA reset endpoint. Requires admin role (enforced here).
+			// DELETE is used because the action is idempotent removal of pending state.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireRole("admin"))
+				r.Delete("/admin/users/{id}/2fa/reset", authHandler.ResetUserTwoFactor)
+			})
+
 			// @{"req": ["REQ-ADMIN-005", "REQ-ADMIN-006", "REQ-ADMIN-007", "REQ-ADMIN-008", "REQ-SECURITY-008"]}
 			// --- Admin secrets routes ---
 			// CSRF is already enforced by the enclosing group; RequireRole("admin")
@@ -396,62 +499,113 @@ func main() {
 					secretsHandler.Routes(r)
 				})
 			})
+
+			// @{"req": ["REQ-ASSIGN-001", "REQ-ASSIGN-002", "REQ-ASSIGN-003", "REQ-ASSIGN-004", "REQ-ASSIGN-005", "REQ-ASSIGN-006", "REQ-ASSIGN-007", "REQ-ASSIGN-009", "REQ-ASSIGN-010", "REQ-ASSIGN-011", "REQ-SYS-067", "REQ-SYS-068"]}
+			// --- Admin assignment routes ---
+			// CSRF is enforced by the enclosing group; RequireRole("admin") gates
+			// all assignment endpoints so students cannot reach this surface.
+			r.Route("/admin/assignments", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireRole("admin"))
+					assignmentHandler.Routes(r)
+				})
+			})
+
+			// @{"req": ["REQ-PROFILE-004", "REQ-PROFILE-011", "REQ-PROFILE-012", "REQ-PROFILE-014", "REQ-PROFILE-015", "REQ-PROFILE-016"]}
+			// --- Profile and onboarding routes ---
+			// Mounted under /profile; RequireRole("student") gives admins a clean
+			// 403 instead of an RLS-violation 500 (learning_profiles student-write
+			// policy rejects non-student roles). Matches the test stack in
+			// profile_http_integration_test.go which also applies RequireRole.
+			r.Route("/profile", func(r chi.Router) {
+				r.Use(auth.RequireRole("student"))
+				profileHandler.Routes(r)
+			})
 		})
 	})
 
-	// --- TLS ---
-	tlsCfg, httpHandler, err := infra.BuildTLSConfig(acmeDomain, acmeCacheDir)
+	// --- TLS / transport mode ---
+	// @{"req": ["REQ-INFRA-003", "REQ-INFRA-004", "REQ-INFRA-005", "REQ-INFRA-006", "REQ-INFRA-007", "REQ-INFRA-008"]}
+	tlsResult, err := infra.BuildTLSConfig(tlsCertFile, tlsKeyFile, acmeDomain, acmeCacheDir, behindProxy)
 	if err != nil {
 		log.Fatalf("server: build TLS config: %v", err)
 	}
 
-	httpsServer := &http.Server{
-		Addr:      ":8443",
-		Handler:   r,
-		TLSConfig: tlsCfg,
-	}
-
-	httpServer := &http.Server{
-		Addr:    ":80",
-		Handler: httpHandler,
-	}
-
-	go func() {
-		log.Printf("server: listening on :80 (HTTP redirect / ACME)")
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server: HTTP listener error: %v", err)
-		}
-	}()
-
-	go func() {
-		log.Printf("server: listening on :8443 (HTTPS)")
-		if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server: HTTPS listener error: %v", err)
-		}
-	}()
-
-	// Block until SIGTERM or SIGINT arrives, then drain both servers.
+	// Block until SIGTERM or SIGINT arrives, then drain all active servers.
 	// @{"req": ["REQ-INFRA-002"]}
-	<-ctx.Done()
-	stop()
-	log.Printf("server: shutdown signal received, draining connections")
+	if tlsResult.Mode == infra.ModeBehindProxy {
+		// Proxy mode: the reverse proxy owns TLS; we serve the application
+		// handler directly over plain HTTP.  We keep the same :8443 the HTTPS
+		// listener would use so docker-compose port mappings and operator
+		// muscle memory are mode-independent — only the scheme changes.  No
+		// HTTPS or redirect listener is needed — the proxy handles that
+		// boundary.
+		httpServer := &http.Server{
+			Addr:    ":8443",
+			Handler: r,
+		}
+		go func() {
+			log.Printf("server: listening on :8443 (plain HTTP; behind reverse proxy)")
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("server: HTTP listener error: %v", err)
+			}
+		}()
 
-	// Each server gets its own 30-second deadline so a slow HTTPS drain (e.g.
-	// long-lived SSE streams) cannot starve the HTTP redirect listener.
-	httpsCtx, httpsCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer httpsCancel()
-	httpCtx, httpCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer httpCancel()
+		<-ctx.Done()
+		stop()
+		log.Printf("server: shutdown signal received, draining connections")
 
-	if err := httpsServer.Shutdown(httpsCtx); err != nil {
-		log.Printf("server: HTTPS shutdown error: %v", err)
-	}
-	if err := httpServer.Shutdown(httpCtx); err != nil {
-		log.Printf("server: HTTP shutdown error: %v", err)
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutCancel()
+		if err := httpServer.Shutdown(shutCtx); err != nil {
+			log.Printf("server: HTTP shutdown error: %v", err)
+		}
+	} else {
+		// TLS modes (operator-cert, acme, self-signed): HTTPS on :8443 plus the
+		// HTTP handler on :80 for ACME challenges / redirects.
+		httpsServer := &http.Server{
+			Addr:      ":8443",
+			Handler:   r,
+			TLSConfig: tlsResult.TLSConfig,
+		}
+		httpServer := &http.Server{
+			Addr:    ":80",
+			Handler: tlsResult.HTTPHandler,
+		}
+
+		go func() {
+			log.Printf("server: listening on :80 (HTTP redirect / ACME)")
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("server: HTTP listener error: %v", err)
+			}
+		}()
+		go func() {
+			log.Printf("server: listening on :8443 (HTTPS)")
+			if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("server: HTTPS listener error: %v", err)
+			}
+		}()
+
+		<-ctx.Done()
+		stop()
+		log.Printf("server: shutdown signal received, draining connections")
+
+		// Each server gets its own 30-second deadline so a slow HTTPS drain (e.g.
+		// long-lived SSE streams) cannot starve the HTTP redirect listener.
+		httpsCtx, httpsCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer httpsCancel()
+		httpCtx, httpCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer httpCancel()
+
+		if err := httpsServer.Shutdown(httpsCtx); err != nil {
+			log.Printf("server: HTTPS shutdown error: %v", err)
+		}
+		if err := httpServer.Shutdown(httpCtx); err != nil {
+			log.Printf("server: HTTP shutdown error: %v", err)
+		}
 	}
 	log.Printf("server: shutdown complete")
 }
-
 
 func mustEnv(key string) string {
 	v := os.Getenv(key)

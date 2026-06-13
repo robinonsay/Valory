@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-001",
+  "title": "One Persistent Learning Profile Per Student",
+  "description": "The profile module shall store at most one learning profile record per student.",
+  "rationale": "A single canonical profile per student ensures course-generation agents always read one unambiguous source of personalization context; multiple rows would require a selection policy and introduce race conditions on upsert.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

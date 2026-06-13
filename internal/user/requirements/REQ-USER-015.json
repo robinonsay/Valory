@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-015",
+  "title": "Password Change Clears Must-Change-Password Flag",
+  "description": "The user module shall clear the must-change-password flag upon a successful authenticated password change.",
+  "rationale": "The flag exists solely to force the first-login change; clearing it immediately on success allows the user to access the application normally without repeating the change flow.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-009", "REQ-USER-014"]
+}

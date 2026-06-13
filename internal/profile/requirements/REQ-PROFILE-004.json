@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-004",
+  "title": "Student Can Read Own Profile",
+  "description": "The profile module shall return a student's own learning profile only to that authenticated student.",
+  "rationale": "Students must be able to view their personalization data to trust and edit it; returning another student's profile would expose private learning preferences across accounts.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

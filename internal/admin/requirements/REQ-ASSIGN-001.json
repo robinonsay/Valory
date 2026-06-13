@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-001",
+  "title": "Admin Creates Course Assignment",
+  "description": "The assignment module shall allow an admin to create a course assignment with a topic, level, and parameters.",
+  "rationale": "Admins need a reusable assignment record to define curriculum intent once before distributing it to multiple students, avoiding redundant re-entry of the same topic and parameters per student.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

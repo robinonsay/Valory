@@ -30,10 +30,11 @@ import (
 // knownSecrets is the compile-time allowlist of managed secret names.
 // Any name absent from this map is rejected at the API boundary (HTTP 400).
 //
-// @{"req": ["REQ-ADMIN-005", "REQ-ADMIN-006"]}
+// @{"req": ["REQ-ADMIN-005", "REQ-ADMIN-006", "REQ-EMAIL-005"]}
 var knownSecrets = map[string]bool{
 	"anthropic_api_key": true,
 	"brave_api_key":     true,
+	"smtp_password":     true, // REQ-EMAIL-005: SMTP credential stored encrypted
 }
 
 // secretCacheTTL is the maximum age of a cached plaintext value.
@@ -64,7 +65,7 @@ func (realClock) Now() time.Time { return time.Now() }
 //
 // @{"req": ["REQ-ADMIN-007", "REQ-ADMIN-008", "REQ-SECURITY-006", "REQ-SECURITY-007"]}
 type SecretProvider struct {
-	kek   []byte        // nil when VALORY_SECRET_KEY absent/invalid
+	kek   []byte // nil when VALORY_SECRET_KEY absent/invalid
 	pool  *pgxpool.Pool
 	mu    sync.RWMutex
 	cache map[string]secretEntry

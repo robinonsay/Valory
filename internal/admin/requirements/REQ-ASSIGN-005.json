@@ -1,0 +1,10 @@
+{
+  "id": "REQ-ASSIGN-005",
+  "title": "Admin-Assigned Courses Enter Generation Queue",
+  "description": "The assignment module shall make each admin-assigned course instance eligible for content generation without manual intervention.",
+  "rationale": "Entering the lifecycle at syllabus_approved reuses the existing pollAndGenerate loop and ensureDueDates path without modification, avoiding duplication of generation logic in the assignment handler.",
+  "verification_method": "Test",
+  "uses": [
+    "REQ-SYS-067"
+  ]
+}

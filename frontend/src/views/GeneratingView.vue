@@ -1,46 +1,57 @@
-// @{"req": ["REQ-FECOURSE-065", "REQ-FECOURSE-066", "REQ-FECOURSE-067", "REQ-FECOURSE-070", "REQ-FECOURSE-530", "REQ-FECOURSE-540", "REQ-FECOURSE-550", "REQ-FECOURSE-560"]}
+// @{"req": ["REQ-FECOURSE-065", "REQ-FECOURSE-066", "REQ-FECOURSE-067",
+"REQ-FECOURSE-070", "REQ-FECOURSE-071", "REQ-FECOURSE-072", "REQ-FECOURSE-073",
+"REQ-FECOURSE-074", "REQ-FECOURSE-530", "REQ-FECOURSE-540", "REQ-FECOURSE-550",
+"REQ-FECOURSE-560"]}
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import { useSSE } from '@/composables/useSSE'
+import { ref, onMounted, onUnmounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
+import { useSSE } from "@/composables/useSSE";
+import { humanizeGenerationEvent } from "@/utils/humanizeGenerationEvent";
 
-const router = useRouter()
-const route = useRoute()
-const auth = useAuthStore()
+const router = useRouter();
+const route = useRoute();
+const auth = useAuthStore();
 
-const messages = ref<string[]>([])
-const progressPercent = ref(0)
-const errorMessage = ref<string | null>(null)
-let sse: { close: () => void } | null = null
+const messages = ref<string[]>([]);
+const progressPercent = ref(0);
+const errorMessage = ref<string | null>(null);
+let sse: { close: () => void } | null = null;
 
 function onEvent(eventType: string, data: string): void {
-  if (eventType === 'progress') {
+  // REQ-FECOURSE-073: Preserve progress bar and message append on progress events
+  if (eventType === "progress") {
     try {
-      const parsed = JSON.parse(data)
-      progressPercent.value = parsed.percent || 0
+      const parsed = JSON.parse(data);
+      progressPercent.value = parsed.percent || 0;
       if (parsed.message) {
-        messages.value.push(parsed.message)
+        messages.value.push(parsed.message);
       }
     } catch {
-      messages.value.push(data)
+      messages.value.push(data);
     }
-  } else if (eventType === 'status_change') {
+  }
+  // REQ-FECOURSE-074: Preserve navigation to course hub on status_change with active status
+  else if (eventType === "status_change") {
     try {
-      const parsed = JSON.parse(data)
-      if (parsed.status === 'active') {
-        router.push(`/courses/${route.params.id}/hub`)
+      const parsed = JSON.parse(data);
+      if (parsed.status === "active") {
+        router.push(`/courses/${route.params.id}/hub`);
       }
     } catch {
-      messages.value.push(data)
+      messages.value.push(data);
     }
-  } else {
-    messages.value.push(data)
+  }
+  // REQ-FECOURSE-071 & REQ-FECOURSE-072: Map all other event types (known and unknown)
+  // to human-readable sentences; graceful fallback ensures raw JSON never reaches the screen
+  else {
+    const humanMessage = humanizeGenerationEvent(eventType, data);
+    messages.value.push(humanMessage);
   }
 }
 
 function onError(err: Error): void {
-  errorMessage.value = 'Generation failed. Please contact support.'
+  errorMessage.value = "Generation failed. Please contact support.";
 }
 
 onMounted(() => {
@@ -48,15 +59,15 @@ onMounted(() => {
   // automatically on same-origin fetch requests made by useSSE.
   sse = useSSE(`/api/v1/courses/${route.params.id}/events`, {
     onEvent,
-    onError
-  })
-})
+    onError,
+  });
+});
 
 onUnmounted(() => {
   if (sse) {
-    sse.close()
+    sse.close();
   }
-})
+});
 </script>
 
 <template>
@@ -70,7 +81,10 @@ onUnmounted(() => {
       <div v-if="!errorMessage" class="progress-section">
         <div class="spinner"></div>
         <div class="progress-bar-container">
-          <div class="progress-bar" :style="{ width: progressPercent + '%' }"></div>
+          <div
+            class="progress-bar"
+            :style="{ width: progressPercent + '%' }"
+          ></div>
         </div>
         <p class="progress-text">{{ progressPercent }}%</p>
       </div>
@@ -82,7 +96,11 @@ onUnmounted(() => {
       <div class="log-container">
         <div class="log-header">Generation Log</div>
         <div class="log-messages">
-          <div v-for="(message, index) in messages" :key="index" class="log-message">
+          <div
+            v-for="(message, index) in messages"
+            :key="index"
+            class="log-message"
+          >
             {{ message }}
           </div>
         </div>

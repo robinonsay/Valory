@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-614",
+  "title": "Resend-Welcome Control With Confirmation in UserManagementView",
+  "description": "The frontend module shall display a resend-welcome control per user row requiring admin confirmation before the resend is invoked.",
+  "rationale": "Resending regenerates and invalidates the prior temporary password, which is a disruptive action for the user; requiring confirmation prevents accidental invocations from a misclick.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-063", "REQ-USER-012"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-009",
+  "title": "RLS Isolates Each Student's Assigned Course Instance",
+  "description": "The assignment module shall ensure a student can read only their own assigned course instance.",
+  "rationale": "Per-student course isolation is the foundation of the privacy model; an assigned course shares the same courses table as self-initiated courses and must be subject to the same student-scoped RLS policy.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-068"]
+}

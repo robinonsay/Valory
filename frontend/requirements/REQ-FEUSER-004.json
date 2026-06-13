@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEUSER-004",
+  "title": "New Password Validated Against Argon2id-Policy Strength Rules",
+  "description": "The frontend module shall validate the new password against the password strength policy before enabling the submit button.",
+  "rationale": "Client-side validation prevents a round-trip rejection for weak passwords; the client applies a strength policy at least as strict as the server's minimum-length floor, so a UI-approved password is always server-acceptable. Additional client-side rules are documented in passwordValidation.ts.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-FEUSER-003", "REQ-SYS-041"]
+}

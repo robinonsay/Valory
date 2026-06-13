@@ -16,3 +16,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    # Host ports chosen to avoid collisions with local SMTP (25, 587) and the
+    # postgres-test port (55432). SDD-019 §10.1 specifies these exact values.
+    ports:
+      - "11025:1025"  # SMTP sink — Go integration tests send here
+      - "18025:8025"  # Mailpit REST API — Go tests assert delivery here
+    environment:
+      MP_MAX_MESSAGES: 500
+      # In-memory storage: tests start with a clean slate per run.
+      MP_DATABASE: ""
+    healthcheck:
+      # axllent/mailpit is Alpine-based and ships wget but not curl.
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8025/api/v1/info"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

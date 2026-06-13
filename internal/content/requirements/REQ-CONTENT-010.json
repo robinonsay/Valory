@@ -1,0 +1,8 @@
+{
+  "id": "REQ-CONTENT-010",
+  "title": "Dollar-Math Normalization at Render Time",
+  "description": "The content module shall normalize dollar-delimited math to AsciiDoc STEM notation in all export paths at render time.",
+  "rationale": "Stored sections contain dollar-delimited math written before the STEM convention was adopted. Destructively rewriting stored content has no safe rollback path; render-time normalization is idempotent and preserves stored content as the authoritative source of truth.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-059"]
+}

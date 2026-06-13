@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-032",
+  "title": "Dollar Signs Inside Code Regions Never Typeset",
+  "description": "The frontend module shall not typeset dollar signs that appear inside code blocks or inline code spans.",
+  "rationale": "Bash snippets and code examples frequently contain dollar-prefixed variables such as $HOME. Typesetting those as math would corrupt the displayed code and produce nonsensical output, undermining the section reader's utility for courses covering programming or shell scripting.",
+  "verification_method": "Test",
+  "uses": ["REQ-FECONTENT-030"]
+}

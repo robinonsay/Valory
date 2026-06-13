@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-010",
+  "title": "Generation Proceeds Normally When No Profile Exists",
+  "description": "The profile module shall leave all prompt call sites unchanged when no learning profile exists for the student.",
+  "rationale": "The learning profile is optional; students who skip onboarding or have not yet created a profile must receive the same generation experience as before the feature was introduced, with no degraded output or errors.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

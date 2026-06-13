@@ -1,0 +1,8 @@
+{
+  "id": "REQ-CONTENT-011",
+  "title": "HTML Export Requires No External Network References",
+  "description": "The content module shall produce HTML exports that render math with no external network references.",
+  "rationale": "Self-hosted deployments may operate in fully offline environments with no external network access. An HTML export that fetches math assets from a CDN will fail to render math in those environments, defeating the purpose of the export feature.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-059", "REQ-SYS-022"]
+}

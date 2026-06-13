@@ -295,9 +295,9 @@ func (h *CourseHandler) approveSyllabus(w http.ResponseWriter, r *http.Request) 
 	}
 
 	resp := map[string]interface{}{
-		"id":                course.ID.String(),
-		"status":            course.Status,
-		"syllabus_version":  syllabus.Version,
+		"id":               course.ID.String(),
+		"status":           course.Status,
+		"syllabus_version": syllabus.Version,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -353,9 +353,9 @@ func (h *CourseHandler) requestModification(w http.ResponseWriter, r *http.Reque
 	}
 
 	resp := map[string]interface{}{
-		"id":                course.ID.String(),
-		"status":            course.Status,
-		"syllabus_version":  syllabus.Version,
+		"id":               course.ID.String(),
+		"status":           course.Status,
+		"syllabus_version": syllabus.Version,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -395,8 +395,8 @@ func (h *CourseHandler) agreeToSchedule(w http.ResponseWriter, r *http.Request) 
 	}
 
 	resp := map[string]interface{}{
-		"id":            courseID.String(),
-		"agreed_count":  agreedCount,
+		"id":           courseID.String(),
+		"agreed_count": agreedCount,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -565,7 +565,11 @@ func (h *CourseHandler) listHomework(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008"]}
+// courseToResponse converts a CourseRow to the JSON response map.
+// assignment_id is included so the frontend can display an "Assigned by
+// instructor" badge when the value is non-null (REQ-ASSIGN-008).
+//
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008", "REQ-ASSIGN-008"]}
 func courseToResponse(course CourseRow) map[string]interface{} {
 	resp := map[string]interface{}{
 		"id":         course.ID.String(),
@@ -578,6 +582,14 @@ func courseToResponse(course CourseRow) map[string]interface{} {
 	}
 	if course.PreWithdrawalStatus != nil {
 		resp["pre_withdrawal_status"] = *course.PreWithdrawalStatus
+	}
+	// assignment_id is null for student-initiated courses and a UUID string for
+	// admin-assigned courses.  Included in the response so the frontend can
+	// optionally render an "Assigned by instructor" badge (REQ-ASSIGN-008).
+	if course.AssignmentID != nil {
+		resp["assignment_id"] = course.AssignmentID.String()
+	} else {
+		resp["assignment_id"] = nil
 	}
 	return resp
 }

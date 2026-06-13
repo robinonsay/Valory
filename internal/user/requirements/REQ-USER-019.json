@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-019",
+  "title": "Audit Event for Authenticated Password Change",
+  "description": "The user module shall append a credential-free audit entry when a user successfully changes their password.",
+  "rationale": "Password changes are security-relevant events; recording them in the tamper-evident audit log enables incident response while the payload restriction prevents the new credential from appearing in audit queries or exports.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-014", "REQ-SYS-042"]
+}

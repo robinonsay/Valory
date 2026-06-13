@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-601",
+  "title": "Encryption Mode Dropdown",
+  "description": "The frontend module shall render the smtp_encryption field as a dropdown offering none, starttls, and tls options.",
+  "rationale": "A free-text input for a constrained set of values allows invalid entries that the server would reject; a dropdown eliminates this class of error at the UI layer.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-061", "REQ-FEADMIN-600"]
+}

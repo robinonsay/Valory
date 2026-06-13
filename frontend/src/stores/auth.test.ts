@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-169", "REQ-FEAUTH-170", "REQ-FEAUTH-171"]}
+// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-169", "REQ-FEAUTH-170", "REQ-FEAUTH-171", "REQ-FEAUTH-200", "REQ-FEAUTH-201", "REQ-FEAUTH-202", "REQ-FEPROFILE-004"]}
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from './auth'
@@ -40,6 +40,7 @@ describe('useAuthStore', () => {
     expect(store.role).toBeNull()
     expect(store.expiresAt).toBeNull()
     expect(store.isConsented).toBe(false)
+    expect(store.onboardingPrompted).toBe(false)
     expect(store.restoreDone).toBe(false)
   })
 
@@ -84,6 +85,48 @@ describe('useAuthStore', () => {
     expect(store.isConsented).toBe(true)
     expect(store.isAuthenticated).toBe(true)
     expect(store.restoreDone).toBe(true)
+  })
+
+  // @{"verifies": ["REQ-FEUSER-002", "REQ-AUTH-013"]}
+  // The boot/reload restore path must surface must_change_password so the
+  // router guard interposes the forced-change screen proactively, not only
+  // reactively via the backend 403. Regression guard for the Sprint 20
+  // senior-gate Finding 1 (GET /auth/session previously omitted the flag).
+  it('restoreSession: populates mustChangePassword from /auth/session', async () => {
+    const store = useAuthStore()
+    const future = Math.floor(Date.now() / 1000) + 3600
+
+    vi.spyOn(clientModule, 'get').mockResolvedValueOnce({
+      user_id: 'abc-123',
+      username: 'alice',
+      role: 'student',
+      consented: true,
+      expires_at: new Date(future * 1000).toISOString(),
+      must_change_password: true
+    })
+
+    await store.restoreSession()
+
+    expect(store.mustChangePassword).toBe(true)
+  })
+
+  // @{"req": ["REQ-FEPROFILE-004"]}
+  it('restoreSession: populates onboardingPrompted from /auth/session', async () => {
+    const store = useAuthStore()
+    const future = Math.floor(Date.now() / 1000) + 3600
+
+    vi.spyOn(clientModule, 'get').mockResolvedValueOnce({
+      user_id: 'abc-123',
+      username: 'alice',
+      role: 'student',
+      consented: true,
+      expires_at: new Date(future * 1000).toISOString(),
+      onboarding_prompted: true
+    })
+
+    await store.restoreSession()
+
+    expect(store.onboardingPrompted).toBe(true)
   })
 
   // REQ-FEAUTH-169: restoreSession clears state on 401
@@ -131,6 +174,7 @@ describe('useAuthStore', () => {
     expect(store.role).toBeNull()
     expect(store.expiresAt).toBeNull()
     expect(store.isConsented).toBe(false)
+    expect(store.onboardingPrompted).toBe(false)
   })
 
   it('should set isConsented to true without changing other state', async () => {
@@ -290,6 +334,138 @@ describe('useAuthStore', () => {
       expect(postSpy).toHaveBeenCalledWith('/api/v1/auth/logout', {})
 
       postSpy.mockRestore()
+    })
+  })
+
+  // @{"req": ["REQ-FEAUTH-201"]}
+  describe('pending 2FA state', () => {
+    it('should initialize with pendingTwoFactor as null', () => {
+      const store = useAuthStore()
+      expect(store.pendingTwoFactor).toBeNull()
+    })
+
+    // @{"req": ["REQ-FEAUTH-201"]}
+    it('should set pendingTwoFactor via setPendingTwoFactor', () => {
+      const store = useAuthStore()
+      const token = 'test-pending-token'
+      const expiresAt = new Date(Date.now() + 600000).toISOString()
+
+      store.setPendingTwoFactor(token, expiresAt)
+
+      expect(store.pendingTwoFactor).not.toBeNull()
+      expect(store.pendingTwoFactor?.token).toBe(token)
+    })
+
+    // @{"req": ["REQ-FEAUTH-201"]}
+    it('pendingTwoFactor being set should NOT make isAuthenticated true', () => {
+      const store = useAuthStore()
+      const token = 'test-pending-token'
+      const expiresAt = new Date(Date.now() + 600000).toISOString()
+
+      store.setPendingTwoFactor(token, expiresAt)
+
+      expect(store.pendingTwoFactor).not.toBeNull()
+      expect(store.isAuthenticated).toBe(false)
+    })
+
+    // @{"req": ["REQ-FEAUTH-201"]}
+    it('should clear pendingTwoFactor via clearPendingTwoFactor', () => {
+      const store = useAuthStore()
+      const token = 'test-pending-token'
+      const expiresAt = new Date(Date.now() + 600000).toISOString()
+
+      store.setPendingTwoFactor(token, expiresAt)
+      expect(store.pendingTwoFactor).not.toBeNull()
+
+      store.clearPendingTwoFactor()
+      expect(store.pendingTwoFactor).toBeNull()
+    })
+
+    // @{"req": ["REQ-FEAUTH-200"]}
+    it('verifyOtp should call POST /api/v1/auth/2fa/verify and then login', async () => {
+      const store = useAuthStore()
+      const token = 'test-pending-token'
+      const expiresAt = new Date(Date.now() + 600000).toISOString()
+
+      store.setPendingTwoFactor(token, expiresAt)
+
+      const future = Math.floor(Date.now() / 1000) + 3600
+      vi.spyOn(clientModule, 'post').mockResolvedValueOnce({
+        token: 'session-token',
+        role: 'student',
+        expires_at: new Date(future * 1000).toISOString()
+      })
+
+      vi.spyOn(clientModule, 'get').mockResolvedValueOnce({
+        user_id: 'user-123',
+        username: 'testuser',
+        role: 'student',
+        consented: true,
+        expires_at: new Date(future * 1000).toISOString()
+      })
+
+      await store.verifyOtp('123456')
+
+      expect(clientModule.post).toHaveBeenCalledWith('/api/v1/auth/2fa/verify', {
+        pending_token: token,
+        otp: '123456'
+      })
+      expect(store.pendingTwoFactor).toBeNull()
+      expect(store.isAuthenticated).toBe(true)
+    })
+
+    // @{"req": ["REQ-FEAUTH-200"]}
+    it('verifyOtp should throw when no pending token', async () => {
+      const store = useAuthStore()
+
+      await expect(store.verifyOtp('123456')).rejects.toThrow('No pending 2FA token')
+    })
+
+    // @{"req": ["REQ-FEAUTH-200"]}
+    it('resendOtp should call POST /api/v1/auth/2fa/resend', async () => {
+      const store = useAuthStore()
+      const token = 'test-pending-token'
+      const expiresAt = new Date(Date.now() + 600000).toISOString()
+
+      store.setPendingTwoFactor(token, expiresAt)
+
+      vi.spyOn(clientModule, 'post').mockResolvedValueOnce({
+        expires_at: expiresAt,
+        resend_available_at: null
+      })
+
+      const result = await store.resendOtp()
+
+      expect(clientModule.post).toHaveBeenCalledWith('/api/v1/auth/2fa/resend', {
+        pending_token: token
+      })
+      expect(result.resendAvailableAt).toBeNull()
+    })
+
+    // @{"req": ["REQ-FEAUTH-200"]}
+    it('resendOtp should throw when no pending token', async () => {
+      const store = useAuthStore()
+
+      await expect(store.resendOtp()).rejects.toThrow('No pending 2FA token')
+    })
+
+    // @{"req": ["REQ-FEAUTH-200"]}
+    it('resendOtp should return resend_available_at from server', async () => {
+      const store = useAuthStore()
+      const token = 'test-pending-token'
+      const expiresAt = new Date(Date.now() + 600000).toISOString()
+      const resendAvailableAt = new Date(Date.now() + 60000).toISOString()
+
+      store.setPendingTwoFactor(token, expiresAt)
+
+      vi.spyOn(clientModule, 'post').mockResolvedValueOnce({
+        expires_at: expiresAt,
+        resend_available_at: resendAvailableAt
+      })
+
+      const result = await store.resendOtp()
+
+      expect(result.resendAvailableAt).toBe(resendAvailableAt)
     })
   })
 })

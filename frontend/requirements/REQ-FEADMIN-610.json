@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-610",
+  "title": "Generate-Temporary-Password Option in Create-User Form",
+  "description": "The frontend module shall offer a generate-temporary-password option in the create-user form alongside the manual password field.",
+  "rationale": "The new account-creation path in the backend supports both admin-supplied and system-generated passwords; the UI must expose the generated option so admins can take advantage of the secure delivery flow without typing a password themselves.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-063", "REQ-USER-008"]
+}

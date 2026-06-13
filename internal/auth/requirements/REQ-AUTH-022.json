@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-022",
+  "title": "2FA Lifecycle Events Audited Without OTP Values in Payloads",
+  "description": "The auth module shall record an audit event for each 2FA lifecycle transition, excluding OTP values from payloads.",
+  "rationale": "Security reviews and incident response require a complete audit trail of 2FA actions; including OTP values in payloads would expose live secrets in a record that may be read by multiple parties.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECOURSE-601",
+  "title": "Assigned Course Visible in CourseHub",
+  "description": "The frontend module shall display admin-assigned course instances in the student's CourseHub course list.",
+  "rationale": "Students must discover assigned courses through the same interface as self-initiated ones; a separate entry point would fragment the student experience and add unnecessary navigation complexity.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-068", "REQ-ASSIGN-008"]
+}

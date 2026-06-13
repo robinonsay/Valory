@@ -53,6 +53,15 @@ func ContextWithConn(ctx context.Context, conn *pgxpool.Conn) context.Context {
 	return context.WithValue(ctx, contextKeyConn, conn)
 }
 
+// ContextWithUserID returns a new context carrying userID under the same key
+// used by the auth middleware. Used in tests to simulate an authenticated
+// request without going through the full middleware stack.
+//
+// @{"req": ["REQ-AUTH-004"]}
+func ContextWithUserID(ctx context.Context, userID [16]byte) context.Context {
+	return context.WithValue(ctx, contextKeyUserID, userID)
+}
+
 // semverLess reports whether version string a is strictly less than b.
 // Versions are parsed as dot-separated integer components (e.g. "1.10" > "1.9").
 // An unparseable component falls back to 0, so malformed strings are treated
@@ -188,6 +197,69 @@ func NewAuthMiddleware(
 			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// MustChangePasswordMiddleware rejects any authenticated request from a user
+// whose must_change_password flag is set, except for the three allowed paths:
+//   - POST /api/v1/users/me/password  — the change-password endpoint itself
+//   - POST /api/v1/auth/logout        — so the user can sign out
+//   - GET  /api/v1/users/me           — so the frontend can read the current user
+//     and render the forced-change screen correctly
+//
+// Why query users on every request instead of caching in the session:
+// The sessions table has no must_change_password column. Denormalising the flag
+// into sessions would require keeping it in sync on ChangePassword (and any
+// future flag-clearing path), which creates an extra invariant to maintain.
+// Reading from users is one SELECT per request but only fires for flagged users
+// on non-exempt paths — the common case (flag = false) exits at the query
+// result without blocking anything. Correctness over micro-optimisation here.
+//
+// @{"req": ["REQ-AUTH-014", "REQ-SYS-064"]}
+func MustChangePasswordMiddleware(pool *pgxpool.Pool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Allow the three exempt paths unconditionally, before the DB read,
+			// so logout and change-password always work for flagged users.
+			// Exact-path matching (not suffix) so a future route that merely
+			// ends in one of these segments can never be silently exempted.
+			path := r.URL.Path
+			method := r.Method
+			exempt := (method == http.MethodPost && (path == "/api/v1/users/me/password" || path == "/api/v1/auth/logout")) ||
+				(method == http.MethodGet && path == "/api/v1/users/me")
+			if exempt {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			userID, ok := UserIDFromContext(r.Context())
+			if !ok {
+				// The auth middleware upstream should have rejected this; be defensive.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			var mustChange bool
+			if err := pool.QueryRow(r.Context(),
+				`SELECT must_change_password FROM users WHERE id = $1`,
+				userID,
+			).Scan(&mustChange); err != nil {
+				// DB error: fail open so a transient error doesn't lock everyone out.
+				// The auth middleware has already validated the session; the user is
+				// authenticated and the flag read is best-effort enforcement.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if mustChange {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"error": "MUST_CHANGE_PASSWORD"})
+				return
+			}
+
+			next.ServeHTTP(w, r)
 		})
 	}
 }

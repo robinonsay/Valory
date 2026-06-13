@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -22,27 +23,28 @@ type userLister interface {
 	ListUsers(ctx context.Context, role string, limit int) ([]UserRow, error)
 }
 
-// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005"]}
+// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005", "REQ-USER-008", "REQ-USER-009", "REQ-USER-010", "REQ-USER-012", "REQ-USER-014", "REQ-USER-015", "REQ-USER-016"]}
 type Handler struct {
 	svc    *Service
 	lister userLister
 }
 
-// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005"]}
+// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-005", "REQ-USER-006", "REQ-USER-007", "REQ-SECURITY-005", "REQ-USER-008", "REQ-USER-009", "REQ-USER-010", "REQ-USER-012", "REQ-USER-014", "REQ-USER-015", "REQ-USER-016"]}
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc, lister: svc}
 }
 
 // AdminRoutes registers admin-only routes (caller applies RequireRole("admin")).
-// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-007"]}
+// @{"req": ["REQ-USER-001", "REQ-USER-002", "REQ-USER-003", "REQ-USER-007", "REQ-USER-012"]}
 func (h *Handler) AdminRoutes(r chi.Router) {
-	// @{"req": ["REQ-USER-001", "REQ-USER-002"]}
 	r.Get("/", h.listUsers)
 	r.Post("/", h.createUser)
 	r.Patch("/{id}", h.modifyUser)
 	r.Post("/{id}/deactivate", h.deactivateUser)
 	r.Post("/{id}/activate", h.activateUser)
 	r.Delete("/{id}", h.deleteStudent)
+	// Resend welcome email with a freshly-generated temp password.
+	r.Post("/{id}/resend-welcome", h.resendWelcome)
 }
 
 // PublicRoutes registers unauthenticated password-reset routes.
@@ -58,10 +60,11 @@ func (h *Handler) StudentRoutes(r chi.Router) {
 	r.Post("/", h.recordConsent)
 }
 
-// MeRoutes registers the current user endpoint (caller has authMW).
-// @{"req": ["REQ-USER-001"]}
+// MeRoutes registers the current-user and change-password endpoints (caller has authMW).
+// @{"req": ["REQ-USER-001", "REQ-USER-014", "REQ-USER-015", "REQ-USER-016"]}
 func (h *Handler) MeRoutes(r chi.Router) {
 	r.Get("/me", h.getCurrentUser)
+	r.Post("/me/password", h.changePassword)
 }
 
 // @{"req": ["REQ-USER-001", "REQ-USER-002"]}
@@ -115,7 +118,12 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"users": items})
 }
 
-// @{"req": ["REQ-USER-001"]}
+// createUser handles POST /api/v1/users (admin-only group).
+// It accepts either an explicit password (existing behaviour) or
+// generate_password:true (Sprint 20 temp-password path). Exactly one must be
+// supplied; supplying both or neither is a 400 error.
+//
+// @{"req": ["REQ-USER-001", "REQ-USER-008", "REQ-USER-009", "REQ-USER-010", "REQ-USER-011", "REQ-USER-017"]}
 func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 
@@ -127,10 +135,11 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	adminID := uuid.UUID(rawID)
 
 	var req struct {
-		Username string `json:"username"`
-		Email    *string `json:"email"`
-		Role     string `json:"role"`
-		Password string `json:"password"`
+		Username         string  `json:"username"`
+		Email            *string `json:"email"`
+		Role             string  `json:"role"`
+		Password         string  `json:"password"`
+		GeneratePassword bool    `json:"generate_password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -138,8 +147,8 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" || req.Role == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "username, role, and password are required")
+	if req.Username == "" || req.Role == "" {
+		writeError(w, http.StatusBadRequest, "username and role are required")
 		return
 	}
 
@@ -147,6 +156,40 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		req.Email = nil
 	}
 
+	// Exactly one of password or generate_password must be provided.
+	hasPassword := req.Password != ""
+	if hasPassword && req.GeneratePassword {
+		writeError(w, http.StatusBadRequest, "provide either password or generate_password, not both")
+		return
+	}
+	if !hasPassword && !req.GeneratePassword {
+		writeError(w, http.StatusBadRequest, "username, role, and one of password or generate_password are required")
+		return
+	}
+
+	if req.GeneratePassword {
+		user, result, err := h.svc.CreateUserWithTempPassword(r.Context(), adminID, req.Username, req.Email, req.Role)
+		if err != nil {
+			if errors.Is(err, ErrDuplicateUsername) {
+				writeError(w, http.StatusConflict, "username already taken")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+
+		resp := userToResponse(user)
+		resp["email_sent"] = result.EmailSent
+		if !result.EmailSent {
+			// One-time admin display: only surfaced when email delivery did not
+			// occur (REQ-FEADMIN-612/613).
+			resp["temp_password"] = result.TempPassword
+		}
+		writeJSON(w, http.StatusCreated, resp)
+		return
+	}
+
+	// Explicit password path (existing behaviour, unchanged).
 	user, err := h.svc.CreateUser(r.Context(), adminID, req.Username, req.Email, req.Role, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrDuplicateUsername) {
@@ -159,6 +202,117 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 
 	resp := userToResponse(user)
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// resendWelcome handles POST /api/v1/users/{id}/resend-welcome (admin-only group).
+// Regenerates a temporary password, overwrites the old one, and re-sends the
+// welcome email. The old password is immediately invalid (REQ-USER-013).
+//
+// @{"req": ["REQ-USER-012", "REQ-USER-013", "REQ-USER-018"]}
+func (h *Handler) resendWelcome(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	adminID := uuid.UUID(rawID)
+
+	idStr := chi.URLParam(r, "id")
+	targetID, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	result, err := h.svc.ResendWelcome(r.Context(), adminID, targetID)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	resp := map[string]interface{}{
+		"email_sent": result.EmailSent,
+	}
+	if !result.EmailSent {
+		resp["temp_password"] = result.TempPassword
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// changePassword handles POST /api/v1/users/me/password (authenticated, any role).
+// Requires the caller to supply their current password. On success, clears the
+// must_change_password flag and invalidates all other sessions for the user.
+//
+// @{"req": ["REQ-USER-014", "REQ-USER-015", "REQ-USER-016", "REQ-USER-019"]}
+func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	userID := uuid.UUID(rawID)
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
+	}
+
+	// Extract the current session token from the request so that ChangePassword
+	// can preserve it while deleting all other sessions (REQ-USER-016).
+	currentTokenHash := currentSessionTokenHash(r)
+
+	if err := h.svc.ChangePassword(r.Context(), userID, req.CurrentPassword, req.NewPassword, currentTokenHash); err != nil {
+		if errors.Is(err, ErrWrongPassword) {
+			writeError(w, http.StatusForbidden, "current password is incorrect")
+			return
+		}
+		if errors.Is(err, ErrPasswordTooShort) {
+			writeError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+			return
+		}
+		if errors.Is(err, ErrUserNotFound) {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// currentSessionTokenHash extracts the raw session token from the request
+// (Bearer header preferred, __Host-session cookie fallback) and returns its
+// SHA-256 hash. The result is used to identify the current session for
+// preservation during ChangePassword (REQ-USER-016).
+//
+// @{"req": ["REQ-USER-016"]}
+func currentSessionTokenHash(r *http.Request) string {
+	if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+		return auth.HashToken(strings.TrimPrefix(authHeader, "Bearer "))
+	}
+	if cookie, err := r.Cookie("__Host-session"); err == nil && cookie.Value != "" {
+		return auth.HashToken(cookie.Value)
+	}
+	return ""
 }
 
 // @{"req": ["REQ-USER-002"]}
@@ -407,10 +561,11 @@ func (h *Handler) getCurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]interface{}{
-		"id":        user.ID.String(),
-		"username":  user.Username,
-		"role":      user.Role,
-		"is_active": user.IsActive,
+		"id":                   user.ID.String(),
+		"username":             user.Username,
+		"role":                 user.Role,
+		"is_active":            user.IsActive,
+		"must_change_password": user.MustChangePassword,
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -453,12 +608,13 @@ func (h *Handler) recordConsent(w http.ResponseWriter, r *http.Request) {
 // @{"req": ["REQ-USER-001", "REQ-USER-002"]}
 func userToResponse(user UserRow) map[string]interface{} {
 	resp := map[string]interface{}{
-		"id":         user.ID.String(),
-		"username":   user.Username,
-		"role":       user.Role,
-		"is_active":  user.IsActive,
-		"created_at": user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		"updated_at": user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"id":                   user.ID.String(),
+		"username":             user.Username,
+		"role":                 user.Role,
+		"is_active":            user.IsActive,
+		"must_change_password": user.MustChangePassword,
+		"created_at":           user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"updated_at":           user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if user.Email != nil {
 		resp["email"] = *user.Email

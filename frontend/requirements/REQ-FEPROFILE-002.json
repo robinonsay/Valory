@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FEPROFILE-002",
+  "title": "Profile Settings View Shows and Edits Profile Summary",
+  "description": "The frontend module shall present the student's profile summary in an editable form that saves changes to the profile service.",
+  "rationale": "Students need a settings surface to view and correct their profile text; without a dedicated view the only way to update is to re-run the full onboarding conversation, which is a poor UX for minor corrections.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-069", "REQ-PROFILE-004", "REQ-PROFILE-016"],
+  "implements": []
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-023",
+  "title": "User-Specific Error When Authenticating User Has No Email Address",
+  "description": "The auth module shall return a distinct error when a user with no email address attempts OTP delivery.",
+  "rationale": "A generic 'email not configured' error conflates a missing user email with a broken SMTP configuration; a user-specific error allows the affected user to contact their administrator with an actionable description.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015"]
+}

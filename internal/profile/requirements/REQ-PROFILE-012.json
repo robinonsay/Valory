@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-012",
+  "title": "Onboarding Completion Produces and Stores Profile Summary",
+  "description": "The profile module shall produce and persist a learning profile summary when onboarding completes.",
+  "rationale": "The entire onboarding interaction is worthless unless its conclusion writes a durable profile; the summarization step converts the conversation into an artifact that course-generation agents can consume on every subsequent course.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070"],
+  "implements": []
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-600",
+  "title": "Email Config Section in SystemConfigView",
+  "description": "The frontend module shall render a dedicated Email section in SystemConfigView containing all SMTP configuration fields.",
+  "rationale": "Grouping all email-related fields in a dedicated section reduces cognitive load for admins and prevents SMTP keys from being buried in the general configuration list.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-061"]
+}

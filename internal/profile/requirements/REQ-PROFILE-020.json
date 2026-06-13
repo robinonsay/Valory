@@ -1,0 +1,12 @@
+{
+  "id": "REQ-PROFILE-020",
+  "title": "Integration Test: Profile Summary Reaches Prompt Assembly",
+  "description": "The agent module shall include a student's stored profile summary in the assembled course-generation prompt.",
+  "rationale": "The profile injection chain spans the database, the profile loader, and the prompt-builder; an integration test is the only verification that proves the full path works end-to-end without a live AI call.",
+  "verification_method": "Test",
+  "uses": [
+    "REQ-SYS-069",
+    "REQ-PROFILE-008"
+  ],
+  "implements": []
+}

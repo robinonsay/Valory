@@ -58,15 +58,16 @@ func applyMigrations(ctx context.Context, p *pgxpool.Pool) error {
 	    ON CONFLICT (version) DO NOTHING;
 
 	CREATE TABLE IF NOT EXISTS users (
-	    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-	    username            TEXT        NOT NULL UNIQUE,
-	    password_hash       TEXT        NOT NULL,
-	    role                TEXT        NOT NULL CHECK (role IN ('student', 'admin')),
-	    is_active           BOOLEAN     NOT NULL DEFAULT TRUE,
-	    failed_login_count  INTEGER     NOT NULL DEFAULT 0,
-	    locked_until        TIMESTAMPTZ,
-	    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	    id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+	    username             TEXT        NOT NULL UNIQUE,
+	    password_hash        TEXT        NOT NULL,
+	    role                 TEXT        NOT NULL CHECK (role IN ('student', 'admin')),
+	    is_active            BOOLEAN     NOT NULL DEFAULT TRUE,
+	    must_change_password BOOLEAN     NOT NULL DEFAULT FALSE,
+	    failed_login_count   INTEGER     NOT NULL DEFAULT 0,
+	    locked_until         TIMESTAMPTZ,
+	    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_users_locked_until ON users (locked_until)

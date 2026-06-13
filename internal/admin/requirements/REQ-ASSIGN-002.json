@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-002",
+  "title": "Admin Assigns Students to Assignment",
+  "description": "The assignment module shall allow an admin to assign one or more students to an existing assignment.",
+  "rationale": "Course distribution must be admin-driven so a single assignment intent can be applied to a named cohort without requiring each student to initiate their own course.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

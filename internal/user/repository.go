@@ -23,14 +23,15 @@ var (
 )
 
 type UserRow struct {
-	ID           uuid.UUID
-	Username     string
-	Email        *string
-	PasswordHash string
-	Role         string
-	IsActive     bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                 uuid.UUID
+	Username           string
+	Email              *string
+	PasswordHash       string
+	Role               string
+	IsActive           bool
+	MustChangePassword bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type ResetTokenRow struct {
@@ -62,7 +63,7 @@ func (r *Repository) CreateUser(ctx context.Context, username string, email *str
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO users (username, email, password_hash, role)
 		 VALUES ($1, $2, $3, $4)
-		 RETURNING id, username, email, password_hash, role, is_active, created_at, updated_at`,
+		 RETURNING id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at`,
 		username, email, passwordHash, role).
 		Scan(
 			&user.ID,
@@ -71,6 +72,38 @@ func (r *Repository) CreateUser(ctx context.Context, username string, email *str
 			&user.PasswordHash,
 			&user.Role,
 			&user.IsActive,
+			&user.MustChangePassword,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+	if err != nil {
+		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
+			return UserRow{}, ErrDuplicateUsername
+		}
+		return UserRow{}, err
+	}
+	return user, nil
+}
+
+// CreateUserWithTempPassword inserts a user with the given password hash and
+// sets must_change_password=true atomically in the same INSERT.
+//
+// @{"req": ["REQ-USER-008", "REQ-USER-009"]}
+func (r *Repository) CreateUserWithTempPassword(ctx context.Context, username string, email *string, passwordHash, role string) (UserRow, error) {
+	var user UserRow
+	err := r.pool.QueryRow(ctx,
+		`INSERT INTO users (username, email, password_hash, role, must_change_password)
+		 VALUES ($1, $2, $3, $4, true)
+		 RETURNING id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at`,
+		username, email, passwordHash, role).
+		Scan(
+			&user.ID,
+			&user.Username,
+			&user.Email,
+			&user.PasswordHash,
+			&user.Role,
+			&user.IsActive,
+			&user.MustChangePassword,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -87,7 +120,7 @@ func (r *Repository) CreateUser(ctx context.Context, username string, email *str
 func (r *Repository) GetUserByID(ctx context.Context, id uuid.UUID) (UserRow, error) {
 	var user UserRow
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, username, email, password_hash, role, is_active, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at
 		 FROM users WHERE id = $1`,
 		id).
 		Scan(
@@ -97,6 +130,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id uuid.UUID) (UserRow, er
 			&user.PasswordHash,
 			&user.Role,
 			&user.IsActive,
+			&user.MustChangePassword,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -113,7 +147,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id uuid.UUID) (UserRow, er
 func (r *Repository) GetUserByUsername(ctx context.Context, username string) (UserRow, error) {
 	var user UserRow
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, username, email, password_hash, role, is_active, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at
 		 FROM users WHERE username = $1`,
 		username).
 		Scan(
@@ -123,6 +157,7 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (Us
 			&user.PasswordHash,
 			&user.Role,
 			&user.IsActive,
+			&user.MustChangePassword,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -165,7 +200,7 @@ func (r *Repository) UpdateUser(ctx context.Context, id uuid.UUID, fields Update
 
 	query := fmt.Sprintf(
 		`UPDATE users SET %s WHERE id = $%d
-		 RETURNING id, username, email, password_hash, role, is_active, created_at, updated_at`,
+		 RETURNING id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at`,
 		strings.Join(setClauses, ", "),
 		argIdx,
 	)
@@ -180,6 +215,7 @@ func (r *Repository) UpdateUser(ctx context.Context, id uuid.UUID, fields Update
 			&user.PasswordHash,
 			&user.Role,
 			&user.IsActive,
+			&user.MustChangePassword,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		)
@@ -377,7 +413,7 @@ func (r *Repository) ListUsers(ctx context.Context, role string, limit int) ([]U
 
 	if role != "" {
 		pgRows, err := r.pool.Query(ctx,
-			`SELECT id, username, email, password_hash, role, is_active, created_at, updated_at
+			`SELECT id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at
 			 FROM users
 			 WHERE role = $1
 			 ORDER BY created_at DESC
@@ -392,7 +428,7 @@ func (r *Repository) ListUsers(ctx context.Context, role string, limit int) ([]U
 			var u UserRow
 			if err := pgRows.Scan(
 				&u.ID, &u.Username, &u.Email, &u.PasswordHash,
-				&u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+				&u.Role, &u.IsActive, &u.MustChangePassword, &u.CreatedAt, &u.UpdatedAt,
 			); err != nil {
 				return nil, err
 			}
@@ -402,7 +438,7 @@ func (r *Repository) ListUsers(ctx context.Context, role string, limit int) ([]U
 	}
 
 	pgRows, err := r.pool.Query(ctx,
-		`SELECT id, username, email, password_hash, role, is_active, created_at, updated_at
+		`SELECT id, username, email, password_hash, role, is_active, must_change_password, created_at, updated_at
 		 FROM users
 		 ORDER BY created_at DESC
 		 LIMIT $1`,
@@ -416,7 +452,7 @@ func (r *Repository) ListUsers(ctx context.Context, role string, limit int) ([]U
 		var u UserRow
 		if err := pgRows.Scan(
 			&u.ID, &u.Username, &u.Email, &u.PasswordHash,
-			&u.Role, &u.IsActive, &u.CreatedAt, &u.UpdatedAt,
+			&u.Role, &u.IsActive, &u.MustChangePassword, &u.CreatedAt, &u.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -439,6 +475,57 @@ func (r *Repository) GetConsentVersion(ctx context.Context, studentID uuid.UUID)
 		return "", err
 	}
 	return version, nil
+}
+
+// SetTempPassword overwrites the user's password hash and sets
+// must_change_password=true in a single atomic UPDATE. Used by the resend-welcome
+// path to invalidate the previous temporary credential (REQ-USER-013).
+//
+// @{"req": ["REQ-USER-012", "REQ-USER-013"]}
+func (r *Repository) SetTempPassword(ctx context.Context, userID uuid.UUID, newHash string) error {
+	cmdTag, err := r.pool.Exec(ctx,
+		`UPDATE users SET password_hash = $1, must_change_password = true, updated_at = NOW()
+		 WHERE id = $2`,
+		newHash, userID)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+// ChangePassword atomically updates the user's password hash, clears
+// must_change_password, and deletes all sessions except the caller's current
+// session (identified by currentTokenHash). The three writes are in a single
+// transaction so no partial state is possible.
+//
+// @{"req": ["REQ-USER-015", "REQ-USER-016"]}
+func (r *Repository) ChangePassword(ctx context.Context, userID uuid.UUID, newHash, currentTokenHash string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET password_hash = $1, must_change_password = false, updated_at = NOW()
+		 WHERE id = $2`,
+		newHash, userID); err != nil {
+		return err
+	}
+
+	// Delete all OTHER sessions for this user. The current session (identified
+	// by its token_hash) is preserved so the caller stays authenticated and can
+	// proceed without having to log in again.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM sessions WHERE user_id = $1 AND token_hash != $2`,
+		userID, currentTokenHash); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 // @{"req": ["REQ-USER-007"]}

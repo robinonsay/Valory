@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-702",
+  "title": "Admin Assignments List View",
+  "description": "The frontend module shall render a paginated assignments list showing title, topic, level, student count, and creation date.",
+  "rationale": "Admins need a scannable overview of all assignments to locate, review, and manage them; without a list view there is no entry point into the assignment management workflow.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-067", "REQ-ASSIGN-001", "REQ-ASSIGN-006"]
+}

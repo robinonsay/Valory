@@ -1,0 +1,12 @@
+{
+  "id": "REQ-PROFILE-019",
+  "title": "RLS Isolation Test: Student Cannot Read Another Student's Profile",
+  "description": "The profile module shall deny a student read access to another student's learning profile.",
+  "rationale": "Tests using a superuser connection bypass FORCE ROW LEVEL SECURITY entirely; only a non-superuser probe can confirm the isolation policy is correctly evaluated, which is required before the SQE gate passes.",
+  "verification_method": "Test",
+  "uses": [
+    "REQ-SYS-069",
+    "REQ-PROFILE-004"
+  ],
+  "implements": []
+}

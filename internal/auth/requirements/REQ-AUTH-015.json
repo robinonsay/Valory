@@ -1,0 +1,9 @@
+{
+  "id": "REQ-AUTH-015",
+  "title": "Two-Phase Login: Password Success Yields Pending-2FA State",
+  "description": "The auth module shall return a pending-2FA token, not a session, when 2FA is enabled and the password is correct.",
+  "rationale": "A single-phase login grants full access on password alone; a second factor is meaningless unless the interim state is explicitly not authenticated and cannot access protected routes.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065"],
+  "implements": ["REQ-AUTH-016", "REQ-AUTH-017", "REQ-AUTH-018", "REQ-AUTH-019", "REQ-AUTH-020", "REQ-AUTH-021", "REQ-AUTH-022", "REQ-AUTH-023", "REQ-AUTH-024", "REQ-AUTH-025", "REQ-AUTH-026", "REQ-FEAUTH-200", "REQ-FEAUTH-201", "REQ-FEAUTH-202"]
+}

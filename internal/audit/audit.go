@@ -30,6 +30,10 @@ var redactedKeys = map[string]bool{
 	"token_hash":        true,
 	"reset_token":       true,
 	"smtp_password":     true,
+	// otp: defense-in-depth — no OTP value should ever appear in audit payloads,
+	// but this ensures accidental inclusion is caught at the redaction layer.
+	"otp":      true,
+	"otp_hash": true,
 }
 
 // Entry is the data the caller provides when appending a new audit record.
@@ -37,9 +41,9 @@ var redactedKeys = map[string]bool{
 // @{"req": ["REQ-AUDIT-001"]}
 type Entry struct {
 	AdminID    uuid.UUID
-	Action     string     // e.g. "user.create", "user.modify", "user.deactivate", "user.activate", "user.delete", "config.change"
-	TargetType string     // e.g. "user", "system_config"
-	TargetID   *uuid.UUID // nil for config.change actions with no single target row
+	Action     string         // e.g. "user.create", "user.modify", "user.deactivate", "user.activate", "user.delete", "config.change"
+	TargetType string         // e.g. "user", "system_config"
+	TargetID   *uuid.UUID     // nil for config.change actions with no single target row
 	Payload    map[string]any // changed fields (new values only); sensitive keys auto-redacted
 }
 
@@ -185,9 +189,9 @@ func VerifyChain(rows []AuditRow) (valid bool, firstBrokenID int64) {
 //
 // @{"req": ["REQ-AUDIT-002"]}
 type ChainVerifier struct {
-	prevHash  string
-	broken    bool
-	brokenID  int64
+	prevHash string
+	broken   bool
+	brokenID int64
 }
 
 // NewChainVerifier returns a verifier initialised at the genesis hash.

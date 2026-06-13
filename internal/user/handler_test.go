@@ -40,12 +40,12 @@ func loginAsUser(ctx context.Context, t *testing.T, username string, password st
 	authRepo := authpkg.NewRepository(pool)
 	authSvc := authpkg.NewService(authRepo, 15*time.Minute, 24*time.Hour)
 
-	rawToken, _, err := authSvc.Login(ctx, username, password)
+	result, err := authSvc.Login(ctx, username, password)
 	if err != nil {
 		t.Fatalf("failed to login: %v", err)
 	}
 
-	return rawToken
+	return result.RawToken
 }
 
 type noOpTerminator struct{}

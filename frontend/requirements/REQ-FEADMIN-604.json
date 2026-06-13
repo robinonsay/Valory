@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-604",
+  "title": "Plain-Language Explanations for Email Config Keys",
+  "description": "The frontend module shall display a plain-language explanation for each email configuration key when the explanation toggle is active.",
+  "rationale": "SMTP configuration terminology (STARTTLS, implicit TLS, AUTH, envelope sender) is not self-evident to non-technical operators; explanations reduce misconfiguration and support burden.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-061", "REQ-FEADMIN-600"]
+}

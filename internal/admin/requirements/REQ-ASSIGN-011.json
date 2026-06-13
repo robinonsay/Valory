@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-011",
+  "title": "Batch Assignment Partial Success",
+  "description": "The assignment module shall report per-student errors without blocking successful assignments in the same batch.",
+  "rationale": "A single student conflict or generation failure must not roll back successfully created course instances for other students; partial-success prevents an edge case from destroying a full class assignment.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

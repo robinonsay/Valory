@@ -36,3 +36,13 @@ go.work.sum
 /server
 .gomodcache
 node_modules/
+
+# macOS Finder metadata
+.DS_Store
+
+# Logs
+*.log
+
+# Claude Code local state — agents/ and commands/ are shared and stay tracked
+.claude/worktrees/
+.claude/settings.local.json

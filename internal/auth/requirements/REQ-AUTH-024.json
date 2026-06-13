@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AUTH-024",
+  "title": "OTP Challenge-Verify Happy Path Automated Test",
+  "description": "The auth module shall pass an automated test verifying a correct OTP after a 2FA challenge issues a full session.",
+  "rationale": "The two-phase login path is the critical flow for all users when 2FA is enabled; an automated test is required to prevent regressions in the password-OK to OTP-verify to session-issued sequence.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015", "REQ-AUTH-016"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-001",
+  "title": "Mailer Interface",
+  "description": "The email module shall expose a uniform interface for sending a message to a single recipient.",
+  "rationale": "A stable interface decouples call sites (password reset, welcome email, 2FA OTP) from the transport implementation, allowing each to evolve independently.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-061"]
+}

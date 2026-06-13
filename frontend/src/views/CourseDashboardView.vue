@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FECOURSE-001", "REQ-FECOURSE-002", "REQ-FECOURSE-003", "REQ-FECOURSE-010", "REQ-FECOURSE-011", "REQ-FECOURSE-012", "REQ-FECOURSE-300", "REQ-FECOURSE-301"]}
+// @{"req": ["REQ-FECOURSE-001", "REQ-FECOURSE-002", "REQ-FECOURSE-003", "REQ-FECOURSE-010", "REQ-FECOURSE-011", "REQ-FECOURSE-012", "REQ-FECOURSE-300", "REQ-FECOURSE-301", "REQ-FECOURSE-602"]}
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
@@ -23,10 +23,12 @@ onMounted(async () => {
   }
 })
 
+// @{"req": ["REQ-FECOURSE-602"]}
 const navigateToCourse = (courseId: string, status: string): void => {
   const routeMap: Record<string, string> = {
     'intake': `/courses/${courseId}/intake`,
     'syllabus_draft': `/courses/${courseId}/syllabus`,
+    'syllabus_approved': `/courses/${courseId}/generating`,
     'generating': `/courses/${courseId}/generating`,
     'active': `/courses/${courseId}/hub`,
     'archived': `/courses/${courseId}/hub`,

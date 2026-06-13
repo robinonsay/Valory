@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/valory/valory/internal/audit"
 )
 
 // @{"verifies": ["REQ-AUTH-001", "REQ-AUTH-002"]}
@@ -286,7 +287,7 @@ func TestLogout_ValidToken_Returns204(t *testing.T) {
 
 	svc := newTestService(15*time.Minute, 24*time.Hour)
 
-	rawToken, _, err := svc.Login(ctx, "logout_valid", "pass")
+	rawToken, err := loginGetRawToken(t, svc, ctx, "logout_valid", "pass")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -360,7 +361,7 @@ func TestLogin_LockedAccount_Returns401WithGenericMessage(t *testing.T) {
 
 	// Trigger 5 consecutive failed logins to lock the account.
 	for i := 0; i < 5; i++ {
-		_, _, err := svc.Login(ctx, "locked_user", "wrong")
+		_, err := svc.Login(ctx, "locked_user", "wrong")
 		if err == nil {
 			t.Fatalf("expected error on failed login attempt %d", i+1)
 		}
@@ -411,6 +412,56 @@ func TestLogout_NonBearerScheme_Returns401(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+// TestLogin_OTPSendFailure_Returns503 asserts that when 2FA is enabled and the
+// OTP email delivery fails (SMTP unreachable), the login handler returns 503
+// rather than 500, so the client knows the failure is transient and can retry
+// via the resend endpoint (REQ-AUTH-015).
+//
+// @{"verifies": ["REQ-AUTH-015"]}
+func TestLogin_OTPSendFailure_Returns503(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	createTestUserWithEmail(ctx, t, "otp_send_fail_user", "pass", "student", "fail@example.com")
+
+	repo := NewRepository(pool)
+	auditR := audit.NewRepository(pool)
+	// failMailer always errors on Send — simulates SMTP unreachable.
+	tf := NewTwoFactorService(repo, auditR, pool,
+		&staticConfig{vals: map[string]string{"two_factor_enabled": "true"}},
+		&failMailer{},
+	)
+	svc := NewService(repo, 15*time.Minute, 24*time.Hour)
+	svc.SetTwoFactor(tf, &staticConfig{vals: map[string]string{"two_factor_enabled": "true"}})
+
+	handler := NewHandler(svc)
+	r := chi.NewRouter()
+	handler.Routes(r)
+
+	body, _ := json.Marshal(map[string]string{
+		"username": "otp_send_fail_user",
+		"password": "pass",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 on OTP send failure, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// The error message must not leak any OTP or SMTP internals.
+	if resp["error"] == "" {
+		t.Error("expected non-empty error message in 503 response")
 	}
 }
 

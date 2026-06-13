@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	authpkg "github.com/valory/valory/internal/auth"
 	"github.com/valory/valory/internal/audit"
+	authpkg "github.com/valory/valory/internal/auth"
 )
 
 var handlerTestPool *pgxpool.Pool
@@ -190,15 +190,34 @@ func applyHandlerMigrations(ctx context.Context, p *pgxpool.Pool) error {
 	    ('account_lockout_seconds',            '900'),
 	    ('max_upload_bytes',                   '10485760'),
 	    ('content_generation_timeout_seconds', '300'),
+	    ('professor_max_tokens',               '16384'),
 	    ('audit_retention_days',               '365'),
 	    ('notification_retention_days',        '90'),
 	    ('consent_version',                    '1.0'),
-	    ('anthropic_base_url',                 '')
+	    ('anthropic_base_url',                 ''),
+	    ('smtp_host',                          ''),
+	    ('smtp_port',                          '587'),
+	    ('smtp_from',                          ''),
+	    ('smtp_username',                      ''),
+	    ('smtp_encryption',                    'starttls')
 	ON CONFLICT (key) DO NOTHING;
 
 	COMMIT;
 	`
 	if _, err := p.Exec(ctx, migration002); err != nil {
+		return err
+	}
+
+	// migration016: email_test_send_attempts rate-limit table (Sprint 19).
+	migration016 := `
+	CREATE TABLE IF NOT EXISTS email_test_send_attempts (
+	    admin_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	    attempted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	);
+	CREATE INDEX IF NOT EXISTS email_test_attempts_idx
+	    ON email_test_send_attempts (admin_id, attempted_at);
+	`
+	if _, err := p.Exec(ctx, migration016); err != nil {
 		return err
 	}
 
@@ -226,30 +245,39 @@ func truncateHandlerTables(ctx context.Context, p *pgxpool.Pool) error {
 	statements := []string{
 		`TRUNCATE TABLE audit_log CASCADE`,
 		`TRUNCATE TABLE managed_secrets CASCADE`,
+		`TRUNCATE TABLE email_test_send_attempts CASCADE`,
 		`TRUNCATE TABLE student_consent CASCADE`,
 		`TRUNCATE TABLE password_reset_attempts CASCADE`,
 		`TRUNCATE TABLE password_reset_tokens CASCADE`,
 		`TRUNCATE TABLE login_attempts CASCADE`,
 		`TRUNCATE TABLE sessions CASCADE`,
 		`TRUNCATE TABLE users CASCADE`,
-		`UPDATE system_config SET value = CASE key
-			WHEN 'agent_retry_limit'                  THEN '3'
-			WHEN 'correction_loop_max_iterations'     THEN '5'
-			WHEN 'per_student_token_limit'            THEN '500000'
-			WHEN 'late_penalty_rate'                  THEN '0.05'
-			WHEN 'homework_weight'                    THEN '0.7'
-			WHEN 'project_weight'                     THEN '0.3'
-			WHEN 'session_inactivity_seconds'         THEN '1800'
-			WHEN 'account_lockout_seconds'            THEN '900'
-			WHEN 'max_upload_bytes'                   THEN '10485760'
-			WHEN 'content_generation_timeout_seconds' THEN '300'
-			WHEN 'audit_retention_days'               THEN '365'
-			WHEN 'notification_retention_days'        THEN '90'
-			WHEN 'consent_version'                    THEN '1.0'
-			WHEN 'anthropic_base_url'                 THEN ''
-			ELSE value END,
-		updated_by = NULL,
-		updated_at = now()`,
+		// Upsert rather than UPDATE: TRUNCATE users CASCADE above also empties
+		// system_config (its updated_by FK references users), so the canonical
+		// rows must be re-inserted, not merely reset in place.
+		`INSERT INTO system_config (key, value) VALUES
+			('agent_retry_limit',                  '3'),
+			('correction_loop_max_iterations',     '5'),
+			('per_student_token_limit',            '500000'),
+			('late_penalty_rate',                  '0.05'),
+			('homework_weight',                    '0.7'),
+			('project_weight',                     '0.3'),
+			('session_inactivity_seconds',         '1800'),
+			('account_lockout_seconds',            '900'),
+			('max_upload_bytes',                   '10485760'),
+			('content_generation_timeout_seconds', '300'),
+			('professor_max_tokens',               '16384'),
+			('audit_retention_days',               '365'),
+			('notification_retention_days',        '90'),
+			('consent_version',                    '1.0'),
+			('anthropic_base_url',                 ''),
+			('smtp_host',                          ''),
+			('smtp_port',                          '587'),
+			('smtp_from',                          ''),
+			('smtp_username',                      ''),
+			('smtp_encryption',                    'starttls')
+		ON CONFLICT (key) DO UPDATE
+			SET value = EXCLUDED.value, updated_by = NULL, updated_at = now()`,
 	}
 	for _, stmt := range statements {
 		if _, err := p.Exec(ctx, stmt); err != nil {
@@ -292,11 +320,11 @@ func loginAsAdmin(ctx context.Context, t *testing.T) (uuid.UUID, string) {
 
 	authRepo := authpkg.NewRepository(handlerTestPool)
 	authSvc := authpkg.NewService(authRepo, 15*time.Minute, 24*time.Hour)
-	rawToken, _, err := authSvc.Login(ctx, username, password)
+	result, err := authSvc.Login(ctx, username, password)
 	if err != nil {
 		t.Fatalf("loginAsAdmin login: %v", err)
 	}
-	return adminID, rawToken
+	return adminID, result.RawToken
 }
 
 // loginAsStudent creates a student user and returns a raw auth token.
@@ -317,14 +345,15 @@ func loginAsStudent(ctx context.Context, t *testing.T) string {
 
 	authRepo := authpkg.NewRepository(handlerTestPool)
 	authSvc := authpkg.NewService(authRepo, 15*time.Minute, 24*time.Hour)
-	rawToken, _, err := authSvc.Login(ctx, username, password)
+	result, err := authSvc.Login(ctx, username, password)
 	if err != nil {
 		t.Fatalf("loginAsStudent login: %v", err)
 	}
-	return rawToken
+	return result.RawToken
 }
 
 // newTestHandler returns a fully-wired AdminConfigHandler for handler tests.
+// A nil mailer is passed — existing tests do not exercise the email/test endpoint.
 func newTestHandler(t *testing.T) *AdminConfigHandler {
 	t.Helper()
 	cfg := NewConfigService(handlerTestPool)
@@ -332,7 +361,7 @@ func newTestHandler(t *testing.T) *AdminConfigHandler {
 	if err := cfg.Load(ctx); err != nil {
 		t.Fatalf("newTestHandler Load: %v", err)
 	}
-	return NewConfigHandler(cfg, audit.NewRepository(handlerTestPool), handlerTestPool)
+	return NewConfigHandler(cfg, audit.NewRepository(handlerTestPool), handlerTestPool, nil)
 }
 
 // makeConfigRequest sends a request through a chi router wired with auth
@@ -415,8 +444,8 @@ func makeConfigRequestNoRole(t *testing.T, method, path string, body interface{}
 	return rr
 }
 
-// @{"verifies": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-ADMIN-009"]}
-func TestGetConfig_ReturnsAll14Keys(t *testing.T) {
+// @{"verifies": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-ADMIN-009", "REQ-ADMIN-010", "REQ-EMAIL-001"]}
+func TestGetConfig_ReturnsAll20Keys(t *testing.T) {
 	if handlerTestPool == nil {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
@@ -448,10 +477,17 @@ func TestGetConfig_ReturnsAll14Keys(t *testing.T) {
 		"account_lockout_seconds",
 		"max_upload_bytes",
 		"content_generation_timeout_seconds",
+		"professor_max_tokens",
 		"audit_retention_days",
 		"notification_retention_days",
 		"consent_version",
 		"anthropic_base_url",
+		// Sprint 19: SMTP config keys (REQ-EMAIL-001..011)
+		"smtp_host",
+		"smtp_port",
+		"smtp_from",
+		"smtp_username",
+		"smtp_encryption",
 	}
 
 	if len(resp.Config) != len(expectedKeys) {
@@ -560,6 +596,15 @@ func TestPatchConfig_UnknownKeyReturns400(t *testing.T) {
 	ctx := context.Background()
 	_, token := loginAsAdmin(ctx, t)
 
+	// Snapshot the row before the rejected PATCH: earlier tests may have
+	// legitimately written it, so assert "unchanged", not "never touched".
+	var beforeBy *uuid.UUID
+	var beforeAt time.Time
+	if err := handlerTestPool.QueryRow(ctx,
+		`SELECT updated_by, updated_at FROM system_config WHERE key = 'agent_retry_limit'`).Scan(&beforeBy, &beforeAt); err != nil {
+		t.Fatalf("db query (before): %v", err)
+	}
+
 	body := map[string]interface{}{
 		"config": map[string]string{
 			"nonexistent_key": "42",
@@ -572,14 +617,18 @@ func TestPatchConfig_UnknownKeyReturns400(t *testing.T) {
 		t.Errorf("expected 400, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// Verify no DB write occurred.
-	var updatedBy *uuid.UUID
+	// Verify the rejected PATCH wrote nothing.
+	var afterBy *uuid.UUID
+	var afterAt time.Time
 	if err := handlerTestPool.QueryRow(ctx,
-		`SELECT updated_by FROM system_config WHERE key = 'agent_retry_limit'`).Scan(&updatedBy); err != nil {
-		t.Fatalf("db query: %v", err)
+		`SELECT updated_by, updated_at FROM system_config WHERE key = 'agent_retry_limit'`).Scan(&afterBy, &afterAt); err != nil {
+		t.Fatalf("db query (after): %v", err)
 	}
-	if updatedBy != nil {
-		t.Error("expected no DB write, but updated_by is set")
+	if !afterAt.Equal(beforeAt) {
+		t.Errorf("expected no DB write, but updated_at changed: %v -> %v", beforeAt, afterAt)
+	}
+	if (beforeBy == nil) != (afterBy == nil) || (beforeBy != nil && afterBy != nil && *beforeBy != *afterBy) {
+		t.Error("expected no DB write, but updated_by changed")
 	}
 }
 
@@ -994,5 +1043,508 @@ func TestPatchConfig_AnthropicBaseURL_JavascriptSchemeReturns422(t *testing.T) {
 
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("expected 422 (javascript: scheme rejected), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// professor_max_tokens validation tests (REQ-ADMIN-010)
+// ---------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-ADMIN-010"]}
+func TestPatchConfig_ProfessorMaxTokens_ValidValueIsAccepted(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"professor_max_tokens": "8192",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 (valid professor_max_tokens), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-010"]}
+func TestPatchConfig_ProfessorMaxTokens_BelowMinReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	// 1023 is one below the floor: anything lower cannot fit even a minimal
+	// section and guarantees mid-word truncation that fails review.
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"professor_max_tokens": "1023",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 (professor_max_tokens < 1024), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-010"]}
+func TestPatchConfig_ProfessorMaxTokens_AboveMaxReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	// 16385 is one above the ceiling: non-streaming calls risk SDK HTTP
+	// timeouts beyond ~16K output tokens.
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"professor_max_tokens": "16385",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 (professor_max_tokens > 16384), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-ADMIN-010"]}
+func TestPatchConfig_ProfessorMaxTokens_NonIntegerReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"professor_max_tokens": "lots",
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 (non-integer professor_max_tokens), got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SMTP config key validation tests (REQ-EMAIL-001..011)
+// ---------------------------------------------------------------------------
+
+// @{"verifies": ["REQ-EMAIL-002"]}
+func TestPatchConfig_SmtpEncryption_ValidValuesAccepted(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	for _, enc := range []string{"none", "starttls", "tls"} {
+		body := map[string]interface{}{
+			"config": map[string]string{"smtp_encryption": enc},
+		}
+		rr := makeConfigRequest(t, "PATCH", "/", body, token)
+		if rr.Code != http.StatusOK {
+			t.Errorf("smtp_encryption=%q: expected 200, got %d: %s", enc, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-002"]}
+func TestPatchConfig_SmtpEncryption_InvalidReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	body := map[string]interface{}{
+		"config": map[string]string{"smtp_encryption": "ssl"},
+	}
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 for invalid smtp_encryption, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-001"]}
+func TestPatchConfig_SmtpPort_ValidRange(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	for _, port := range []string{"25", "587", "465", "1", "65535"} {
+		body := map[string]interface{}{
+			"config": map[string]string{"smtp_port": port},
+		}
+		rr := makeConfigRequest(t, "PATCH", "/", body, token)
+		if rr.Code != http.StatusOK {
+			t.Errorf("smtp_port=%q: expected 200, got %d: %s", port, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-001"]}
+func TestPatchConfig_SmtpPort_OutOfRangeReturns422(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	for _, port := range []string{"0", "65536", "99999", "abc"} {
+		body := map[string]interface{}{
+			"config": map[string]string{"smtp_port": port},
+		}
+		rr := makeConfigRequest(t, "PATCH", "/", body, token)
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Errorf("smtp_port=%q: expected 422, got %d: %s", port, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-006"]}
+func TestPatchConfig_SmtpHost_EmptyIsValid(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	// Empty smtp_host is explicitly valid — it means "not configured".
+	body := map[string]interface{}{
+		"config": map[string]string{"smtp_host": ""},
+	}
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+	if rr.Code != http.StatusOK {
+		t.Errorf("empty smtp_host: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test-send endpoint tests (REQ-EMAIL-008, REQ-EMAIL-009)
+// ---------------------------------------------------------------------------
+
+// mockMailerForTest implements email.Mailer for handler tests.
+// Defined here (not in a _test package) so it's available to the test helpers
+// in this file without a separate test package.
+type mockMailerForTest struct {
+	sendErr    error
+	configured bool
+}
+
+func (m *mockMailerForTest) Send(_ context.Context, _, _, _ string) error {
+	return m.sendErr
+}
+func (m *mockMailerForTest) IsConfigured() bool { return m.configured }
+
+// makeTestSendRequest sends a POST /email/test request through the full
+// admin-auth router with the given mailer wired into the handler.
+func makeTestSendRequest(t *testing.T, body interface{}, bearerToken string, mailer *mockMailerForTest) *httptest.ResponseRecorder {
+	t.Helper()
+
+	cfg := NewConfigService(handlerTestPool)
+	ctx := context.Background()
+	if err := cfg.Load(ctx); err != nil {
+		t.Fatalf("makeTestSendRequest Load: %v", err)
+	}
+	handler := NewConfigHandler(cfg, audit.NewRepository(handlerTestPool), handlerTestPool, mailer)
+
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
+			t.Fatalf("makeTestSendRequest marshal: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/email/test", bytes.NewReader(bodyBytes))
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	rr := httptest.NewRecorder()
+
+	authMiddleware := authpkg.NewAuthMiddleware(
+		authpkg.NewRepository(handlerTestPool),
+		handlerTestPool,
+		24*time.Hour,
+		nil,
+	)
+
+	router := chi.NewRouter()
+	router.Use(authMiddleware)
+	router.Use(authpkg.RequireRole("admin"))
+	handler.Routes(router)
+
+	router.ServeHTTP(rr, req)
+	return rr
+}
+
+// @{"verifies": ["REQ-EMAIL-008"]}
+func TestTestEmailSend_NotConfiguredReturns503(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	m := &mockMailerForTest{configured: false}
+	body := map[string]interface{}{"to": "admin@example.com"}
+	rr := makeTestSendRequest(t, body, token, m)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["ok"] != false {
+		t.Errorf("expected ok=false, got %v", resp["ok"])
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-008"]}
+func TestTestEmailSend_SuccessReturns200(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	m := &mockMailerForTest{configured: true, sendErr: nil}
+	body := map[string]interface{}{"to": "admin@example.com"}
+	rr := makeTestSendRequest(t, body, token, m)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["ok"] != true {
+		t.Errorf("expected ok=true, got %v", resp["ok"])
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-008"]}
+func TestTestEmailSend_MissingToReturns400(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	m := &mockMailerForTest{configured: true}
+	body := map[string]interface{}{"to": ""}
+	rr := makeTestSendRequest(t, body, token, m)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-009"]}
+func TestTestEmailSend_RateLimitReturns429(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	adminID, token := loginAsAdmin(ctx, t)
+
+	// Clean up any stale attempts for this admin from other tests.
+	if _, err := handlerTestPool.Exec(ctx,
+		`DELETE FROM email_test_send_attempts WHERE admin_id = $1`, adminID,
+	); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	m := &mockMailerForTest{configured: true}
+	body := map[string]interface{}{"to": "admin@example.com"}
+
+	// First 5 must succeed.
+	for i := 0; i < 5; i++ {
+		rr := makeTestSendRequest(t, body, token, m)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("attempt %d: expected 200, got %d: %s", i+1, rr.Code, rr.Body.String())
+		}
+	}
+
+	// 6th must be rate-limited.
+	rr := makeTestSendRequest(t, body, token, m)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Errorf("6th attempt: expected 429, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// @{"verifies": ["REQ-EMAIL-010"]}
+func TestTestEmailSend_AuditEventRecorded(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	adminID, token := loginAsAdmin(ctx, t)
+
+	// Clean up rate-limit table so this admin hasn't hit the limit.
+	if _, err := handlerTestPool.Exec(ctx,
+		`DELETE FROM email_test_send_attempts WHERE admin_id = $1`, adminID,
+	); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	var before int
+	if err := handlerTestPool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log WHERE action = 'email.test_send'`).Scan(&before); err != nil {
+		t.Fatalf("count before: %v", err)
+	}
+
+	m := &mockMailerForTest{configured: true}
+	body := map[string]interface{}{"to": "audit-check@example.com"}
+	rr := makeTestSendRequest(t, body, token, m)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var after int
+	if err := handlerTestPool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log WHERE action = 'email.test_send'`).Scan(&after); err != nil {
+		t.Fatalf("count after: %v", err)
+	}
+	if after != before+1 {
+		t.Errorf("expected %d audit entries, got %d", before+1, after)
+	}
+
+	// Verify the payload contains the to-address and no secret value.
+	var payloadJSON string
+	if err := handlerTestPool.QueryRow(ctx,
+		`SELECT payload::text FROM audit_log WHERE action = 'email.test_send' ORDER BY id DESC LIMIT 1`,
+	).Scan(&payloadJSON); err != nil {
+		t.Fatalf("payload query: %v", err)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		t.Fatalf("payload unmarshal: %v", err)
+	}
+	if payload["to"] != "audit-check@example.com" {
+		t.Errorf("expected to in audit payload, got %v", payload["to"])
+	}
+	if _, hasPassword := payload["smtp_password"]; hasPassword {
+		t.Error("audit payload must not contain smtp_password")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// email_test_send_verified_at write-protection tests (security, FIX-1)
+// ---------------------------------------------------------------------------
+
+// TestPatchConfig_EmailTestSendVerifiedAt_RejectedByPATCH verifies that the
+// PATCH endpoint no longer accepts email_test_send_verified_at, so an admin
+// cannot forge the test-send prerequisite gate (resolved-decision-3).
+//
+// @{"verifies": ["REQ-AUTH-018"]}
+func TestPatchConfig_EmailTestSendVerifiedAt_RejectedByPATCH(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	_, token := loginAsAdmin(ctx, t)
+
+	// Attempt to set a valid RFC 3339 timestamp via PATCH — must be rejected as
+	// an unknown key now that email_test_send_verified_at is removed from allowedKeys.
+	body := map[string]interface{}{
+		"config": map[string]string{
+			"email_test_send_verified_at": time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	rr := makeConfigRequest(t, "PATCH", "/", body, token)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 (unknown key), got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	errMsg, _ := resp["error"].(string)
+	if errMsg == "" {
+		t.Errorf("expected error message in response, got: %v", resp)
+	}
+}
+
+// TestTestEmailSend_SetsVerifiedAtOnSuccess verifies that the test-send success
+// path (the only allowed write mechanism) persists email_test_send_verified_at
+// in the DB with a valid RFC 3339 timestamp.
+//
+// @{"verifies": ["REQ-AUTH-018"]}
+func TestTestEmailSend_SetsVerifiedAtOnSuccess(t *testing.T) {
+	if handlerTestPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	adminID, token := loginAsAdmin(ctx, t)
+
+	// Clean up rate-limit entries so this admin has not hit the limit.
+	if _, err := handlerTestPool.Exec(ctx,
+		`DELETE FROM email_test_send_attempts WHERE admin_id = $1`, adminID,
+	); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+
+	// Ensure the marker is clear before the test.
+	if _, err := handlerTestPool.Exec(ctx,
+		`INSERT INTO system_config (key, value) VALUES ('email_test_send_verified_at', '')
+		 ON CONFLICT (key) DO UPDATE SET value = '', updated_at = NOW()`,
+	); err != nil {
+		t.Fatalf("clear marker: %v", err)
+	}
+
+	m := &mockMailerForTest{configured: true, sendErr: nil}
+	body := map[string]interface{}{"to": "verify-marker@example.com"}
+	rr := makeTestSendRequest(t, body, token, m)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// The marker must now be a non-empty RFC 3339 timestamp written only by the
+	// test-send success path — never by the PATCH endpoint.
+	var markerVal string
+	if err := handlerTestPool.QueryRow(ctx,
+		`SELECT value FROM system_config WHERE key = 'email_test_send_verified_at'`,
+	).Scan(&markerVal); err != nil {
+		t.Fatalf("query marker: %v", err)
+	}
+	if markerVal == "" {
+		t.Fatal("expected email_test_send_verified_at to be set after successful test-send")
+	}
+	if _, parseErr := time.Parse(time.RFC3339, markerVal); parseErr != nil {
+		t.Errorf("email_test_send_verified_at is not valid RFC 3339: %q", markerVal)
 	}
 }

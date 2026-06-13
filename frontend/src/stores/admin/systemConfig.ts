@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-500", "REQ-FEADMIN-501", "REQ-FEADMIN-502", "REQ-FEADMIN-503", "REQ-FEADMIN-504", "REQ-FEADMIN-510", "REQ-FEADMIN-511", "REQ-FEADMIN-512", "REQ-FEADMIN-513", "REQ-FEADMIN-514", "REQ-FEADMIN-515", "REQ-FEADMIN-516"]}
+// @{"req": ["REQ-FEADMIN-500", "REQ-FEADMIN-501", "REQ-FEADMIN-502", "REQ-FEADMIN-503", "REQ-FEADMIN-504", "REQ-FEADMIN-510", "REQ-FEADMIN-511", "REQ-FEADMIN-512", "REQ-FEADMIN-513", "REQ-FEADMIN-514", "REQ-FEADMIN-515", "REQ-FEADMIN-516", "REQ-FEADMIN-600", "REQ-FEADMIN-601", "REQ-FEADMIN-602", "REQ-FEADMIN-603", "REQ-FEADMIN-604"]}
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -50,6 +50,9 @@ export const EXPLANATIONS: Record<string, string> = {
   'content_generation_timeout_seconds':
     'Maximum time for the full section-generation pipeline per course. Default: 300 (5 minutes). Minimum: 1. If generation does not complete within this window, the run is cancelled and the student is notified.',
 
+  'professor_max_tokens':
+    'Maximum output tokens the Professor agent may generate per lesson-section API call. Default: 16384. Valid range: 1024 to 16384. Values too low for the prompted section length (200-500 lines of AsciiDoc) cause the model to stop mid-word; the run now fails fast with a clear error instead of looping through doomed reviews. The ceiling exists because generation calls are non-streaming and larger outputs risk HTTP timeouts. Changes take effect on the next generation run.',
+
   'audit_retention_days':
     'No automated purge is currently implemented. This key is stored and validated but no background worker reads it to delete aged audit entries. The audit log is append-only by design (the `valory_app` DB role holds no DELETE privilege on `audit_log`). This key is a placeholder for a future retention worker. Default: 365. Minimum: 1.',
 
@@ -67,6 +70,9 @@ export const EXPLANATIONS: Record<string, string> = {
 
   'brave_api_key':
     'The Brave Search API key used to ground lesson content in current internet search results. If absent (neither managed nor env var), web search grounding is silently skipped and the Professor generates content without internet context. Changes take effect within 30 seconds without a restart.',
+
+  'smtp_password':
+    'The SMTP password or app-specific password for authentication. If set here, this value takes precedence over the SMTP_PASSWORD environment variable. Leave the username empty if your relay does not require authentication. For Gmail: generate an App Password in your Google Account security settings — do NOT use your Gmail account password here. Changes take effect immediately on the next email send.',
 }
 
 export const useSystemConfigStore = defineStore('systemConfig', () => {

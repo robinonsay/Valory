@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-015",
+  "title": "Student Can Skip Onboarding",
+  "description": "The profile module shall allow a student to dismiss onboarding without completing the questionnaire.",
+  "rationale": "A learning profile is a personalization enhancement, not a prerequisite; forcing completion would block students from using the platform immediately and conflict with the principle that the system is fully usable without a profile.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070"],
+  "implements": []
+}

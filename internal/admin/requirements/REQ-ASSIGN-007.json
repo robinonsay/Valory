@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-007",
+  "title": "Admin Unassigns Student Before Generation Starts",
+  "description": "The assignment module shall permit student unassignment only when the course status is syllabus-approved.",
+  "rationale": "Deleting a course row mid-generation or after completion would corrupt ongoing work and destroy student data; restricting unassignment to the pre-generation window keeps the guard simple and safe.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

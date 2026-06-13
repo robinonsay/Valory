@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FEPROFILE-004",
+  "title": "Router Guard Redirects Unprompted Students to Onboarding Once",
+  "description": "The frontend module shall redirect a student to the onboarding route exactly once when onboarding has not yet been offered.",
+  "rationale": "The router guard is the enforcement point for the one-time nudge; without it students would never encounter the onboarding flow unless they discovered the settings page, negating the first-login personalization intent.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070", "REQ-PROFILE-014"],
+  "implements": []
+}

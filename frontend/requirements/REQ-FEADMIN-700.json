@@ -1,0 +1,9 @@
+{
+  "id": "REQ-FEADMIN-700",
+  "title": "Admin 2FA Toggle Disabled with Prerequisite Explanation Until Prerequisites Met",
+  "description": "The frontend module shall render the 2FA toggle as disabled with a prerequisite explanation when any enabling prerequisite is unmet.",
+  "rationale": "An admin who enables 2FA without meeting prerequisites will lock all users out; surfacing the unmet prerequisites inline makes the toggle inaccessible until the system is provably ready to deliver OTPs.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-018", "REQ-AUTH-021"],
+  "implements": ["REQ-FEADMIN-701"]
+}

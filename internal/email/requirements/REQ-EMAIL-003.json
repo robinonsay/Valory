@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-003",
+  "title": "Optional SMTP Authentication",
+  "description": "The email module shall skip SMTP authentication when the configured username is empty.",
+  "rationale": "Loopback relays (postfix, exim on localhost) do not require credentials; mandating AUTH prevents these zero-configuration deployments from sending email.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-061"]
+}

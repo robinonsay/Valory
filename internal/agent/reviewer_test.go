@@ -24,10 +24,12 @@ func makeReviewResponse(jsonBody string) *http.Response {
 		"stop_reason": "end_turn",
 		"usage": {"input_tokens": 50, "output_tokens": 20}
 	}`
+	// The SDK refuses to deserialise typed responses without a JSON
+	// content type, so the mock must set the header a real server would.
 	return &http.Response{
 		StatusCode: 200,
 		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     make(http.Header),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
 	}
 }
 
@@ -96,7 +98,8 @@ func TestReviewSection_Approved_SetsCitationVerifiedTrue(t *testing.T) {
 		t.Fatalf("insert lesson_content: %v", err)
 	}
 
-	approvedJSON := makeReviewJSONText(`{\"approved\":true,\"feedback\": \"\"}`)
+	// Raw string: no backslash escapes — the reviewer json.Unmarshals this text.
+	approvedJSON := makeReviewJSONText(`{"approved":true,"feedback": ""}`)
 	transport := &mockTransport{responses: []*http.Response{makeReviewResponse(approvedJSON)}}
 	rev := newTestReviewer(t, transport)
 
@@ -148,7 +151,9 @@ func TestReviewSection_Rejected_ReturnsFeedback(t *testing.T) {
 		t.Fatalf("insert lesson_content: %v", err)
 	}
 
-	rejectedJSON := makeReviewJSONText(`{\"approved\":false,\"feedback\":\"Missing required citations\"}`)
+	// Raw string: no backslash escapes — must parse as JSON so the rejection
+	// comes from approved=false, not from the unparseable-response fallback.
+	rejectedJSON := makeReviewJSONText(`{"approved":false,"feedback":"Missing required citations"}`)
 	transport := &mockTransport{responses: []*http.Response{makeReviewResponse(rejectedJSON)}}
 	rev := newTestReviewer(t, transport)
 

@@ -19,9 +19,19 @@ export class ApiError extends Error {
 // needing to know about Vue internals.
 let unauthorizedHandler: (() => void) | null = null
 
+// @{"req": ["REQ-FEUSER-002"]}
+// mustChangePasswordHandler is invoked when a 403 with error code MUST_CHANGE_PASSWORD
+// is received, so the router can redirect to the change-password screen.
+let mustChangePasswordHandler: (() => void) | null = null
+
 // @{"req": ["REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-157"]}
 export function setUnauthorizedHandler(cb: (() => void) | null): void {
   unauthorizedHandler = cb
+}
+
+// @{"req": ["REQ-FEUSER-002"]}
+export function setMustChangePasswordHandler(cb: (() => void) | null): void {
+  mustChangePasswordHandler = cb
 }
 
 // getCsrfToken reads __Host-csrf from document.cookie on every call so that a
@@ -88,6 +98,20 @@ export async function request<T>(
       h()
     }
     const errBody = await response.json().catch(() => null)
+    throw new ApiError(response.status, errBody)
+  }
+
+  // REQ-FEUSER-002: check for 403 with MUST_CHANGE_PASSWORD error code and invoke
+  // the handler to redirect to the change-password screen.
+  if (response.status === 403) {
+    const errBody = await response.json().catch(() => null)
+    if (errBody && typeof errBody === 'object' && 'error' in errBody && errBody.error === 'MUST_CHANGE_PASSWORD') {
+      if (mustChangePasswordHandler !== null) {
+        const h = mustChangePasswordHandler
+        mustChangePasswordHandler = null
+        h()
+      }
+    }
     throw new ApiError(response.status, errBody)
   }
 

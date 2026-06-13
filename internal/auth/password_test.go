@@ -150,10 +150,10 @@ func TestCheckPasswordBoundsRejection(t *testing.T) {
 	key := base64.RawStdEncoding.EncodeToString(make([]byte, 32))
 
 	tests := []struct {
-		name   string
-		m      int
-		t      int
-		p      int
+		name    string
+		m       int
+		t       int
+		p       int
 		wantErr bool
 	}{
 		{"m_above_max", 1048577, 1, 4, true},

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-026",
+  "title": "Math Expressed as AsciiDoc STEM in Generated Content",
+  "description": "The agent module shall express all mathematical content using AsciiDoc STEM notation, never dollar-sign delimiters.",
+  "rationale": "Dollar-sign delimiters are not valid AsciiDoc syntax; Asciidoctor passes them through as plain text. Using AsciiDoc STEM notation from the point of generation eliminates the need for normalization in newly generated content and establishes a clear, testable output contract for the Professor and Reviewer agents.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-059"]
+}

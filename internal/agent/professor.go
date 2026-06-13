@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valory/valory/internal/db"
+	"github.com/valory/valory/internal/profile"
 )
 
 // GeneratedSection is the result of a single section generation call.
@@ -27,20 +28,56 @@ type GeneratedSection struct {
 	ContentAdoc  string
 }
 
+// professorMaxTokensDefault is used when the professor_max_tokens config row
+// is absent or holds an out-of-range value (e.g. written directly to the DB,
+// bypassing handler validation). 16384 fits a 500-line AsciiDoc section while
+// staying under the non-streaming SDK HTTP-timeout ceiling (~16K).
+const professorMaxTokensDefault = 1024 * 16
+
 // Professor generates course section content using the Anthropic API,
 // internet search, and the shared content library.
 // The braveAPIKey is resolved per-call via SecretResolver so that key
 // updates via the admin UI take effect within the cache TTL (REQ-ADMIN-006).
+// serverPool is used by the profile loader to read the student's learning
+// profile (REQ-PROFILE-006, REQ-PROFILE-007) with a server-role connection.
 type Professor struct {
-	client    *ThrottledClient
-	pool      *pgxpool.Pool
-	agentRepo *AgentRepository
-	secrets   SecretResolver // resolves "brave_api_key" at search time
+	client     *ThrottledClient
+	pool       *pgxpool.Pool
+	serverPool *pgxpool.Pool
+	agentRepo  *AgentRepository
+	secrets    SecretResolver // resolves "brave_api_key" at search time
+	configSvc  interface {
+		GetInt64(key string) int64
+	}
 }
 
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-004", "REQ-AGENT-005", "REQ-AGENT-010", "REQ-ADMIN-006", "REQ-ADMIN-008"]}
-func NewProfessor(client *ThrottledClient, pool *pgxpool.Pool, agentRepo *AgentRepository, secrets SecretResolver) *Professor {
-	return &Professor{client: client, pool: pool, agentRepo: agentRepo, secrets: secrets}
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-004", "REQ-AGENT-005", "REQ-AGENT-010", "REQ-ADMIN-006", "REQ-ADMIN-008", "REQ-ADMIN-010", "REQ-PROFILE-006", "REQ-PROFILE-007"]}
+func NewProfessor(client *ThrottledClient, pool *pgxpool.Pool, agentRepo *AgentRepository, secrets SecretResolver, configSvc interface {
+	GetInt64(key string) int64
+}) *Professor {
+	return &Professor{client: client, pool: pool, serverPool: pool, agentRepo: agentRepo, secrets: secrets, configSvc: configSvc}
+}
+
+// SetServerPool injects the server-role pool used by the profile loader.
+// Called from cmd/server/main.go after construction so that the server pool
+// (which carries app.current_role='server' via BeforeAcquire) is used for
+// profile reads, rather than the plain pool that chair/professor use for
+// their own RLS-protected writes.
+//
+// @{"req": ["REQ-PROFILE-006", "REQ-PROFILE-007"]}
+func (p *Professor) SetServerPool(serverPool *pgxpool.Pool) {
+	p.serverPool = serverPool
+}
+
+// maxTokens returns the admin-configured output cap for section generation
+// (REQ-ADMIN-010). Values outside the handler-validated range fall back to the
+// default rather than truncating content or risking an SDK HTTP timeout.
+func (p *Professor) maxTokens() int64 {
+	n := p.configSvc.GetInt64("professor_max_tokens")
+	if n < 1024 || n > 16384 {
+		return professorMaxTokensDefault
+	}
+	return n
 }
 
 // GenerateSection creates AsciiDoc lesson content for one section.
@@ -49,7 +86,7 @@ func NewProfessor(client *ThrottledClient, pool *pgxpool.Pool, agentRepo *AgentR
 // the content. The generated content is inserted into lesson_content and the
 // new row's ID is returned for the Reviewer to verify.
 //
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-004", "REQ-AGENT-005"]}
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-004", "REQ-AGENT-005", "REQ-AGENT-026", "REQ-ADMIN-010"]}
 func (p *Professor) GenerateSection(ctx context.Context, runID, courseID, studentID uuid.UUID, sectionIndex int, title, syllabusAdoc string) (GeneratedSection, error) {
 	// Step 1: Check content library for reusable verified content (REQ-AGENT-004).
 	libraryCtx := p.libraryContext(ctx, title)
@@ -63,7 +100,13 @@ func (p *Professor) GenerateSection(ctx context.Context, runID, courseID, studen
 		syllabusSnippet = syllabusSnippet[:2000]
 	}
 
-	systemPrompt := fmt.Sprintf(`You are a university professor writing lesson content for a course section.
+	// Step 4 (REQ-PROFILE-006): load the student's learning profile and inject
+	// it into the system prompt when present. LoadProfileSummary returns "" on
+	// any error or when no profile exists, leaving the prompt byte-for-byte
+	// identical to the pre-profile baseline (REQ-PROFILE-010).
+	profileSummary := profile.LoadProfileSummary(ctx, p.serverPool, studentID)
+
+	systemPrompt := profile.AppendProfileBlock(fmt.Sprintf(`You are a university professor writing lesson content for a course section.
 
 Section title: %q
 Section number: %d
@@ -74,15 +117,24 @@ Write comprehensive AsciiDoc content (200–500 lines) that:
 - Includes at least one cited source in [Source: URL or title] notation — this is mandatory
 - Closes with a summary and key takeaways
 - Uses AsciiDoc headings: = title, == subsections
+- Write mathematical expressions using AsciiDoc STEM notation, NOT dollar signs:
+    Inline math:  stem:[E = mc^2]
+    Display math: [stem]
+                  ++++
+                  \dfrac{P(x)}{(x+a)(x+b)} = \dfrac{A}{x+a} + \dfrac{B}{x+b}
+                  ++++
+  The document header automatically includes :stem: latexmath — do not add it yourself.
+  Never use $...$ or $$...$$ notation; it is not valid AsciiDoc syntax.
 
 Course syllabus context:
 %s
 %s%s`,
-		title, sectionIndex+1, syllabusSnippet, searchCtx, libraryCtx)
+		title, sectionIndex+1, syllabusSnippet, searchCtx, libraryCtx), profileSummary)
 
+	maxTokens := p.maxTokens()
 	msg, err := p.client.Messages(ctx, studentID, courseID, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeSonnet4_6,
-		MaxTokens: 4096,
+		MaxTokens: maxTokens,
 		System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock(
@@ -95,6 +147,12 @@ Course syllabus context:
 	}
 	if len(msg.Content) == 0 {
 		return GeneratedSection{}, fmt.Errorf("professor: generate section %d: empty response", sectionIndex)
+	}
+	// Truncated output must never enter the review loop: the Reviewer would
+	// reject the mid-word cutoff, and each retry would truncate identically
+	// until the generation timeout expires (REQ-ADMIN-010).
+	if msg.StopReason == anthropic.StopReasonMaxTokens {
+		return GeneratedSection{}, fmt.Errorf("professor: generate section %d: output truncated at max_tokens=%d; raise professor_max_tokens in admin config", sectionIndex, maxTokens)
 	}
 	contentAdoc := msg.Content[0].Text
 
@@ -128,7 +186,7 @@ Course syllabus context:
 // RegenerateSection creates a new version of a section based on student feedback
 // (REQ-AGENT-010). The revised content is inserted as a new row (higher version).
 //
-// @{"req": ["REQ-AGENT-010"]}
+// @{"req": ["REQ-AGENT-010", "REQ-AGENT-026", "REQ-ADMIN-010"]}
 func (p *Professor) RegenerateSection(ctx context.Context, courseID, studentID uuid.UUID, sectionIndex int, feedbackText string) (GeneratedSection, error) {
 	// Fetch current version using a server-role connection (lesson_content is RLS-protected).
 	rconn, err := db.AcquireServerConn(ctx, p.pool)
@@ -154,7 +212,11 @@ func (p *Professor) RegenerateSection(ctx context.Context, courseID, studentID u
 		snippet = snippet[:3000]
 	}
 
-	systemPrompt := fmt.Sprintf(`You are a university professor revising lesson content based on student feedback.
+	// REQ-PROFILE-007: load the student's learning profile and inject it into
+	// the regeneration prompt. Returns "" (no-op) when absent (REQ-PROFILE-010).
+	profileSummary := profile.LoadProfileSummary(ctx, p.serverPool, studentID)
+
+	systemPrompt := profile.AppendProfileBlock(fmt.Sprintf(`You are a university professor revising lesson content based on student feedback.
 
 Student feedback: %q
 
@@ -162,12 +224,21 @@ Rewrite the content addressing the feedback. Requirements:
 - Keep at least one cited source in [Source: URL or title] notation — mandatory
 - Use AsciiDoc formatting (= title, == subsections)
 - Be between 200–500 lines
-- Directly address the student's specific concerns%s`,
-		feedbackText, searchCtx)
+- Directly address the student's specific concerns
+- Write mathematical expressions using AsciiDoc STEM notation, NOT dollar signs:
+    Inline math:  stem:[E = mc^2]
+    Display math: [stem]
+                  ++++
+                  \dfrac{P(x)}{(x+a)(x+b)} = \dfrac{A}{x+a} + \dfrac{B}{x+b}
+                  ++++
+  The document header automatically includes :stem: latexmath — do not add it yourself.
+  Never use $...$ or $$...$$ notation; it is not valid AsciiDoc syntax.%s`,
+		feedbackText, searchCtx), profileSummary)
 
+	maxTokens := p.maxTokens()
 	msg, err := p.client.Messages(ctx, studentID, courseID, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeSonnet4_6,
-		MaxTokens: 4096,
+		MaxTokens: maxTokens,
 		System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(anthropic.NewTextBlock("Here is the current content to revise:\n\n" + snippet)),
@@ -178,6 +249,11 @@ Rewrite the content addressing the feedback. Requirements:
 	}
 	if len(msg.Content) == 0 {
 		return GeneratedSection{}, fmt.Errorf("professor: regen section %d: empty response", sectionIndex)
+	}
+	// Same guard as GenerateSection: a truncated revision re-enters review,
+	// fails again, and loops until the run times out (REQ-ADMIN-010).
+	if msg.StopReason == anthropic.StopReasonMaxTokens {
+		return GeneratedSection{}, fmt.Errorf("professor: regen section %d: output truncated at max_tokens=%d; raise professor_max_tokens in admin config", sectionIndex, maxTokens)
 	}
 	contentAdoc := msg.Content[0].Text
 

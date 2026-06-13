@@ -1,0 +1,8 @@
+{
+  "id": "REQ-CONTENT-012",
+  "title": "PDF Export Renders Math as Typeset Glyphs",
+  "description": "The content module shall render math expressions as typeset vector glyphs in PDF exports.",
+  "rationale": "Without math typesetting in PDF export, math expressions appear as raw source text, making the exported document unusable for any course containing mathematical content.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-059", "REQ-SYS-022"]
+}

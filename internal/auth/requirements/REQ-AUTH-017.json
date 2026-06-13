@@ -1,0 +1,9 @@
+{
+  "id": "REQ-AUTH-017",
+  "title": "OTP Attempt Cap: Five Wrong Attempts Invalidate Pending State",
+  "description": "The auth module shall invalidate pending-2FA state after five consecutive wrong OTP submissions.",
+  "rationale": "An unlimited attempt window allows online brute-force of a 6-digit code space; invalidating the pending state after five failures forces login restart, which is the primary online-attack defense for OTP.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015"],
+  "implements": ["REQ-AUTH-025"]
+}

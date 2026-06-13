@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-016",
+  "title": "Password Change Invalidates All Other User Sessions",
+  "description": "The user module shall delete all sessions for a user except the current one upon a successful password change.",
+  "rationale": "After a password change the user should be the only party holding a valid session; revoking other sessions prevents a compromised or stale session from persisting after the credential rotation.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-014"]
+}

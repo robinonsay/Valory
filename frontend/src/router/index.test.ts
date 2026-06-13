@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FEAUTH-170"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FEAUTH-170", "REQ-FEPROFILE-004"]}
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -37,6 +37,9 @@ function makeAuth(overrides: {
   isStudent?: boolean
   isConsented?: boolean
   isExpired?: boolean
+  mustChangePassword?: boolean
+  onboardingPrompted?: boolean
+  pendingTwoFactor?: { token: string; expiresAt: number } | null
   logout?: () => void
 } = {}) {
   return {
@@ -46,6 +49,9 @@ function makeAuth(overrides: {
     isStudent: overrides.isStudent ?? false,
     isConsented: overrides.isConsented ?? false,
     isExpired: overrides.isExpired ?? false,
+    mustChangePassword: overrides.mustChangePassword ?? false,
+    onboardingPrompted: overrides.onboardingPrompted ?? false,
+    pendingTwoFactor: overrides.pendingTwoFactor ?? null,
     logout: overrides.logout ?? (() => {})
   }
 }
@@ -180,7 +186,7 @@ describe('router beforeEach guard', () => {
   it('allows authenticated consented student to reach /courses', async () => {
     const result = await guardFn(
       makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
-      makeAuth({ isAuthenticated: true, isStudent: true, isConsented: true })
+      makeAuth({ isAuthenticated: true, isStudent: true, isConsented: true, onboardingPrompted: true })
     )
     expect(result).toBeUndefined()
   })
@@ -190,7 +196,7 @@ describe('router beforeEach guard', () => {
   it('allows authenticated consented student to reach /getting-started', async () => {
     const result = await guardFn(
       makeRoute('/getting-started', { requiresAuth: true, requiredRole: 'student' }),
-      makeAuth({ isAuthenticated: true, isStudent: true, isConsented: true })
+      makeAuth({ isAuthenticated: true, isStudent: true, isConsented: true, onboardingPrompted: true })
     )
     expect(result).toBeUndefined()
   })
@@ -281,11 +287,140 @@ describe('router beforeEach guard', () => {
         isStudent: auth.isStudent,
         isConsented: auth.isConsented,
         isExpired: auth.isExpired,
+        mustChangePassword: auth.mustChangePassword,
+        pendingTwoFactor: auth.pendingTwoFactor,
         logout: auth.logout
       }
     )
     // No session and no promise to await → unauthenticated → /login
     expect(result).toBe('/login')
+  })
+
+  // REQ-FEUSER-002: flagged users cannot navigate to other routes
+  // @{"req": ["REQ-FEUSER-002"]}
+  it('redirects flagged user trying to access /courses to /change-password', async () => {
+    const result = await guardFn(
+      makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: true,
+        mustChangePassword: true
+      })
+    )
+    expect(result).toBe('/change-password')
+  })
+
+  it('redirects flagged user trying to access /admin/users to /change-password', async () => {
+    const result = await guardFn(
+      makeRoute('/admin/users', { requiresAuth: true, requiredRole: 'admin' }),
+      makeAuth({
+        isAuthenticated: true,
+        isAdmin: true,
+        isConsented: true,
+        mustChangePassword: true
+      })
+    )
+    expect(result).toBe('/change-password')
+  })
+
+  it('allows flagged user to access /change-password', async () => {
+    const result = await guardFn(
+      makeRoute('/change-password', { requiresAuth: true }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: true,
+        mustChangePassword: true
+      })
+    )
+    expect(result).toBeUndefined()
+  })
+
+  it('allows unflagged user to navigate normally', async () => {
+    const result = await guardFn(
+      makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: true,
+        mustChangePassword: false,
+        onboardingPrompted: true
+      })
+    )
+    expect(result).toBeUndefined()
+  })
+
+  // Rule 3a: Onboarding nudge for unprompted students
+  // @{"req": ["REQ-FEPROFILE-004"]}
+  it('redirects unprompted student trying to access /courses to /onboarding', async () => {
+    const result = await guardFn(
+      makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: true,
+        mustChangePassword: false,
+        onboardingPrompted: false
+      })
+    )
+    expect(result).toBe('/onboarding')
+  })
+
+  it('allows prompted student to access /courses normally', async () => {
+    const result = await guardFn(
+      makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: true,
+        mustChangePassword: false,
+        onboardingPrompted: true
+      })
+    )
+    expect(result).toBeUndefined()
+  })
+
+  it('allows unprompted student to access /onboarding', async () => {
+    const result = await guardFn(
+      makeRoute('/onboarding', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: true,
+        mustChangePassword: false,
+        onboardingPrompted: false
+      })
+    )
+    expect(result).toBeUndefined()
+  })
+
+  it('mustChangePassword takes precedence over onboarding nudge', async () => {
+    const result = await guardFn(
+      makeRoute('/courses', { requiresAuth: true, requiredRole: 'student' }),
+      makeAuth({
+        isAuthenticated: true,
+        isStudent: true,
+        isConsented: true,
+        mustChangePassword: true,
+        onboardingPrompted: false
+      })
+    )
+    expect(result).toBe('/change-password')
+  })
+
+  it('does not nudge admin users even if onboarding_prompted=false', async () => {
+    const result = await guardFn(
+      makeRoute('/admin/users', { requiresAuth: true, requiredRole: 'admin' }),
+      makeAuth({
+        isAuthenticated: true,
+        isAdmin: true,
+        isConsented: true,
+        mustChangePassword: false,
+        onboardingPrompted: false
+      })
+    )
+    expect(result).toBeUndefined()
   })
 
   // Null-token client test: client.ts must not send "Bearer null"

@@ -1,9 +1,10 @@
-// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-169", "REQ-FEAUTH-170", "REQ-FEAUTH-171"]}
+// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-169", "REQ-FEAUTH-170", "REQ-FEAUTH-171", "REQ-FEAUTH-200", "REQ-FEAUTH-201", "REQ-FEPROFILE-004"]}
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { get, post, setUnauthorizedHandler } from '@/api/client'
+import { get, post, setUnauthorizedHandler, setMustChangePasswordHandler, ApiError } from '@/api/client'
 import { useCourseStore } from '@/stores/course'
+import { useRouter } from 'vue-router'
 
 interface SessionResponse {
   user_id: string
@@ -11,10 +12,34 @@ interface SessionResponse {
   role: 'student' | 'admin'
   consented: boolean
   expires_at: string
+  must_change_password?: boolean
+  onboarding_prompted?: boolean
 }
 
-// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-169", "REQ-FEAUTH-170", "REQ-FEAUTH-171"]}
+interface LoginResponse {
+  two_factor_required?: boolean
+  pending_token?: string
+  expires_at?: string
+  token?: string
+  role?: 'student' | 'admin'
+  must_change_password?: boolean
+}
+
+interface VerifyOtpResponse {
+  token: string
+  role: 'student' | 'admin'
+  expires_at: string
+  must_change_password?: boolean
+}
+
+interface ResendOtpResponse {
+  expires_at: string
+  resend_available_at: string | null
+}
+
+// @{"req": ["REQ-FEAUTH-001", "REQ-FEAUTH-010", "REQ-FEAUTH-011", "REQ-FEAUTH-019", "REQ-FEAUTH-020", "REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-045", "REQ-FEAUTH-118", "REQ-FEAUTH-119", "REQ-FEAUTH-155", "REQ-FEAUTH-156", "REQ-FEAUTH-169", "REQ-FEAUTH-170", "REQ-FEAUTH-171", "REQ-FEUSER-002", "REQ-FEPROFILE-004"]}
 export const useAuthStore = defineStore('auth', () => {
+  const router = useRouter()
   // REQ-FEAUTH-171: the raw session token is NOT stored in reactive state.
   // After login the store is populated via GET /api/v1/auth/session so the
   // token never lives in JS-readable memory beyond the login response lifetime.
@@ -23,6 +48,18 @@ export const useAuthStore = defineStore('auth', () => {
   const role = ref<'student' | 'admin' | null>(null)
   const expiresAt = ref<number | null>(null)
   const isConsented = ref(false)
+  const mustChangePassword = ref(false)
+  // @{"req": ["REQ-FEPROFILE-004"]}
+  const onboardingPrompted = ref(false)
+
+  // @{"req": ["REQ-FEAUTH-201"]}
+  // pendingTwoFactor holds the short-lived token between login phase 1 and phase 2.
+  // It is in-memory only: a page reload loses it and the user must restart login.
+  // pendingTwoFactor being non-null does NOT mean the user is authenticated.
+  const pendingTwoFactor = ref<{
+    token: string
+    expiresAt: number
+  } | null>(null)
 
   // restoreDone is false until the first restoreSession() call completes (success
   // or failure). Retained for backwards compatibility with any code that reads it
@@ -70,7 +107,10 @@ export const useAuthStore = defineStore('auth', () => {
         role.value = data.role
         expiresAt.value = new Date(data.expires_at).getTime() / 1000
         isConsented.value = data.consented
+        mustChangePassword.value = data.must_change_password ?? false
+        onboardingPrompted.value = data.onboarding_prompted ?? false
         registerUnauthorizedHandler()
+        registerMustChangePasswordHandler()
       } catch {
         // 401 or network error — treat as not logged in.
         userId.value = null
@@ -78,6 +118,8 @@ export const useAuthStore = defineStore('auth', () => {
         role.value = null
         expiresAt.value = null
         isConsented.value = false
+        mustChangePassword.value = false
+        onboardingPrompted.value = false
       } finally {
         restoreDone.value = true
       }
@@ -107,6 +149,8 @@ export const useAuthStore = defineStore('auth', () => {
     role.value = null
     expiresAt.value = null
     isConsented.value = false
+    mustChangePassword.value = false
+    onboardingPrompted.value = false
     setUnauthorizedHandler(null)
     // Reset restorePromise so that a subsequent login (same page session without
     // a reload) triggers a fresh GET /api/v1/auth/session call rather than
@@ -142,11 +186,99 @@ export const useAuthStore = defineStore('auth', () => {
     setUnauthorizedHandler(() => logout())
   }
 
+  // @{"req": ["REQ-FEUSER-002"]}
+  function registerMustChangePasswordHandler(): void {
+    setMustChangePasswordHandler(() => {
+      mustChangePassword.value = true
+      router.push('/change-password')
+    })
+  }
+
   // @{"req": ["REQ-FEAUTH-170"]}
   // getRestorePromise returns the in-flight (or completed) restoreSession promise
   // so the router guard can await it. Returns null before restoreSession() is called.
   function getRestorePromise(): Promise<void> | null {
     return restorePromise
+  }
+
+  // @{"req": ["REQ-FEUSER-001", "REQ-FEPROFILE-004"]}
+  // refreshSession refreshes the auth state from the server without clearing the
+  // memoized restorePromise, allowing the guard to work correctly after password change.
+  async function refreshSession(): Promise<void> {
+    try {
+      const data = await get<SessionResponse>('/api/v1/auth/session')
+      userId.value = data.user_id
+      username.value = data.username
+      role.value = data.role
+      expiresAt.value = new Date(data.expires_at).getTime() / 1000
+      isConsented.value = data.consented
+      mustChangePassword.value = data.must_change_password ?? false
+      onboardingPrompted.value = data.onboarding_prompted ?? false
+      registerUnauthorizedHandler()
+      registerMustChangePasswordHandler()
+    } catch {
+      userId.value = null
+      username.value = null
+      role.value = null
+      expiresAt.value = null
+      isConsented.value = false
+      mustChangePassword.value = false
+      onboardingPrompted.value = false
+    }
+  }
+
+  // @{"req": ["REQ-FEAUTH-201"]}
+  // setPendingTwoFactor is called by LoginView after a 202 response with two_factor_required.
+  function setPendingTwoFactor(token: string, expiresAt: string): void {
+    pendingTwoFactor.value = {
+      token,
+      expiresAt: new Date(expiresAt).getTime() / 1000
+    }
+  }
+
+  // @{"req": ["REQ-FEAUTH-201"]}
+  // clearPendingTwoFactor clears the pending state.
+  // Called on success, lockout, or user cancellation.
+  function clearPendingTwoFactor(): void {
+    pendingTwoFactor.value = null
+  }
+
+  // @{"req": ["REQ-FEAUTH-200"]}
+  // verifyOtp calls POST /api/v1/auth/2fa/verify with the pending token and OTP.
+  // On success, calls login() to populate session state.
+  async function verifyOtp(otp: string): Promise<void> {
+    if (!pendingTwoFactor.value) {
+      throw new Error('No pending 2FA token')
+    }
+
+    try {
+      await post<VerifyOtpResponse>('/api/v1/auth/2fa/verify', {
+        pending_token: pendingTwoFactor.value.token,
+        otp
+      })
+
+      clearPendingTwoFactor()
+      await login()
+    } catch (err) {
+      throw err
+    }
+  }
+
+  // @{"req": ["REQ-FEAUTH-200"]}
+  // resendOtp calls POST /api/v1/auth/2fa/resend with the pending token.
+  // Returns { resendAvailableAt: string | null } from the server response.
+  async function resendOtp(): Promise<{ resendAvailableAt: string | null }> {
+    if (!pendingTwoFactor.value) {
+      throw new Error('No pending 2FA token')
+    }
+
+    const response = await post<ResendOtpResponse>('/api/v1/auth/2fa/resend', {
+      pending_token: pendingTwoFactor.value.token
+    })
+
+    return {
+      resendAvailableAt: response.resend_available_at
+    }
   }
 
   return {
@@ -155,6 +287,9 @@ export const useAuthStore = defineStore('auth', () => {
     role,
     expiresAt,
     isConsented,
+    mustChangePassword,
+    onboardingPrompted,
+    pendingTwoFactor,
     restoreDone,
     isAuthenticated,
     isStudent,
@@ -164,8 +299,14 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     logoutServer,
     restoreSession,
+    refreshSession,
     getRestorePromise,
     setConsented,
-    registerUnauthorizedHandler
+    registerUnauthorizedHandler,
+    registerMustChangePasswordHandler,
+    setPendingTwoFactor,
+    clearPendingTwoFactor,
+    verifyOtp,
+    resendOtp
   }
 })

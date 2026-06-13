@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-008",
+  "title": "Admin Test-Send Endpoint",
+  "description": "The email module shall provide an admin-only endpoint that sends a test message to a specified address.",
+  "rationale": "Operators need a way to confirm that SMTP configuration is correct after making changes, without relying on a real user-triggered event such as a password reset.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-062"]
+}

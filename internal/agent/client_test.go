@@ -65,10 +65,12 @@ func make200() *http.Response {
 		"stop_reason": "end_turn",
 		"usage": {"input_tokens": 10, "output_tokens": 5}
 	}`
+	// The SDK refuses to deserialise typed responses without a JSON
+	// content type, so the mock must set the header a real server would.
 	return &http.Response{
 		StatusCode: 200,
 		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     make(http.Header),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
 	}
 }
 
@@ -78,7 +80,7 @@ func make429() *http.Response {
 	return &http.Response{
 		StatusCode: 429,
 		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     make(http.Header),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
 	}
 }
 

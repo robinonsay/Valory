@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-002",
+  "title": "SMTP Encryption Mode Selection",
+  "description": "The email module shall connect to SMTP using the operator-selected encryption mode: none, starttls, or tls.",
+  "rationale": "Different SMTP relay types (loopback relays, external providers, port-465 providers) require different connection security models; a fixed encryption mode fails on relays that do not support it.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-061"]
+}

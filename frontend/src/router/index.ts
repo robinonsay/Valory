@@ -3,8 +3,10 @@ import { h } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import LoginView from '@/views/LoginView.vue'
+import OtpVerifyView from '@/views/OtpVerifyView.vue'
 import ConsentView from '@/views/ConsentView.vue'
 import PasswordResetView from '@/views/PasswordResetView.vue'
+import ChangePasswordView from '@/views/ChangePasswordView.vue'
 import CourseDashboardView from '@/views/CourseDashboardView.vue'
 import IntakeChatView from '@/views/IntakeChatView.vue'
 import SyllabusView from '@/views/SyllabusView.vue'
@@ -17,10 +19,14 @@ import BadgesView from '@/views/BadgesView.vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import StudentLayout from '@/layouts/StudentLayout.vue'
 import GettingStartedView from '@/views/GettingStartedView.vue'
+import OnboardingChatView from '@/views/OnboardingChatView.vue'
+import ProfileView from '@/views/ProfileView.vue'
 import UserManagementView from '@/views/admin/UserManagementView.vue'
 import AuditLogView from '@/views/admin/AuditLogView.vue'
 import SystemConfigView from '@/views/admin/SystemConfigView.vue'
 import CourseOversightView from '@/views/admin/CourseOversightView.vue'
+import AdminAssignmentsView from '@/views/admin/AdminAssignmentsView.vue'
+import AdminAssignmentDetailView from '@/views/admin/AdminAssignmentDetailView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -29,7 +35,7 @@ declare module 'vue-router' {
   }
 }
 
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FEAUTH-202"]}
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -37,6 +43,13 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: LoginView,
+      meta: {}
+    },
+    {
+      // @{"req": ["REQ-FEAUTH-202"]}
+      path: '/login/verify',
+      name: 'login-verify',
+      component: OtpVerifyView,
       meta: {}
     },
     {
@@ -54,6 +67,24 @@ const router = createRouter({
       name: 'reset-password',
       component: PasswordResetView,
       meta: {}
+    },
+    {
+      path: '/change-password',
+      name: 'change-password',
+      component: ChangePasswordView,
+      meta: { requiresAuth: true }
+    },
+    {
+      // @{"req": ["REQ-FEPROFILE-001", "REQ-FEPROFILE-004"]}
+      // /onboarding is deliberately NOT nested under StudentLayout. It is a gate
+      // page that must be reachable before the student navigates to other routes,
+      // and it has its own full-page design. Wrapping it in the student chrome
+      // would embed it inside a layout that assumes a student has already
+      // experienced the onboarding flow.
+      path: '/onboarding',
+      name: 'onboarding',
+      component: OnboardingChatView,
+      meta: { requiresAuth: true, requiredRole: 'student' }
     },
     {
       // All student-facing routes are nested under StudentLayout so that the
@@ -127,6 +158,13 @@ const router = createRouter({
           meta: { requiresAuth: true, requiredRole: 'student' }
         },
         {
+          // @{"req": ["REQ-FEPROFILE-002"]}
+          path: 'profile',
+          name: 'student-profile',
+          component: ProfileView,
+          meta: { requiresAuth: true, requiredRole: 'student' }
+        },
+        {
           // LEAD AMENDMENT: getting-started is role-scoped. A single shared
           // path cannot render inside two different layouts — Vue Router
           // resolves a path to one route record by declaration order, so a
@@ -175,6 +213,20 @@ const router = createRouter({
           meta: { requiresAuth: true, requiredRole: 'admin' }
         },
         {
+          // @{"req": ["REQ-FEADMIN-702", "REQ-FEADMIN-703"]}
+          path: 'assignments',
+          name: 'admin-assignments',
+          component: AdminAssignmentsView,
+          meta: { requiresAuth: true, requiredRole: 'admin' }
+        },
+        {
+          // @{"req": ["REQ-FEADMIN-704", "REQ-FEADMIN-705", "REQ-FEADMIN-706"]}
+          path: 'assignments/:id',
+          name: 'admin-assignment-detail',
+          component: AdminAssignmentDetailView,
+          meta: { requiresAuth: true, requiredRole: 'admin' }
+        },
+        {
           // Admin counterpart of the student getting-started child route —
           // renders inside AdminLayout's sidebar chrome (see LEAD AMENDMENT
           // comment on the student route for why the path is role-scoped).
@@ -201,7 +253,7 @@ const router = createRouter({
 // so it is testable without a running router instance. The restorePromise
 // parameter (when provided) is awaited before any routing decision is made,
 // which blocks navigation until session restore completes (REQ-FEAUTH-170).
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170", "REQ-FEUSER-002", "REQ-FEAUTH-202", "REQ-FEPROFILE-004"]}
 export async function guardFn(
   to: RouteLocationNormalized,
   auth: {
@@ -211,6 +263,9 @@ export async function guardFn(
     isStudent: boolean
     isConsented: boolean
     isExpired: boolean
+    mustChangePassword: boolean
+    onboardingPrompted: boolean
+    pendingTwoFactor: { token: string; expiresAt: number } | null
     logout: () => void
   }
 ): Promise<RouteLocationRaw | undefined> {
@@ -220,6 +275,12 @@ export async function guardFn(
   // where isAuthenticated is false but a valid session exists.
   if (auth.restorePromise) {
     await auth.restorePromise
+  }
+
+  // @{"req": ["REQ-FEAUTH-202"]}
+  // 1a. User with pending 2FA: redirect to /login/verify unless already there or navigating to /login
+  if (auth.pendingTwoFactor !== null && to.path !== '/login/verify' && to.path !== '/login') {
+    return '/login/verify'
   }
 
   // 1. Unauthenticated user trying to reach a protected route
@@ -233,40 +294,66 @@ export async function guardFn(
     return '/login'
   }
 
-  // 3. Already authenticated user navigating to /login — send to their home
-  if (auth.isAuthenticated && to.path === '/login') {
+  // 3. REQ-FEUSER-002: flagged users cannot navigate anywhere except /change-password,
+  // /logout (implicitly allowed via no requiresAuth), and GET /users/me (no route).
+  if (auth.mustChangePassword && to.path !== '/change-password') {
+    return '/change-password'
+  }
+
+  // 4. Already authenticated user navigating to /login or /login/verify — send to their home
+  if (auth.isAuthenticated && (to.path === '/login' || to.path === '/login/verify')) {
     if (auth.isAdmin) {
       return '/admin/users'
     }
     return '/courses'
   }
 
-  // 4. Student trying to reach an admin route
+  // 5. Student trying to reach an admin route
   if (to.meta.requiredRole === 'admin' && !auth.isAdmin) {
     return '/courses'
   }
 
-  // 5. Admin trying to reach a student route
+  // 6. Admin trying to reach a student route
   if (to.meta.requiredRole === 'student' && !auth.isStudent) {
     return '/admin/users'
   }
 
-  // 6. Admins have no consent obligation (REQ-SECURITY-005 is student-scoped);
+  // 7. Admins have no consent obligation (REQ-SECURITY-005 is student-scoped);
   // keep them out of the consent gate page so they never land on a chrome-less
   // orphan view with no nav or logout.
   if (auth.isAuthenticated && auth.isAdmin && auth.isConsented && to.path === '/consent') {
     return '/admin/users'
   }
 
-  // 7. Authenticated but consent not yet recorded — redirect to /consent
+  // 8. Authenticated but consent not yet recorded — redirect to /consent
+  // This check comes before the onboarding check so consent (which is mandatory for all
+  // students) takes precedence over onboarding (which is optional/soft).
   if (auth.isAuthenticated && !auth.isConsented && to.path !== '/consent') {
     return '/consent'
+  }
+
+  // 3a. @{"req": ["REQ-FEPROFILE-004"]} Student has not been prompted for onboarding
+  // and is navigating to anywhere except /onboarding, /change-password, /consent,
+  // /login, and /logout-equivalent paths: redirect to '/onboarding'.
+  // This rule fires only for students, only when onboarding_prompted = false, and
+  // only after the mustChangePassword and consent checks pass. Onboarding is a soft
+  // gate that does not block navigation like consent does.
+  if (
+    auth.isStudent &&
+    !auth.onboardingPrompted &&
+    to.path !== '/onboarding' &&
+    to.path !== '/change-password' &&
+    to.path !== '/consent' &&
+    to.path !== '/login' &&
+    to.path !== '/login/verify'
+  ) {
+    return '/onboarding'
   }
 
   return undefined
 }
 
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEAUTH-170", "REQ-FEUSER-002", "REQ-FEAUTH-202", "REQ-FEPROFILE-004"]}
 router.beforeEach(async (to, _from) => {
   // useAuthStore is called inside the guard so Pinia is already initialised.
   // Awaiting getRestorePromise() blocks this navigation until restoreSession()
@@ -279,6 +366,9 @@ router.beforeEach(async (to, _from) => {
     isStudent: auth.isStudent,
     isConsented: auth.isConsented,
     isExpired: auth.isExpired,
+    mustChangePassword: auth.mustChangePassword,
+    onboardingPrompted: auth.onboardingPrompted,
+    pendingTwoFactor: auth.pendingTwoFactor,
     logout: auth.logout
   })
   return redirect ?? true

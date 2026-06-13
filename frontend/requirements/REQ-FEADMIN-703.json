@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-703",
+  "title": "Create Assignment Modal",
+  "description": "The frontend module shall provide a modal form for an admin to create a new course assignment.",
+  "rationale": "Assignment creation requires topic, level, and optional parameters; a dedicated modal constrains the input surface and keeps the admin in the assignments context without a full page navigation.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-067", "REQ-ASSIGN-001"]
+}

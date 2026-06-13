@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-011",
+  "title": "Onboarding Conversation Spans Three to Five Questions",
+  "description": "The profile module shall conduct an onboarding conversation of three to five questions about the student's learning preferences.",
+  "rationale": "Fewer than three questions produces insufficient signal to generate a useful profile summary; more than five adds friction that reduces completion rates and provides diminishing personalization benefit.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070"],
+  "implements": []
+}

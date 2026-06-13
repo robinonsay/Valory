@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEAUTH-200",
+  "title": "OTP Verify Screen with Input, Resend Timer, Attempt Counter, and Lockout Message",
+  "description": "The frontend module shall display an OTP verify screen with 6-digit input, resend timer, attempt counter, and lockout message.",
+  "rationale": "Users must know how many attempts remain before lockout to avoid being locked out accidentally; the resend timer prevents abuse while the lockout message provides a clear recovery path when the attempt cap is reached.",
+  "verification_method": "Demonstration",
+  "uses": ["REQ-SYS-065", "REQ-AUTH-015", "REQ-AUTH-016", "REQ-AUTH-017"]
+}

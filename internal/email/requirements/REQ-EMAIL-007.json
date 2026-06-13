@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-007",
+  "title": "Send Failures Do Not Propagate to Caller",
+  "description": "The email module shall not propagate a send failure to the operation that triggered the send.",
+  "rationale": "Email delivery is a side-effect of user-facing operations such as password reset; a send failure must never cause the triggering operation to return an error, as that would reveal account existence and break anti-enumeration guarantees.",
+  "verification_method": "Inspection",
+  "uses": ["REQ-SYS-061"]
+}

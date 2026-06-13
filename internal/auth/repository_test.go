@@ -115,6 +115,30 @@ func applyMigration(ctx context.Context, p *pgxpool.Pool) error {
 	    consent_version  VARCHAR(16) NOT NULL
 	);
 
+	-- Migration 002 additions needed for 2FA tests.
+	ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT UNIQUE;
+	ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false;
+
+	-- Migration 018: pending_2fa and otp_rate_limits for 2FA tests.
+	CREATE TABLE IF NOT EXISTS pending_2fa (
+	    id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+	    user_id              UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	    pending_token_hash   TEXT        NOT NULL UNIQUE,
+	    otp_hash             TEXT        NOT NULL,
+	    attempt_count        INT         NOT NULL DEFAULT 0,
+	    last_resend_at       TIMESTAMPTZ,
+	    resend_count_24h     INT         NOT NULL DEFAULT 0,
+	    resend_window_start  TIMESTAMPTZ,
+	    expires_at           TIMESTAMPTZ NOT NULL,
+	    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+	CREATE TABLE IF NOT EXISTS otp_rate_limits (
+	    id       BIGSERIAL   PRIMARY KEY,
+	    user_id  UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	    sent_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
 	COMMIT;
 	`
 	_, err := p.Exec(ctx, migration)
@@ -129,6 +153,8 @@ func truncateTables(ctx context.Context, p *pgxpool.Pool) error {
 		`TRUNCATE TABLE login_attempts CASCADE`,
 		`TRUNCATE TABLE student_consent CASCADE`,
 		`TRUNCATE TABLE sessions CASCADE`,
+		`TRUNCATE TABLE otp_rate_limits CASCADE`,
+		`TRUNCATE TABLE pending_2fa CASCADE`,
 		`TRUNCATE TABLE users CASCADE`,
 	}
 	for _, stmt := range statements {
@@ -382,7 +408,7 @@ func TestCreateSessionAndGetSessionByTokenHash(t *testing.T) {
 	role := "admin"
 	expiresAt := time.Now().Add(24 * time.Hour)
 
-	created, err := repo.CreateSession(ctx, userID, tokenHash, role, expiresAt)
+	created, err := repo.CreateSession(ctx, userID, tokenHash, role, expiresAt, false)
 	if err != nil {
 		t.Fatalf("CreateSession failed: %v", err)
 	}
@@ -446,7 +472,7 @@ func TestDeleteSession(t *testing.T) {
 
 	tokenHash := "testhash456"
 	expiresAt := time.Now().Add(24 * time.Hour)
-	_, _ = repo.CreateSession(ctx, userID, tokenHash, "student", expiresAt)
+	_, _ = repo.CreateSession(ctx, userID, tokenHash, "student", expiresAt, false)
 
 	err := repo.DeleteSession(ctx, tokenHash)
 	if err != nil {
@@ -489,7 +515,7 @@ func TestUpdateLastActiveAt(t *testing.T) {
 
 	tokenHash := "testhash789"
 	expiresAt := time.Now().Add(24 * time.Hour)
-	session, _ := repo.CreateSession(ctx, userID, tokenHash, "student", expiresAt)
+	session, _ := repo.CreateSession(ctx, userID, tokenHash, "student", expiresAt, false)
 	initialLastActive := session.LastActiveAt
 
 	time.Sleep(100 * time.Millisecond)
@@ -524,9 +550,9 @@ func TestDeleteAllUserSessions(t *testing.T) {
 	userID2 := createTestUser(ctx, t, "testuser11", "hash", "student")
 
 	expiresAt := time.Now().Add(24 * time.Hour)
-	_, _ = repo.CreateSession(ctx, userID1, "hash1", "student", expiresAt)
-	_, _ = repo.CreateSession(ctx, userID1, "hash2", "student", expiresAt)
-	_, _ = repo.CreateSession(ctx, userID2, "hash3", "student", expiresAt)
+	_, _ = repo.CreateSession(ctx, userID1, "hash1", "student", expiresAt, false)
+	_, _ = repo.CreateSession(ctx, userID1, "hash2", "student", expiresAt, false)
+	_, _ = repo.CreateSession(ctx, userID2, "hash3", "student", expiresAt, false)
 
 	err := repo.DeleteAllUserSessions(ctx, userID1)
 	if err != nil {

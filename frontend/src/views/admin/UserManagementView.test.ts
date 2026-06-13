@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEADMIN-020", "REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-025", "REQ-FEADMIN-026", "REQ-FEADMIN-027", "REQ-FEADMIN-113", "REQ-FEADMIN-120", "REQ-FEADMIN-130", "REQ-FEADMIN-140", "REQ-FEADMIN-150", "REQ-FEADMIN-160"]}
+// @{"req": ["REQ-FEADMIN-020", "REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-025", "REQ-FEADMIN-026", "REQ-FEADMIN-027", "REQ-FEADMIN-113", "REQ-FEADMIN-120", "REQ-FEADMIN-130", "REQ-FEADMIN-140", "REQ-FEADMIN-150", "REQ-FEADMIN-160", "REQ-FEADMIN-610", "REQ-FEADMIN-611", "REQ-FEADMIN-612", "REQ-FEADMIN-613", "REQ-FEADMIN-614"]}
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -310,6 +310,228 @@ describe('UserManagementView', () => {
     expect(vi.mocked(del)).toHaveBeenCalledWith(
       '/api/v1/users/user-1'
     )
+
+    confirmSpy.mockRestore()
+  })
+
+  // REQ-FEADMIN-610: generate-password toggle hides password input
+  it('hides password input when generate-password toggle is on', async () => {
+    vi.mocked(get).mockResolvedValue({ users: [] })
+    setupAuth()
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const generateToggle = wrapper.find('#generate-password')
+    expect(generateToggle.exists()).toBe(true)
+
+    let passwordInput = wrapper.find('#create-password')
+    expect(passwordInput.exists()).toBe(true)
+
+    await generateToggle.setValue(true)
+    await wrapper.vm.$nextTick()
+
+    passwordInput = wrapper.find('#create-password')
+    expect(passwordInput.exists()).toBe(false)
+  })
+
+  // REQ-FEADMIN-611, REQ-FEADMIN-612: temp password shown once when email not sent
+  it('displays temp password once when email_sent is false', async () => {
+    const newUser = {
+      id: 'user-3',
+      username: 'carol',
+      role: 'student',
+      is_active: true,
+      email: 'carol@example.com',
+      created_at: '2026-03-01T00:00:00Z',
+      email_sent: false,
+      temp_password: 'TempPass123!'
+    }
+
+    vi.mocked(get).mockResolvedValue({ users: [] })
+    vi.mocked(post).mockResolvedValue(newUser)
+    setupAuth()
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#create-username').setValue('carol')
+    await wrapper.find('#create-email').setValue('carol@example.com')
+    await wrapper.find('#generate-password').setValue(true)
+    await wrapper.find('#create-role').setValue('student')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.create-form').trigger('submit')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const passwordDisplay = wrapper.find('.temp-password-message')
+    expect(passwordDisplay.exists()).toBe(true)
+    expect(passwordDisplay.text()).toContain('TempPass123!')
+  })
+
+  // REQ-FEADMIN-612: "shown once" warning displayed
+  it('shows "not shown again" warning for temp password', async () => {
+    const newUser = {
+      id: 'user-3',
+      username: 'carol',
+      role: 'student',
+      is_active: true,
+      email: 'carol@example.com',
+      created_at: '2026-03-01T00:00:00Z',
+      email_sent: false,
+      temp_password: 'TempPass123!'
+    }
+
+    vi.mocked(get).mockResolvedValue({ users: [] })
+    vi.mocked(post).mockResolvedValue(newUser)
+    setupAuth()
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#create-username').setValue('carol')
+    await wrapper.find('#create-email').setValue('carol@example.com')
+    await wrapper.find('#generate-password').setValue(true)
+    await wrapper.find('#create-role').setValue('student')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.create-form').trigger('submit')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const warning = wrapper.find('.password-warning')
+    expect(warning.exists()).toBe(true)
+    expect(warning.text()).toContain('will not be shown again')
+  })
+
+  // REQ-FEADMIN-613: temp password NOT displayed when email sent
+  it('does not display temp password when email_sent is true', async () => {
+    const newUser = {
+      id: 'user-3',
+      username: 'carol',
+      role: 'student',
+      is_active: true,
+      email: 'carol@example.com',
+      created_at: '2026-03-01T00:00:00Z',
+      email_sent: true
+    }
+
+    vi.mocked(get).mockResolvedValue({ users: [] })
+    vi.mocked(post).mockResolvedValue(newUser)
+    setupAuth()
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#create-username').setValue('carol')
+    await wrapper.find('#create-email').setValue('carol@example.com')
+    await wrapper.find('#generate-password').setValue(true)
+    await wrapper.find('#create-role').setValue('student')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.create-form').trigger('submit')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const passwordDisplay = wrapper.find('.temp-password-message')
+    expect(passwordDisplay.exists()).toBe(false)
+
+    const emailSentMessage = wrapper.find('.email-sent-message')
+    expect(emailSentMessage.exists()).toBe(true)
+    expect(emailSentMessage.text()).toContain('Welcome email sent')
+  })
+
+  // REQ-FEADMIN-614: resend button present
+  it('has resend welcome button for each user', async () => {
+    vi.mocked(get).mockResolvedValue({ users: [{ ...SAMPLE_USERS[0] }] })
+    setupAuth()
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const resendBtn = wrapper.find('.resend-btn')
+    expect(resendBtn.exists()).toBe(true)
+    expect(resendBtn.text()).toContain('Resend welcome')
+  })
+
+  // REQ-FEADMIN-614: resend requires confirmation
+  it('resend welcome requires confirm dialog', async () => {
+    vi.mocked(get).mockResolvedValue({ users: [{ ...SAMPLE_USERS[0] }] })
+    vi.mocked(post).mockResolvedValue({ email_sent: true })
+    setupAuth()
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const resendBtn = wrapper.find('.resend-btn')
+    await resendBtn.trigger('click')
+
+    await flushPromises()
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(vi.mocked(post)).not.toHaveBeenCalled()
+
+    confirmSpy.mockRestore()
+  })
+
+  // REQ-FEADMIN-614: resend posts to correct endpoint
+  it('resend welcome POSTs to /api/v1/users/{id}/resend-welcome', async () => {
+    vi.mocked(get).mockResolvedValue({ users: [{ ...SAMPLE_USERS[0] }] })
+    vi.mocked(post).mockResolvedValue({ email_sent: true })
+    setupAuth()
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const resendBtn = wrapper.find('.resend-btn')
+    await resendBtn.trigger('click')
+
+    await flushPromises()
+
+    expect(vi.mocked(post)).toHaveBeenCalledWith(
+      '/api/v1/users/user-1/resend-welcome',
+      {}
+    )
+
+    confirmSpy.mockRestore()
+  })
+
+  // REQ-FEADMIN-614: resend shows temp password if not sent
+  it('resend welcome shows temp password when email not sent', async () => {
+    vi.mocked(get).mockResolvedValue({ users: [{ ...SAMPLE_USERS[0] }] })
+    vi.mocked(post).mockResolvedValue({
+      email_sent: false,
+      temp_password: 'ResendTempPass123!'
+    })
+    setupAuth()
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(UserManagementView)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const resendBtn = wrapper.find('.resend-btn')
+    await resendBtn.trigger('click')
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const passwordDisplay = wrapper.find('.temp-password-message')
+    expect(passwordDisplay.exists()).toBe(true)
+    expect(passwordDisplay.text()).toContain('ResendTempPass123!')
 
     confirmSpy.mockRestore()
   })

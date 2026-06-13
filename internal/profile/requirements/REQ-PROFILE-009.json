@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-009",
+  "title": "Profile Injected into Assignment Syllabus Prompt",
+  "description": "The profile module shall inject the student's learning profile into the assignment syllabus-generation prompt.",
+  "rationale": "Admin-assigned courses generate syllabi via a parameters-driven prompt; without profile injection this path bypasses personalization entirely, producing a generic syllabus even when the student has a profile.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-069"],
+  "implements": []
+}

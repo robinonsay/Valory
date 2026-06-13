@@ -1,0 +1,8 @@
+{
+  "id": "REQ-EMAIL-006",
+  "title": "Configured-State Detection",
+  "description": "The email module shall report its configured state as true when a non-empty SMTP host is available, and false otherwise.",
+  "rationale": "Call sites such as the password-reset path and future account-lifecycle flows must distinguish between \"email not configured\" and \"email failed\" to surface accurate notices to admins without attempting a connection.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-061"]
+}

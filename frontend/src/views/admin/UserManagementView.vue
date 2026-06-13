@@ -1,7 +1,7 @@
-// @{"req": ["REQ-FEADMIN-020", "REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-025", "REQ-FEADMIN-026", "REQ-FEADMIN-027", "REQ-FEADMIN-113", "REQ-FEADMIN-120", "REQ-FEADMIN-130", "REQ-FEADMIN-140", "REQ-FEADMIN-150", "REQ-FEADMIN-160"]}
+// @{"req": ["REQ-FEADMIN-020", "REQ-FEADMIN-021", "REQ-FEADMIN-022", "REQ-FEADMIN-025", "REQ-FEADMIN-026", "REQ-FEADMIN-027", "REQ-FEADMIN-113", "REQ-FEADMIN-120", "REQ-FEADMIN-130", "REQ-FEADMIN-140", "REQ-FEADMIN-150", "REQ-FEADMIN-160", "REQ-FEADMIN-610", "REQ-FEADMIN-611", "REQ-FEADMIN-612", "REQ-FEADMIN-613", "REQ-FEADMIN-614"]}
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { get, post, del, ApiError } from '@/api/client'
 
@@ -18,6 +18,11 @@ interface UsersResponse {
   users: UserItem[]
 }
 
+interface CreateUserResponse extends UserItem {
+  email_sent?: boolean
+  temp_password?: string
+}
+
 const auth = useAuthStore()
 
 const users = ref<UserItem[]>([])
@@ -29,10 +34,17 @@ const createForm = ref({
   username: '',
   email: '',
   password: '',
-  role: ''
+  role: '',
+  generatePassword: false
 })
 const createError = ref<string | null>(null)
 const createSubmitting = ref(false)
+const tempPasswordShown = ref<string | null>(null)
+const lastCreatedEmailSent = ref<boolean | null>(null)
+
+// Resend welcome state
+const resendConfirmUserId = ref<string | null>(null)
+const resendSubmitting = ref<string | null>(null)
 
 // @{"req": ["REQ-FEADMIN-020", "REQ-FEADMIN-100"]}
 async function fetchUsers(): Promise<void> {
@@ -111,9 +123,11 @@ async function deleteUser(user: UserItem): Promise<void> {
   }
 }
 
-// @{"req": ["REQ-FEADMIN-021", "REQ-FEADMIN-113", "REQ-FEADMIN-114", "REQ-FEADMIN-115", "REQ-FEADMIN-116"]}
+// @{"req": ["REQ-FEADMIN-021", "REQ-FEADMIN-113", "REQ-FEADMIN-114", "REQ-FEADMIN-115", "REQ-FEADMIN-116", "REQ-FEADMIN-610", "REQ-FEADMIN-611"]}
 async function createUser(): Promise<void> {
   createError.value = null
+  tempPasswordShown.value = null
+  lastCreatedEmailSent.value = null
 
   if (!createForm.value.username) {
     createError.value = 'Username is required.'
@@ -123,25 +137,37 @@ async function createUser(): Promise<void> {
     createError.value = 'Role is required.'
     return
   }
-  if (!createForm.value.password) {
+  if (!createForm.value.generatePassword && !createForm.value.password) {
     createError.value = 'Password is required.'
     return
   }
 
-  const body: Record<string, string> = {
+  const body: Record<string, any> = {
     username: createForm.value.username,
-    password: createForm.value.password,
     role: createForm.value.role
   }
+
+  if (createForm.value.generatePassword) {
+    body.generate_password = true
+  } else {
+    body.password = createForm.value.password
+  }
+
   if (createForm.value.email) {
     body.email = createForm.value.email
   }
 
   try {
     createSubmitting.value = true
-    const newUser = await post<UserItem>('/api/v1/users', body)
+    const newUser = await post<CreateUserResponse>('/api/v1/users', body)
     users.value.unshift(newUser)
-    createForm.value = { username: '', email: '', password: '', role: '' }
+
+    lastCreatedEmailSent.value = newUser.email_sent ?? false
+    if (newUser.temp_password && !newUser.email_sent) {
+      tempPasswordShown.value = newUser.temp_password
+    }
+
+    createForm.value = { username: '', email: '', password: '', role: '', generatePassword: false }
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
       createError.value = 'Username already exists.'
@@ -155,6 +181,38 @@ async function createUser(): Promise<void> {
     createSubmitting.value = false
   }
 }
+
+// @{"req": ["REQ-FEADMIN-614"]}
+async function resendWelcome(userId: string): Promise<void> {
+  if (!confirm('Resend welcome email? This will generate a new temporary password.')) {
+    return
+  }
+
+  resendSubmitting.value = userId
+  error.value = null
+
+  try {
+    const response = await post<any>(`/api/v1/users/${userId}/resend-welcome`, {})
+    lastCreatedEmailSent.value = response.email_sent ?? false
+    if (response.temp_password && !response.email_sent) {
+      tempPasswordShown.value = response.temp_password
+    }
+  } catch (err) {
+    if (err instanceof ApiError) {
+      error.value = `Failed to resend welcome email: ${err.message}`
+    } else {
+      error.value = 'Failed to resend welcome email'
+    }
+  } finally {
+    resendSubmitting.value = null
+  }
+}
+
+const canSubmitCreateForm = computed(() => {
+  if (!createForm.value.username || !createForm.value.role) return false
+  if (createForm.value.generatePassword) return true
+  return createForm.value.password.trim() !== ''
+})
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString)
@@ -198,7 +256,17 @@ onMounted(() => {
             autocomplete="off"
           />
         </div>
-        <div class="form-field">
+        <div class="form-field checkbox-field">
+          <label for="generate-password">
+            <input
+              id="generate-password"
+              v-model="createForm.generatePassword"
+              type="checkbox"
+            />
+            Generate temporary password
+          </label>
+        </div>
+        <div v-if="!createForm.generatePassword" class="form-field">
           <label for="create-password">Password</label>
           <input
             id="create-password"
@@ -221,10 +289,32 @@ onMounted(() => {
           {{ createError }}
         </div>
 
-        <button type="submit" :disabled="createSubmitting" class="submit-btn">
+        <button type="submit" :disabled="!canSubmitCreateForm || createSubmitting" class="submit-btn">
           {{ createSubmitting ? 'Creating...' : 'Create User' }}
         </button>
       </form>
+
+      <div v-if="lastCreatedEmailSent !== null" class="temp-password-info">
+        <div v-if="lastCreatedEmailSent" class="email-sent-message">
+          Welcome email sent successfully
+        </div>
+        <div v-else-if="tempPasswordShown" class="temp-password-message">
+          <p>Temporary password (shown once):</p>
+          <div class="password-display">
+            <code data-testid="temp-password-display">{{ tempPasswordShown }}</code>
+            <button
+              type="button"
+              class="copy-btn"
+              @click="() => {
+                navigator.clipboard.writeText(tempPasswordShown)
+              }"
+            >
+              Copy
+            </button>
+          </div>
+          <p class="password-warning">This will not be shown again</p>
+        </div>
+      </div>
     </section>
 
     <section class="user-list-section">
@@ -268,6 +358,13 @@ onMounted(() => {
                 @click="activateUser(user)"
               >
                 Activate
+              </button>
+              <button
+                class="action-btn resend-btn"
+                :disabled="resendSubmitting === user.id"
+                @click="resendWelcome(user.id)"
+              >
+                {{ resendSubmitting === user.id ? 'Resending...' : 'Resend welcome' }}
               </button>
               <button
                 v-if="user.role === 'student'"
@@ -361,6 +458,24 @@ h2 {
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 0.95rem;
+}
+
+.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+}
+
+.checkbox-field label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: normal;
+}
+
+.checkbox-field input[type='checkbox'] {
+  margin: 0;
+  width: auto;
 }
 
 .create-error {
@@ -485,9 +600,91 @@ h2 {
   background-color: #ffcdd2;
 }
 
+.resend-btn {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.resend-btn:hover:not(:disabled) {
+  background-color: #bbdefb;
+}
+
+.resend-btn:disabled {
+  background-color: #ccc;
+  color: #666;
+  cursor: not-allowed;
+}
+
 .no-users {
   text-align: center;
   color: #999;
   padding: 2rem;
+}
+
+.temp-password-info {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border-radius: 4px;
+  border-left: 4px solid #1976d2;
+}
+
+.email-sent-message {
+  color: #2e7d32;
+  background-color: #e8f5e9;
+  padding: 0.75rem;
+  border-radius: 4px;
+  border-left: 4px solid #2e7d32;
+}
+
+.temp-password-message {
+  background-color: #fff3e0;
+  padding: 1rem;
+  border-radius: 4px;
+  border-left: 4px solid #f57c00;
+}
+
+.temp-password-message p {
+  margin: 0 0 0.5rem 0;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.password-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.password-display code {
+  flex: 1;
+  background-color: #f5f5f5;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.copy-btn {
+  padding: 0.35rem 0.75rem;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.copy-btn:hover {
+  background-color: #1565c0;
+}
+
+.password-warning {
+  margin: 0;
+  color: #e65100;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 </style>

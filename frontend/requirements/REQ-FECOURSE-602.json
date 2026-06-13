@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECOURSE-602",
+  "title": "Assigned Course at Syllabus-Approved Redirects to GeneratingView",
+  "description": "The frontend module shall redirect a student to the generation progress view when their course status is syllabus-approved.",
+  "rationale": "An assigned course at syllabus_approved has no intake or approval steps for the student; routing directly to GeneratingView aligns the UX with the generating status and avoids a dead-end state in the router.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-068", "REQ-ASSIGN-005", "REQ-ASSIGN-008"]
+}

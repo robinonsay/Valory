@@ -1,0 +1,8 @@
+{
+  "id": "REQ-USER-012",
+  "title": "Admin Resend of Welcome Email Regenerates Temporary Password",
+  "description": "The user module shall regenerate a new temporary password and resend the welcome email when an admin requests it.",
+  "rationale": "The original plaintext temporary password is never stored; resending requires generating a new one so the user receives a usable credential rather than a hash they cannot use.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-009", "REQ-EMAIL-007"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-ASSIGN-003",
+  "title": "One Course Instance Per Assigned Student",
+  "description": "The assignment module shall create exactly one course instance per assigned student for each assignment.",
+  "rationale": "Token usage, grades, submissions, and RLS policies are all keyed on a unique (student_id, course_id) pair; sharing a single course row across multiple students would corrupt grade isolation and break the existing RLS model.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-067"]
+}

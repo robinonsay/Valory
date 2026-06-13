@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FECONTENT-031",
+  "title": "Sanitizer Allowlist Permits KaTeX and MathML Output",
+  "description": "The frontend module shall permit MathML elements and KaTeX-classed element styles in the section-content sanitizer.",
+  "rationale": "The existing sanitizer explicitly forbids style attributes and MathML tags on the documented assumption that section content contains no math. That assumption changes with this sprint; the allowlist must be extended to allow exactly the elements and styles that math typesetting produces, or math will be stripped before reaching the DOM.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-059", "REQ-SYS-060", "REQ-FECONTENT-030"]
+}

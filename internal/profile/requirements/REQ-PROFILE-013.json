@@ -1,0 +1,9 @@
+{
+  "id": "REQ-PROFILE-013",
+  "title": "Onboarding AI Calls Not Charged to Per-Course Token Budget",
+  "description": "The profile module shall exclude onboarding AI calls from the per-course token budget.",
+  "rationale": "Onboarding has no associated course, so the per-course token cap is inapplicable; charging onboarding tokens to a phantom course would require schema changes and pollute token-usage reports with phantom course rows.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-070"],
+  "implements": []
+}

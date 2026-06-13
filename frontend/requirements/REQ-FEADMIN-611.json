@@ -1,0 +1,8 @@
+{
+  "id": "REQ-FEADMIN-611",
+  "title": "Email-Sent or Not-Configured Status After Account Creation",
+  "description": "The frontend module shall indicate email-sent or email-not-configured status after creating a temp-password account.",
+  "rationale": "The admin must know whether the new user received their credentials by email or needs to receive them another way; displaying the outcome in-context prevents silent failures from going unnoticed.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-063", "REQ-USER-010", "REQ-USER-011", "REQ-FEADMIN-610"]
+}

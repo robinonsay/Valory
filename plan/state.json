@@ -319,20 +319,20 @@
       "title": "Student interactive build flow: course view switches on tree_mode (flat=existing, tree=new) reusing T1 components; build layer-by-layer; student route",
       "sprint": "G2-S4",
       "status": "pending",
-      "depends_on": ["G2-S4-T1"],
+      "depends_on": ["G2-S4-T1", "G2-S4-T5"],
       "assigned_worker": null,
       "verifier": "SQE + Systems Engineer",
       "artifact_path": null,
       "acceptance": "pending",
       "requirements": ["REQ-SYS-073"],
-      "blockers": "Files: frontend/src/views/** (student tree view) + router/index.ts (student route). tree_mode discriminator; flat-course views unchanged."
+      "blockers": "BLOCKED then re-gated on G2-S4-T5. First dispatch returned blocked (correct): G2-S3's courseToResponse omits tree_mode, so GET /courses/{id} and GET /courses carry no discriminator (CourseRow has no TreeMode; column exists in DB, read only by agent pkg). D16: added minimal backend task G2-S4-T5 to expose tree_mode; T2 now depends on it. Files: frontend/src/views/** (student build view) + router/index.ts (additive - T3 serialized after) + types/* (tree_mode). Use build-view-landing+redirect approach. Reuse T1. Contract: plan/tasks/G2-S4-T2.md."
     },
     {
       "id": "G2-S4-T3",
       "title": "Admin authoring flow: draft list + draft editor (reuse T1), preview syllabus + chat before publish->assign; admin routes",
       "sprint": "G2-S4",
       "status": "pending",
-      "depends_on": ["G2-S4-T1", "G2-S4-T2"],
+      "depends_on": ["G2-S4-T1", "G2-S4-T2", "G2-S4-T5"],
       "assigned_worker": null,
       "verifier": "SQE + Systems Engineer",
       "artifact_path": null,
@@ -352,6 +352,19 @@
       "acceptance": "pending",
       "requirements": ["REQ-SYS-073", "REQ-SYS-077"],
       "blockers": "Files: frontend/src/**/*.test.ts (+ e2e). Stub API for component tests; gate real paid e2e (memory valory-stack-rebuild-before-e2e). Last task before final Senior SQE delivery gate."
+    },
+    {
+      "id": "G2-S4-T5",
+      "title": "Backend: expose tree_mode in student/admin course API responses (CourseRow.TreeMode + scans + courseToResponse)",
+      "sprint": "G2-S4",
+      "status": "done",
+      "depends_on": [],
+      "assigned_worker": "senior-engineer",
+      "verifier": "SQE + Systems Engineer",
+      "artifact_path": "internal/course/repository.go ; internal/course/handler.go ; internal/course/handler_test.go ; internal/course/repository_test.go",
+      "acceptance": "pass",
+      "requirements": ["REQ-SYS-073", "REQ-SYS-077"],
+      "blockers": "ACCEPTED (gate 1, no rework). D16 fix (unblocks T2+T3). SQE PASS + Systems PASS: all 6 CourseRow scan sites (GetCourseByID, getCourseByIDTx, Transition+TransitionTx RETURNING, ListCourses admin+student paths) select+scan tree_mode in lockstep column/scan order; CreateCourse correctly omits (bool zero=false default); courseToResponse emits \"tree_mode\" always-present bool to getCourse+listCourses; 3 new handler tests (true/false/list) non-vacuous, no DB mocks, @verifies annotated; applyMigrations test-schema tree_mode matches migration 022 (BOOLEAN NOT NULL DEFAULT false); no RLS/authz/WHERE widening (additive column only); go build+vet clean; -tags testing course pkg green (integration skips w/o VALORY_TEST_DATABASE_URL). DEFERRED backlog (PRE-EXISTING, not T5): repository_test.go applyMigrations missing assignment_id/course_assignments table (breaks integration vs applyMigrations-only DB); TestHandler_ListHomework_* decode wrong shape (resp[\"homework\"] vs bare array). Gate-2 Senior SQE batched at final delivery. Unblocks T2+T3."
     }
   ]
 }

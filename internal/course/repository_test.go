@@ -186,6 +186,7 @@ func applyMigrations(ctx context.Context, p *pgxpool.Pool) error {
 	    topic                  TEXT          NOT NULL,
 	    status                 course_status NOT NULL DEFAULT 'intake',
 	    pre_withdrawal_status  course_status,
+	    tree_mode              BOOLEAN       NOT NULL DEFAULT false,
 	    created_at             TIMESTAMPTZ   NOT NULL DEFAULT now(),
 	    updated_at             TIMESTAMPTZ   NOT NULL DEFAULT now()
 	);

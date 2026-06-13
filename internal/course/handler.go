@@ -570,8 +570,10 @@ func (h *CourseHandler) listHomework(w http.ResponseWriter, r *http.Request) {
 // instructor" badge when the value is non-null (REQ-ASSIGN-008).
 // student_username and student_email are populated by the admin path
 // (REQ-FEADMIN-708) and omitted by the student path.
+// tree_mode is always present (REQ-SYS-073, REQ-SYS-077) so the frontend can
+// route tree-mode courses to the interactive-tree UI without a nil-check.
 //
-// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008", "REQ-ASSIGN-008", "REQ-FEADMIN-708"]}
+// @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-008", "REQ-ASSIGN-008", "REQ-FEADMIN-708", "REQ-SYS-073", "REQ-SYS-077"]}
 func courseToResponse(course CourseRow) map[string]interface{} {
 	resp := map[string]interface{}{
 		"id":         course.ID.String(),
@@ -581,6 +583,9 @@ func courseToResponse(course CourseRow) map[string]interface{} {
 		"status":     course.Status,
 		"created_at": course.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		"updated_at": course.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		// tree_mode is a non-pointer bool; always emit it (false for flat courses,
+		// true for layered knowledge-tree courses added in migration 022).
+		"tree_mode": course.TreeMode,
 	}
 	if course.PreWithdrawalStatus != nil {
 		resp["pre_withdrawal_status"] = *course.PreWithdrawalStatus

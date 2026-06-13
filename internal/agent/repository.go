@@ -383,7 +383,7 @@ func (r *AgentRepository) ListUntriggeredApprovals(ctx context.Context) ([]Cours
 		 AND NOT EXISTS (
 		     SELECT 1 FROM agent_runs ar
 		     WHERE ar.course_id = c.id
-		     AND ar.run_type = CASE WHEN c.tree_mode THEN 'tree_layer_generation' ELSE 'content_generation' END
+		     AND ar.run_type = (CASE WHEN c.tree_mode THEN 'tree_layer_generation' ELSE 'content_generation' END)::agent_run_type
 		     AND ar.status IN ('running', 'completed')
 		 )`)
 	if err != nil {

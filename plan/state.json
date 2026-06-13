@@ -318,14 +318,14 @@
       "id": "G2-S4-T2",
       "title": "Student interactive build flow: course view switches on tree_mode (flat=existing, tree=new) reusing T1 components; build layer-by-layer; student route",
       "sprint": "G2-S4",
-      "status": "pending",
+      "status": "done",
       "depends_on": ["G2-S4-T1", "G2-S4-T5"],
-      "assigned_worker": null,
+      "assigned_worker": "senior-engineer",
       "verifier": "SQE + Systems Engineer",
-      "artifact_path": null,
-      "acceptance": "pending",
+      "artifact_path": "frontend/src/views/CourseBuildView.vue ; frontend/src/views/CourseDashboardView.vue ; frontend/src/router/index.ts ; frontend/src/types/course.ts",
+      "acceptance": "pass",
       "requirements": ["REQ-SYS-073"],
-      "blockers": "BLOCKED then re-gated on G2-S4-T5. First dispatch returned blocked (correct): G2-S3's courseToResponse omits tree_mode, so GET /courses/{id} and GET /courses carry no discriminator (CourseRow has no TreeMode; column exists in DB, read only by agent pkg). D16: added minimal backend task G2-S4-T5 to expose tree_mode; T2 now depends on it. Files: frontend/src/views/** (student build view) + router/index.ts (additive - T3 serialized after) + types/* (tree_mode). Use build-view-landing+redirect approach. Reuse T1. Contract: plan/tasks/G2-S4-T2.md."
+      "blockers": "ACCEPTED (gate 1, no rework after T5 unblock). First dispatch correctly returned blocked (-> drove D16/T5). Re-dispatch chose navigation-time switch (list now carries tree_mode) + defensive mount-guard replace-redirect for stale deep-links. SQE PASS + Systems PASS: tree_mode:boolean matches courseToResponse wire; flat status->route map byte-for-byte unchanged (additive tree branch only); CourseBuildView loads listCourseNodes + useNodeEvents (student SSE) + renders T1 TreeView, wires all 6 callbacks to @/api/tree with correct signatures, live nodeStatuses fed, 409s via T1 components, no reimplementation/no 2nd renderer; route auth+student-role guarded, additive (T3 admin block untouched); SSE onUnmounted cleanup, redirect+watch cannot loop, no auto-generate-on-mount (cost-safe REQ-SYS-074); no .go changes; build+vue-tsc clean, vitest 595/595. DEFERRED backlog: CourseBuildView.vue:59 auth.token unexposed->undefined->null (works, pass null directly); REQ-FECOURSE-602 citation imprecise (a dedicated tree-routing req cleaner - requirements-author); REQ-SYS-074 client cost-control annotation; no ESLint config (project-level pre-existing); summary.md tool-policy waiver. Gate-2 Senior SQE batched. Unblocks T3 (router serialise) + T4."
     },
     {
       "id": "G2-S4-T3",

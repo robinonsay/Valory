@@ -23,8 +23,16 @@ onMounted(async () => {
   }
 })
 
-// @{"req": ["REQ-FECOURSE-602"]}
-const navigateToCourse = (courseId: string, status: string): void => {
+// @{"req": ["REQ-FECOURSE-602", "REQ-SYS-073"]}
+// tree_mode=true courses bypass the flat status→route map entirely and go
+// straight to the interactive build view. The list endpoint already carries
+// tree_mode (courseToResponse in handler.go) so we can switch at navigation
+// time without an extra fetch.
+const navigateToCourse = (courseId: string, status: string, treeMode?: boolean): void => {
+  if (treeMode) {
+    router.push(`/courses/${courseId}/build`)
+    return
+  }
   const routeMap: Record<string, string> = {
     'intake': `/courses/${courseId}/intake`,
     'syllabus_draft': `/courses/${courseId}/syllabus`,
@@ -116,7 +124,7 @@ const createNewCourse = async (): Promise<void> => {
         v-for="course in courseStore.sortedCourses"
         :key="course.id"
         class="course-card"
-        @click="navigateToCourse(course.id, course.status)"
+        @click="navigateToCourse(course.id, course.status, course.tree_mode)"
       >
         <h3>{{ course.title || course.topic }}</h3>
         <div class="course-details">
@@ -125,7 +133,7 @@ const createNewCourse = async (): Promise<void> => {
         </div>
         <button
           class="continue-button"
-          @click.stop="navigateToCourse(course.id, course.status)"
+          @click.stop="navigateToCourse(course.id, course.status, course.tree_mode)"
         >
           Continue
         </button>

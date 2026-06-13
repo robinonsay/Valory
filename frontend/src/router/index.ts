@@ -1,4 +1,4 @@
-// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003"]}
+// @{"req": ["REQ-FEAUTH-040", "REQ-FEAUTH-041", "REQ-FEAUTH-042", "REQ-FEAUTH-043", "REQ-FEAUTH-148", "REQ-FEAUTH-150", "REQ-FEADMIN-014", "REQ-FEADMIN-015", "REQ-FEONBOARD-001", "REQ-FESETUP-001", "REQ-FESETUP-002", "REQ-FESETUP-003", "REQ-SYS-073"]}
 import { h } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -29,6 +29,7 @@ import CourseOversightView from '@/views/admin/CourseOversightView.vue'
 import CourseDetailView from '@/views/admin/CourseDetailView.vue'
 import AdminAssignmentsView from '@/views/admin/AdminAssignmentsView.vue'
 import AdminAssignmentDetailView from '@/views/admin/AdminAssignmentDetailView.vue'
+import CourseBuildView from '@/views/CourseBuildView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -133,6 +134,15 @@ const router = createRouter({
           path: 'courses/:id/hub',
           name: 'course-hub',
           component: CourseHubView,
+          meta: { requiresAuth: true, requiredRole: 'student' }
+        },
+        {
+          // @{"req": ["REQ-SYS-073"]}
+          // Interactive layer-by-layer build view for tree_mode=true courses.
+          // Reached via CourseDashboardView.navigateToCourse when tree_mode is set.
+          path: 'courses/:id/build',
+          name: 'course-build',
+          component: CourseBuildView,
           meta: { requiresAuth: true, requiredRole: 'student' }
         },
         {

@@ -348,6 +348,9 @@ func (h *CourseHandler) requestModification(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "request is required")
 			return
 		}
+		// Log the underlying cause: a bare INTERNAL_ERROR with no log line makes
+		// failures here (e.g. an RLS denial on the syllabi write) undiagnosable.
+		log.Printf("course: requestModification: course=%s: %v", courseID, err)
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 		return
 	}

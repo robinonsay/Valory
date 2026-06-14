@@ -702,8 +702,12 @@ func (lr *LayeredRunner) escalateNode(
 //   - If all nodes failed → emit layer_generation_failed and return an error.
 //   - If at least one node is approved or awaiting_review → transition course to
 //     'awaiting_layer_approval' and emit layer_awaiting_review for the SSE stream.
+//     If this is the content (final) layer, the tree-generation cycle is complete:
+//     ResetAttemptCount fires to clear the retry budget (D21/D24), and a terminal
+//     event is emitted. The course leaves the poller's 'generating' pool immediately
+//     after this, so this branch fires exactly once per tree-generation cycle.
 //
-// @{"req": ["REQ-AGENT-038", "REQ-AGENT-042", "REQ-SYS-073"]}
+// @{"req": ["REQ-AGENT-038", "REQ-AGENT-042", "REQ-AGENT-065", "REQ-SYS-073"]}
 func (lr *LayeredRunner) settleLayer(
 	ctx context.Context,
 	runID uuid.UUID,
@@ -769,6 +773,29 @@ func (lr *LayeredRunner) settleLayer(
 		Layer:    string(layer),
 	}); emitErr != nil {
 		log.Printf("layered_runner: emit layer_awaiting_review: %v", emitErr)
+	}
+
+	// D24 / D21: if this is the content (final) layer, tree-generation is complete.
+	// No further generation runs will be dispatched for this course; the retry budget
+	// is no longer consumed, so reset it now. The course transitions to
+	// 'awaiting_layer_approval' above and is immediately removed from the poller's
+	// 'generating' pool, guaranteeing this branch fires exactly once per cycle.
+	// We emit a generation_terminal event for SSE consumers and observability.
+	// ResetAttemptCount failure is logged but not returned — it is hygiene, not
+	// on the critical path (the HITL gate has already been set correctly above).
+	//
+	// @{"req": ["REQ-AGENT-065", "REQ-SYS-073"]}
+	if layer == NodeTypeContent {
+		if resetErr := lr.agentRepo.ResetAttemptCount(ctx, courseID); resetErr != nil {
+			log.Printf("layered_runner: reset attempt count for course %s: %v", courseID, resetErr)
+		}
+		if emitErr := lr.agentRepo.EmitNodeEvent(ctx, runID, "generation_terminal", NodeEventPayload{
+			CourseID: &courseID,
+			Layer:    string(layer),
+		}); emitErr != nil {
+			log.Printf("layered_runner: emit generation_terminal: %v", emitErr)
+		}
+		log.Printf("layered_runner: course %s tree-generation complete (content layer settled)", courseID)
 	}
 
 	log.Printf("layered_runner: course %s layer %s awaiting human review (approvedOrAwaiting=%d)",

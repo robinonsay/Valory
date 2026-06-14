@@ -58,6 +58,16 @@ ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'generation_retrying';
 ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'generation_failed';
 ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'generation_recovery';
 
+-- pipeline_event_type: four new dispatch-lifecycle event values (D23).
+-- runner.go emits these via EmitEvent; without them the inserts silently fail
+-- because pipeline_events.event_type is typed as pipeline_event_type (not text).
+-- 'generation_terminal' is reused by layered_runner.go (settleLayer / D24) as the
+-- tree-generation-complete event; keeping a single value avoids consumer confusion.
+ALTER TYPE pipeline_event_type ADD VALUE IF NOT EXISTS 'generation_claimed';
+ALTER TYPE pipeline_event_type ADD VALUE IF NOT EXISTS 'token_cap_preflight_failed';
+ALTER TYPE pipeline_event_type ADD VALUE IF NOT EXISTS 'generation_failed_with_retry';
+ALTER TYPE pipeline_event_type ADD VALUE IF NOT EXISTS 'generation_terminal';
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. Version stamp (idempotent) — inside transaction so it rolls back on error
 -- ─────────────────────────────────────────────────────────────────────────────

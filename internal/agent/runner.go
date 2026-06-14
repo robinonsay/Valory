@@ -18,6 +18,7 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valory/valory/internal/auth"
 	"github.com/valory/valory/internal/db"
@@ -440,8 +441,15 @@ func (r *AgentRunner) dispatchTreeCourse(ctx context.Context, course CourseStude
 		return
 	}
 
+	// seedTreeAndGenerateRoot seeded the tree and generated the section_goal layer.
+	// The course is now in 'awaiting_layer_approval'; many subsequent HITL cycles
+	// (pollLayeredGeneration ticks) will drive concept and content generation before
+	// the tree is truly complete. Marking this seed run 'completed' is correct —
+	// the seed work is done — but ResetAttemptCount (D21) must NOT fire here because
+	// the retry budget applies at the course-dispatch level and the tree is not yet
+	// fully generated. handleCompletedRun fires in pollLayeredGeneration when the
+	// content layer generation completes (the tree's terminal SUCCESS point).
 	_ = r.agentRepo.SetRunStatus(ctx, run.ID, "completed", nil)
-	r.handleCompletedRun(ctx, run.ID, course.CourseID, course.StudentID)
 }
 
 // pollFeedback scans for section_feedback rows that have not yet triggered
@@ -757,7 +765,8 @@ func (r *AgentRunner) RunContentGeneration(ctx context.Context, runID, courseID,
 // for the case where token usage is written by a concurrent run between the pre-flight
 // and the first section call.
 //
-// Uses the bare pool (not AcquireServerConn) because agent_token_usage has no RLS.
+// Uses r.pool directly (not AcquireServerConn) because agent_token_usage has no
+// FORCE ROW LEVEL SECURITY — a server-role connection is not required.
 // The AND draft_id IS NULL filter restricts to the production token record.
 //
 // @{"req": ["REQ-AGENT-068", "REQ-SYS-074"]}
@@ -793,7 +802,7 @@ func (r *AgentRunner) tokenCapPreFlight(ctx context.Context, courseID, studentID
 //  2. If new count >= maxAttempts: SetCourseTerminal → 'generation_failed' + events.
 //  3. Else: emit generation_failed_with_retry event + notify student.
 //
-// @{"req": ["REQ-AGENT-062", "REQ-AGENT-065", "REQ-AGENT-066"]}
+// @{"req": ["REQ-AGENT-062", "REQ-AGENT-065", "REQ-AGENT-066", "REQ-AGENT-069"]}
 func (r *AgentRunner) handleFailedRun(ctx context.Context, runID, courseID, studentID uuid.UUID, runErr error, maxAttempts, backoffSeconds int64) {
 	newCount, err := r.agentRepo.IncrementAttemptCount(ctx, courseID, backoffSeconds)
 	if err != nil {
@@ -842,12 +851,9 @@ func (r *AgentRunner) handleCompletedRun(ctx context.Context, runID, courseID, s
 	}
 }
 
-// isNoRows returns true when err is the pgx no-rows sentinel. Using a helper
-// avoids importing pgx directly in the runner beyond what is already imported.
+// isNoRows returns true when err is the pgx no-rows sentinel.
 func isNoRows(err error) bool {
-	// pgx wraps pgx.ErrNoRows; check the error string as a last resort.
-	const pgxNoRows = "no rows in result set"
-	return err != nil && (err.Error() == pgxNoRows)
+	return errors.Is(err, pgx.ErrNoRows)
 }
 
 // generateAllSections iterates over the course's homework sections and generates

@@ -8,11 +8,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/valory/valory/internal/db"
 )
 
 var (
 	ErrNotFound = errors.New("agent: not found")
+
+	// ErrRunAlreadyClaimed is returned by CreateRun when the unique partial index
+	// agent_runs_one_running_per_course_type_idx rejects the INSERT because another
+	// goroutine or process already holds a 'running' run for the same (course_id,
+	// run_type) pair. The caller (runner.go) must treat this as a benign race: log
+	// at DEBUG, release the in-flight map entry, and return nil.
+	ErrRunAlreadyClaimed = errors.New("agent: run already claimed for this course and type")
 )
 
 type AgentRunRow struct {
@@ -53,7 +63,7 @@ func NewAgentRepository(pool *pgxpool.Pool) *AgentRepository {
 	return &AgentRepository{pool: pool}
 }
 
-// @{"req": ["REQ-AGENT-006", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-AGENT-013", "REQ-SYS-015", "REQ-SYS-016", "REQ-SYS-045"]}
+// @{"req": ["REQ-AGENT-006", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-AGENT-013", "REQ-AGENT-066", "REQ-SYS-015", "REQ-SYS-016", "REQ-SYS-045"]}
 func (r *AgentRepository) CreateRun(ctx context.Context, courseID uuid.UUID, runType string) (AgentRunRow, error) {
 	var run AgentRunRow
 	err := r.pool.QueryRow(ctx,
@@ -72,6 +82,13 @@ func (r *AgentRepository) CreateRun(ctx context.Context, courseID uuid.UUID, run
 			&run.Error,
 		)
 	if err != nil {
+		// SQLSTATE 23505 (unique_violation) on agent_runs_one_running_per_course_type_idx
+		// means another goroutine or process already claimed this (course_id, run_type)
+		// combination. Return ErrRunAlreadyClaimed so the dispatcher can discard silently.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return AgentRunRow{}, ErrRunAlreadyClaimed
+		}
 		return AgentRunRow{}, err
 	}
 	return run, nil
@@ -365,27 +382,44 @@ func (r *AgentRepository) EmitNodeEvent(ctx context.Context, runID uuid.UUID, ev
 	return r.EmitEvent(ctx, runID, eventType, payload)
 }
 
-// ListUntriggeredApprovals returns courses with approved syllabi that have not
-// yet had a generation run triggered. It returns tree_mode so that pollAndGenerate
+// ListUntriggeredApprovals returns courses with approved syllabi that are
+// eligible for a new generation run. It returns tree_mode so that pollAndGenerate
 // can branch to the correct pipeline (flat vs tree-mode).
 //
-// For flat courses (tree_mode=false): excludes courses that already have a
-// running or completed 'content_generation' run.
-// For tree-mode courses (tree_mode=true): excludes courses that already have a
-// running or completed 'tree_layer_generation' run.
-// A previous failed run does not permanently block retry (REQ-AGENT-003).
+// Eligibility predicate (design §6.1, D17, D18):
+//   - status = 'syllabus_approved' (not terminal 'generation_failed')
+//   - no running or completed same-type run EXISTS
+//   - not within the backoff window (next_eligible_at IS NULL OR <= NOW())
+//   - has not exhausted max attempts (generation_attempt_count < maxAttempts)
 //
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-037", "REQ-SYS-073"]}
-func (r *AgentRepository) ListUntriggeredApprovals(ctx context.Context) ([]CourseStudentRow, error) {
+// maxAttempts is resolved by the caller from configSvc.GetInt64("generation_max_attempts")
+// and passed as a bound parameter — never string-interpolated into the query.
+//
+// The existing (CASE…END)::agent_run_type cast and tree_mode branch are preserved
+// unchanged (regression already fixed in prior sprint).
+//
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-037", "REQ-AGENT-064", "REQ-AGENT-067", "REQ-SYS-073"]}
+func (r *AgentRepository) ListUntriggeredApprovals(ctx context.Context, maxAttempts int64) ([]CourseStudentRow, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT c.id, c.student_id, c.tree_mode FROM courses c
+		`SELECT c.id, c.student_id, c.tree_mode
+		 FROM courses c
 		 WHERE c.status = 'syllabus_approved'
-		 AND NOT EXISTS (
-		     SELECT 1 FROM agent_runs ar
-		     WHERE ar.course_id = c.id
-		     AND ar.run_type = (CASE WHEN c.tree_mode THEN 'tree_layer_generation' ELSE 'content_generation' END)::agent_run_type
-		     AND ar.status IN ('running', 'completed')
-		 )`)
+		   -- Exclude courses that already have a running or completed generation run.
+		   -- The (CASE…END)::agent_run_type cast preserves the tree_mode branch.
+		   AND NOT EXISTS (
+		       SELECT 1 FROM agent_runs ar
+		       WHERE ar.course_id = c.id
+		         AND ar.run_type = (CASE WHEN c.tree_mode
+		                                THEN 'tree_layer_generation'
+		                                ELSE 'content_generation'
+		                           END)::agent_run_type
+		         AND ar.status IN ('running', 'completed')
+		   )
+		   -- Exclude courses still within the backoff window.
+		   AND (c.next_eligible_at IS NULL OR c.next_eligible_at <= NOW())
+		   -- Exclude courses that have exhausted max attempts ($1 = generation_max_attempts).
+		   AND c.generation_attempt_count < $1`,
+		maxAttempts)
 	if err != nil {
 		return nil, err
 	}
@@ -405,4 +439,163 @@ func (r *AgentRepository) ListUntriggeredApprovals(ctx context.Context) ([]Cours
 	}
 
 	return results, nil
+}
+
+// IncrementAttemptCount increments courses.generation_attempt_count by 1 and
+// sets next_eligible_at = NOW() + backoffSeconds for the given course. Called by
+// handleFailedRun (T4) after a dispatch-level run transitions to 'failed'.
+//
+// backoffSeconds is resolved from configSvc.GetInt64("generation_backoff_seconds")
+// and passed as a bound parameter — never string-interpolated.
+//
+// Uses a server-pool connection because courses has FORCE ROW LEVEL SECURITY and
+// the poller operates without a request context (design §11.5).
+//
+// Returns the new generation_attempt_count so the caller can decide whether to
+// transition the course to 'generation_failed'.
+//
+// @{"req": ["REQ-AGENT-062", "REQ-AGENT-065", "REQ-AGENT-067"]}
+func (r *AgentRepository) IncrementAttemptCount(ctx context.Context, courseID uuid.UUID, backoffSeconds int64) (int, error) {
+	conn, err := db.AcquireServerConn(ctx, r.pool)
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Release()
+
+	var newCount int
+	err = conn.QueryRow(ctx,
+		`UPDATE courses
+		    SET generation_attempt_count = generation_attempt_count + 1,
+		        next_eligible_at         = NOW() + make_interval(secs => $2)
+		  WHERE id = $1
+		  RETURNING generation_attempt_count`,
+		courseID, backoffSeconds).Scan(&newCount)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	return newCount, nil
+}
+
+// SetCourseTerminal transitions a course to the terminal 'generation_failed' status.
+// Called by handleFailedRun (T4) when generation_attempt_count >= generation_max_attempts.
+//
+// Uses a server-pool connection because courses has FORCE ROW LEVEL SECURITY and
+// the poller operates without a request context (design §11.5).
+//
+// @{"req": ["REQ-AGENT-062"]}
+func (r *AgentRepository) SetCourseTerminal(ctx context.Context, courseID uuid.UUID) error {
+	conn, err := db.AcquireServerConn(ctx, r.pool)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	_, err = conn.Exec(ctx,
+		`UPDATE courses SET status = 'generation_failed', updated_at = NOW() WHERE id = $1`,
+		courseID)
+	return err
+}
+
+// ResetAttemptCount resets courses.generation_attempt_count to 0 and clears
+// next_eligible_at when a course reaches terminal SUCCESS. Called by
+// handleCompletedRun (T4) on the flat path (course → 'active') and by the
+// tree-generation-complete event handler.
+//
+// Per D21, this is called ONLY on terminal SUCCESS, never on intermediate
+// tree_layer_generation completions.
+//
+// Uses a server-pool connection because courses has FORCE ROW LEVEL SECURITY.
+//
+// @{"req": ["REQ-AGENT-065"]}
+func (r *AgentRepository) ResetAttemptCount(ctx context.Context, courseID uuid.UUID) error {
+	conn, err := db.AcquireServerConn(ctx, r.pool)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	_, err = conn.Exec(ctx,
+		`UPDATE courses
+		    SET generation_attempt_count = 0,
+		        next_eligible_at         = NULL
+		  WHERE id = $1`,
+		courseID)
+	return err
+}
+
+// RecoverGenerationFailed transitions a course from 'generation_failed' back to
+// 'syllabus_approved' and atomically resets all lifecycle fields (attempt count and
+// backoff timestamp) to a clean state. This is the ONLY supported path for returning
+// a terminally-failed course to the eligibility pool (REQ-AGENT-069). A bare manual
+// status reset without calling this method would leave stale attempt/backoff state,
+// causing immediate re-exhaustion on the next run.
+//
+// The WHERE id = $1 AND status = 'generation_failed' guard prevents accidental
+// resets of courses that are not in the terminal state.
+//
+// Uses a server-pool connection because courses has FORCE ROW LEVEL SECURITY.
+//
+// @{"req": ["REQ-AGENT-069"]}
+func (r *AgentRepository) RecoverGenerationFailed(ctx context.Context, courseID uuid.UUID) error {
+	conn, err := db.AcquireServerConn(ctx, r.pool)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	_, err = conn.Exec(ctx,
+		`UPDATE courses
+		    SET status                   = 'syllabus_approved',
+		        generation_attempt_count = 0,
+		        next_eligible_at         = NULL,
+		        updated_at               = NOW()
+		  WHERE id = $1
+		    AND status = 'generation_failed'`,
+		courseID)
+	return err
+}
+
+// ConsecutiveFailures returns the number of consecutive dispatch-level failures for
+// a course since its last non-failed run (design §3.3, D21). This is the
+// authoritative "since last success" read that T4 uses to determine whether to call
+// SetCourseTerminal.
+//
+// "Dispatch-level" means runs of runType = 'content_generation' (flat) or
+// 'tree_layer_generation' (tree). The count stops at the most recent run whose
+// status is NOT 'failed' (i.e., 'completed', 'running', or 'terminated').
+//
+// Returns 0 if there are no failed runs, or if the most recent run is not failed.
+//
+// Note: In normal operation the caller will already know the count from
+// IncrementAttemptCount's RETURNING clause. This method exists as a standalone
+// read for recovery code paths (e.g. startup recovery in main.go) and for T5
+// integration assertions.
+//
+// @{"req": ["REQ-AGENT-065"]}
+func (r *AgentRepository) ConsecutiveFailures(ctx context.Context, courseID uuid.UUID, runType string) (int, error) {
+	// Count failed runs that are more recent than the latest non-failed run of the
+	// same type. If no non-failed run exists, count all failed runs of that type.
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*)
+		 FROM agent_runs ar
+		 WHERE ar.course_id = $1
+		   AND ar.run_type  = $2::agent_run_type
+		   AND ar.status    = 'failed'
+		   AND ar.started_at > COALESCE(
+		       (SELECT MAX(ar2.started_at)
+		        FROM agent_runs ar2
+		        WHERE ar2.course_id = $1
+		          AND ar2.run_type  = $2::agent_run_type
+		          AND ar2.status   != 'failed'),
+		       '-infinity'::timestamptz
+		   )`,
+		courseID, runType).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }

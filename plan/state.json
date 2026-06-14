@@ -396,34 +396,34 @@
       "id": "G3-S1-T3",
       "title": "Backend: migration 024 (generation_failed status + eligibility index) + bounded ListUntriggeredApprovals (backoff + terminal) + consecutive-failure read",
       "sprint": "G3-S1",
-      "status": "in-progress",
+      "status": "done",
       "depends_on": ["G3-S1-T1", "G3-S1-T2"],
       "assigned_worker": "senior-engineer",
       "verifier": "SQE + Systems Engineer",
-      "artifact_path": null,
-      "acceptance": "pending",
+      "artifact_path": "migrations/024_generation_run_lifecycle.sql ; internal/agent/repository.go ; internal/agent/repository_test.go",
+      "acceptance": "pass",
       "requirements": ["REQ-AGENT-061", "REQ-AGENT-062", "REQ-AGENT-063", "REQ-AGENT-064", "REQ-AGENT-065"],
-      "blockers": "PLANNED. Multi-file -> File/Unit grain. Subsumes the interim emergency backoff clause (uncommitted, undeployed). Contract: plan/tasks/G3-S1-T3.md; Files: plan/files/G3-S1-T3-F0{1,2}-*.md; Unit example: plan/units/G3-S1-T3-F02-U01-eligibility-query.md.",
+      "blockers": "ACCEPTED (gate 1 after 1 rework). SQE + Systems PASS. Migration 024 + repository.go logic passed first round on substance (eligibility predicate, claim race-safety via partial unique index agent_runs_one_running_per_course_type_idx, RLS server-pool writes, idempotent migration, ALTER TYPE outside txn per 022 precedent, EXPLAIN index-backed). FAILED round-1 on test-drift (agent applyMigrations stopped at 005 -> updated ListUntriggeredApprovals failed on fresh DB; the valory-db-test-drift class) + no tests for new methods. Rework: harness extended with 022+024 DDL, +16 non-vacuous tests (eligibility backoff/max-attempts/terminal/positive/tree; ConsecutiveFailures 0/N/reset; Increment/SetTerminal/Reset/Recover[+no-op guard]; CreateRun ErrRunAlreadyClaimed[+allows-after-completed]) all GREEN on a FRESH test DB (killed the drift-masking). Lead decision D22: migration 024 widens courses_single_active_idx to also exclude generation_failed so a failed course doesn't block new-course creation. DEFERRED nit: truncateTables omits system_config (no correctness risk). Gate-2 batched. Unblocks T4.",
       "files": [
         {
           "id": "G3-S1-T3-F01",
           "path": "migrations/024_generation_run_lifecycle.sql",
-          "status": "pending",
-          "assigned_worker": null,
+          "status": "done",
+          "assigned_worker": "senior-engineer",
           "units": [
-            { "id": "G3-S1-T3-F01-U01", "title": "schema_migrations self-record + BEGIN/COMMIT wrapper (021-023 convention)", "requirements": ["REQ-AGENT-061"], "acceptance": "pending" },
-            { "id": "G3-S1-T3-F01-U02", "title": "add terminal generation_failed course status (enum/CHECK)", "requirements": ["REQ-AGENT-062"], "acceptance": "pending" },
-            { "id": "G3-S1-T3-F01-U03", "title": "covering index on agent_runs(course_id,run_type,status,started_at)", "requirements": ["REQ-AGENT-063"], "acceptance": "pending" }
+            { "id": "G3-S1-T3-F01-U01", "title": "schema_migrations self-record + BEGIN/COMMIT wrapper (021-023 convention)", "requirements": ["REQ-AGENT-061"], "acceptance": "pass" },
+            { "id": "G3-S1-T3-F01-U02", "title": "add terminal generation_failed course status + D22 courses_single_active_idx widening", "requirements": ["REQ-AGENT-062"], "acceptance": "pass" },
+            { "id": "G3-S1-T3-F01-U03", "title": "claim partial unique index + eligibility covering index + attempt/backoff columns", "requirements": ["REQ-AGENT-063"], "acceptance": "pass" }
           ]
         },
         {
           "id": "G3-S1-T3-F02",
           "path": "internal/agent/repository.go",
-          "status": "pending",
-          "assigned_worker": null,
+          "status": "done",
+          "assigned_worker": "senior-engineer",
           "units": [
-            { "id": "G3-S1-T3-F02-U01", "title": "ListUntriggeredApprovals bounded eligibility (backoff + terminal exclusion; keep enum cast + tree_mode branch)", "requirements": ["REQ-AGENT-064"], "acceptance": "pending" },
-            { "id": "G3-S1-T3-F02-U02", "title": "ConsecutiveFailures count read (failed since last success)", "requirements": ["REQ-AGENT-065"], "acceptance": "pending" }
+            { "id": "G3-S1-T3-F02-U01", "title": "ListUntriggeredApprovals bounded eligibility (backoff + terminal exclusion; keep enum cast + tree_mode branch)", "requirements": ["REQ-AGENT-064"], "acceptance": "pass" },
+            { "id": "G3-S1-T3-F02-U02", "title": "ConsecutiveFailures + Increment/SetTerminal/Reset/Recover + ErrRunAlreadyClaimed", "requirements": ["REQ-AGENT-065"], "acceptance": "pass" }
           ]
         }
       ]
@@ -432,9 +432,9 @@
       "id": "G3-S1-T4",
       "title": "Backend: runner dispatch — idempotent claim, unified flat+tree in-flight guard, bounded retry/backoff, terminal generation_failed on exhaustion, token-cap fail-fast hook",
       "sprint": "G3-S1",
-      "status": "pending",
+      "status": "in-progress",
       "depends_on": ["G3-S1-T3"],
-      "assigned_worker": null,
+      "assigned_worker": "senior-engineer",
       "verifier": "SQE + Systems Engineer",
       "artifact_path": null,
       "acceptance": "pending",

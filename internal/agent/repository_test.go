@@ -442,6 +442,139 @@ func applyMigrations(ctx context.Context, p *pgxpool.Pool) error {
 		return err
 	}
 
+	// ── Migration 022 additions (tree_generation) ────────────────────────────
+	// ALTER TYPE … ADD VALUE must run OUTSIDE a transaction block (PG < 16
+	// compatibility and migration 022 precedent). These are separate Exec calls
+	// so the statements run under the simple-query protocol without a surrounding
+	// BEGIN. IF NOT EXISTS makes each a no-op on re-run.
+	migration022EnumValues := []string{
+		`ALTER TYPE course_status    ADD VALUE IF NOT EXISTS 'awaiting_layer_approval' AFTER 'active'`,
+		`ALTER TYPE course_status    ADD VALUE IF NOT EXISTS 'awaiting_regeneration'   AFTER 'awaiting_layer_approval'`,
+		`ALTER TYPE agent_run_type   ADD VALUE IF NOT EXISTS 'tree_layer_generation'   AFTER 'grading'`,
+		`ALTER TYPE agent_run_type   ADD VALUE IF NOT EXISTS 'node_generation'          AFTER 'tree_layer_generation'`,
+	}
+	for _, stmt := range migration022EnumValues {
+		if _, err := p.Exec(ctx, stmt); err != nil {
+			return err
+		}
+	}
+
+	// Migration 022 DDL: add columns referenced by the agent package tests.
+	// The full tree schema (course_nodes, course_drafts, draft_nodes, node_chats,
+	// RLS policies, triggers) is omitted — only the columns the repository and
+	// client tests touch are included. draft_id on agent_token_usage is added as
+	// a plain UUID (no FK to course_drafts, which is not created here) because
+	// the test only needs the column to exist for the partial-index conflict
+	// predicate (WHERE draft_id IS NULL) used in client_test.go.
+	migration022DDL := `
+	BEGIN;
+
+	INSERT INTO schema_migrations (version) VALUES ('022_tree_generation')
+	    ON CONFLICT (version) DO NOTHING;
+
+	ALTER TABLE courses
+	    ADD COLUMN IF NOT EXISTS tree_mode     BOOLEAN        NOT NULL DEFAULT false,
+	    ADD COLUMN IF NOT EXISTS current_layer TEXT;
+
+	ALTER TABLE agent_runs
+	    ALTER COLUMN course_id DROP NOT NULL,
+	    ADD COLUMN IF NOT EXISTS draft_id UUID;
+
+	DO $$ BEGIN
+	    ALTER TABLE agent_runs
+	        ADD CONSTRAINT agent_runs_context_check CHECK (
+	            (course_id IS NOT NULL AND draft_id IS NULL)
+	            OR
+	            (course_id IS NULL     AND draft_id IS NOT NULL)
+	        );
+	EXCEPTION WHEN duplicate_object THEN NULL;
+	END $$;
+
+	ALTER TABLE agent_token_usage
+	    ALTER COLUMN student_id DROP NOT NULL,
+	    ALTER COLUMN course_id  DROP NOT NULL,
+	    ADD COLUMN IF NOT EXISTS draft_id UUID;
+
+	DO $$ BEGIN
+	    ALTER TABLE agent_token_usage
+	        DROP CONSTRAINT uq_token_usage_student_course;
+	EXCEPTION WHEN undefined_object THEN NULL;
+	END $$;
+
+	DO $$ BEGIN
+	    ALTER TABLE agent_token_usage
+	        ADD CONSTRAINT agent_token_usage_context_check CHECK (
+	            (student_id IS NOT NULL AND course_id IS NOT NULL AND draft_id IS NULL)
+	            OR
+	            (student_id IS NULL     AND course_id IS NULL     AND draft_id IS NOT NULL)
+	        );
+	EXCEPTION WHEN duplicate_object THEN NULL;
+	END $$;
+
+	CREATE UNIQUE INDEX IF NOT EXISTS agent_token_usage_student_course_idx
+	    ON agent_token_usage (student_id, course_id)
+	    WHERE draft_id IS NULL;
+
+	CREATE UNIQUE INDEX IF NOT EXISTS agent_token_usage_draft_idx
+	    ON agent_token_usage (draft_id)
+	    WHERE draft_id IS NOT NULL;
+
+	COMMIT;
+	`
+	if _, err := p.Exec(ctx, migration022DDL); err != nil {
+		return err
+	}
+
+	// ── Migration 024 additions (generation_run_lifecycle) ───────────────────
+	// ALTER TYPE … ADD VALUE must run outside a transaction block.
+	migration024EnumValues := []string{
+		`ALTER TYPE course_status    ADD VALUE IF NOT EXISTS 'generation_failed'`,
+		`ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'generation_retrying'`,
+		`ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'generation_failed'`,
+		`ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'generation_recovery'`,
+	}
+	for _, stmt := range migration024EnumValues {
+		if _, err := p.Exec(ctx, stmt); err != nil {
+			return err
+		}
+	}
+
+	// Migration 024 DDL: new columns, claim-guard index, eligibility index, and
+	// the D22 widened courses_single_active_idx that excludes 'generation_failed'.
+	migration024DDL := `
+	BEGIN;
+
+	INSERT INTO schema_migrations (version) VALUES ('024_generation_run_lifecycle')
+	    ON CONFLICT (version) DO NOTHING;
+
+	ALTER TABLE courses
+	    ADD COLUMN IF NOT EXISTS generation_attempt_count INTEGER NOT NULL DEFAULT 0;
+
+	ALTER TABLE courses
+	    ADD COLUMN IF NOT EXISTS next_eligible_at TIMESTAMPTZ;
+
+	CREATE UNIQUE INDEX IF NOT EXISTS agent_runs_one_running_per_course_type_idx
+	    ON agent_runs (course_id, run_type)
+	    WHERE status = 'running' AND course_id IS NOT NULL;
+
+	CREATE INDEX IF NOT EXISTS courses_generation_eligible_idx
+	    ON courses (status, generation_attempt_count, next_eligible_at)
+	    WHERE status = 'syllabus_approved';
+
+	-- D22: widen the active-course uniqueness guard to also exclude
+	-- 'generation_failed', so a terminally-failed course does not block the
+	-- student from creating a new one.
+	DROP INDEX IF EXISTS courses_single_active_idx;
+	CREATE UNIQUE INDEX IF NOT EXISTS courses_single_active_idx
+	    ON courses (student_id)
+	    WHERE status NOT IN ('archived', 'completed', 'generation_failed');
+
+	COMMIT;
+	`
+	if _, err := p.Exec(ctx, migration024DDL); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -932,7 +1065,9 @@ func TestListUntriggeredApprovals_AppearsWithoutExistingRun(t *testing.T) {
 	studentID := createTestUser(ctx, t, "agent_untriggered_yes_"+uuid.New().String())
 	courseID := createTestCourse(ctx, t, studentID, "Organic Chemistry", "syllabus_approved")
 
-	results, err := repo.ListUntriggeredApprovals(ctx)
+	// maxAttempts=100 keeps the cap from filtering this course — the test only
+	// verifies the "no run exists → eligible" predicate, not the attempt-count gate.
+	results, err := repo.ListUntriggeredApprovals(ctx, 100)
 	if err != nil {
 		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
 	}
@@ -967,7 +1102,9 @@ func TestListUntriggeredApprovals_AbsentWhenRunExists(t *testing.T) {
 		t.Fatalf("CreateRun failed: %v", err)
 	}
 
-	results, err := repo.ListUntriggeredApprovals(ctx)
+	// maxAttempts=100 keeps the cap from filtering this course — the test only
+	// verifies the "run already exists → excluded" predicate.
+	results, err := repo.ListUntriggeredApprovals(ctx, 100)
 	if err != nil {
 		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
 	}
@@ -976,5 +1113,573 @@ func TestListUntriggeredApprovals_AbsentWhenRunExists(t *testing.T) {
 		if r.CourseID == courseID {
 			t.Errorf("course %v must NOT appear in untriggered approvals when a run exists", courseID)
 		}
+	}
+}
+
+// createTestCourseWithAttempts inserts a syllabus_approved course with explicit
+// generation_attempt_count and next_eligible_at values. Used by eligibility tests
+// that need to exercise backoff and max-attempt predicates.
+func createTestCourseWithAttempts(ctx context.Context, t *testing.T, studentID uuid.UUID, topic string, attemptCount int, nextEligibleAt *time.Time, treeMode bool) uuid.UUID {
+	t.Helper()
+	var courseID uuid.UUID
+	err := pool.QueryRow(ctx,
+		`INSERT INTO courses (student_id, topic, status, generation_attempt_count, next_eligible_at, tree_mode)
+		 VALUES ($1, $2, 'syllabus_approved', $3, $4, $5)
+		 RETURNING id`,
+		studentID, topic, attemptCount, nextEligibleAt, treeMode).
+		Scan(&courseID)
+	if err != nil {
+		t.Fatalf("createTestCourseWithAttempts: %v", err)
+	}
+	return courseID
+}
+
+// ─── ListUntriggeredApprovals — eligibility predicate tests ────────────────
+
+// @{"verifies": ["REQ-AGENT-064", "REQ-AGENT-067"]}
+func TestListUntriggeredApprovals_ExcludesBackoffCourse(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_backoff_excl_"+uuid.New().String())
+
+	// next_eligible_at is 1 hour in the future — still within the backoff window.
+	future := time.Now().Add(time.Hour)
+	courseID := createTestCourseWithAttempts(ctx, t, studentID, "Topology", 1, &future, false)
+
+	results, err := repo.ListUntriggeredApprovals(ctx, 100)
+	if err != nil {
+		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
+	}
+	for _, r := range results {
+		if r.CourseID == courseID {
+			t.Errorf("course within backoff window must NOT appear in untriggered approvals")
+		}
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-064", "REQ-AGENT-067"]}
+func TestListUntriggeredApprovals_IncludesCourseAfterBackoffExpires(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_backoff_incl_"+uuid.New().String())
+
+	// next_eligible_at is 1 second in the past — backoff window has elapsed.
+	past := time.Now().Add(-time.Second)
+	courseID := createTestCourseWithAttempts(ctx, t, studentID, "Algebraic Topology", 1, &past, false)
+
+	results, err := repo.ListUntriggeredApprovals(ctx, 100)
+	if err != nil {
+		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
+	}
+	found := false
+	for _, r := range results {
+		if r.CourseID == courseID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("course past its backoff window must appear in untriggered approvals")
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-064", "REQ-AGENT-067"]}
+func TestListUntriggeredApprovals_ExcludesCourseAtMaxAttempts(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_maxattempts_"+uuid.New().String())
+
+	// generation_attempt_count == maxAttempts: course is at the cap, not below it.
+	const maxAttempts int64 = 5
+	courseID := createTestCourseWithAttempts(ctx, t, studentID, "Measure Theory", int(maxAttempts), nil, false)
+
+	results, err := repo.ListUntriggeredApprovals(ctx, maxAttempts)
+	if err != nil {
+		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
+	}
+	for _, r := range results {
+		if r.CourseID == courseID {
+			t.Errorf("course at max attempts must NOT appear in untriggered approvals")
+		}
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-064"]}
+func TestListUntriggeredApprovals_ExcludesGenerationFailedCourse(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_genfailed_excl_"+uuid.New().String())
+
+	// Insert the course as syllabus_approved first (unique index constraint),
+	// then move it to generation_failed to test the exclusion predicate.
+	courseID := createTestCourse(ctx, t, studentID, "Complex Analysis", "syllabus_approved")
+	if _, err := pool.Exec(ctx,
+		`UPDATE courses SET status = 'generation_failed' WHERE id = $1`, courseID); err != nil {
+		t.Fatalf("set generation_failed: %v", err)
+	}
+
+	results, err := repo.ListUntriggeredApprovals(ctx, 100)
+	if err != nil {
+		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
+	}
+	for _, r := range results {
+		if r.CourseID == courseID {
+			t.Errorf("generation_failed course must NEVER appear in untriggered approvals")
+		}
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-003", "REQ-AGENT-064"]}
+func TestListUntriggeredApprovals_IncludesCleanSyllabusApproved(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	// Positive control: a clean syllabus_approved course (zero attempts, no
+	// backoff, no existing run) must always appear.
+	studentID := createTestUser(ctx, t, "agent_clean_approved_"+uuid.New().String())
+	courseID := createTestCourseWithAttempts(ctx, t, studentID, "Real Analysis", 0, nil, false)
+
+	results, err := repo.ListUntriggeredApprovals(ctx, 5)
+	if err != nil {
+		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
+	}
+	found := false
+	for _, r := range results {
+		if r.CourseID == courseID {
+			if r.TreeMode {
+				t.Errorf("expected flat course (TreeMode=false), got true")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("clean syllabus_approved course must appear in untriggered approvals")
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-037", "REQ-AGENT-064"]}
+func TestListUntriggeredApprovals_TreeBranchReturnsTreeMode(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	// tree_mode=true course: must appear and have TreeMode=true in the result,
+	// so pollAndGenerate routes it to the layered pipeline.
+	studentID := createTestUser(ctx, t, "agent_tree_branch_"+uuid.New().String())
+	courseID := createTestCourseWithAttempts(ctx, t, studentID, "Category Theory", 0, nil, true)
+
+	results, err := repo.ListUntriggeredApprovals(ctx, 5)
+	if err != nil {
+		t.Fatalf("ListUntriggeredApprovals failed: %v", err)
+	}
+	found := false
+	for _, r := range results {
+		if r.CourseID == courseID {
+			if !r.TreeMode {
+				t.Errorf("expected tree-mode course (TreeMode=true), got false")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("tree-mode syllabus_approved course must appear in untriggered approvals")
+	}
+}
+
+// ─── ConsecutiveFailures ────────────────────────────────────────────────────
+
+// @{"verifies": ["REQ-AGENT-065"]}
+func TestConsecutiveFailures_ZeroWithNoRuns(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_cf_zero_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Set Theory", "intake")
+
+	count, err := repo.ConsecutiveFailures(ctx, courseID, "content_generation")
+	if err != nil {
+		t.Fatalf("ConsecutiveFailures failed: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 consecutive failures with no runs, got %d", count)
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-065"]}
+func TestConsecutiveFailures_NFailsStraight(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_cf_straight_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Logic", "intake")
+
+	// Insert 3 failed runs with sequential started_at values so the ordering
+	// within ConsecutiveFailures' COALESCE subquery is deterministic.
+	for i := 0; i < 3; i++ {
+		run, err := repo.CreateRun(ctx, courseID, "content_generation")
+		if err != nil {
+			t.Fatalf("CreateRun (fail %d) failed: %v", i, err)
+		}
+		if err := repo.SetRunStatus(ctx, run.ID, "failed", nil); err != nil {
+			t.Fatalf("SetRunStatus (fail %d) failed: %v", i, err)
+		}
+	}
+
+	count, err := repo.ConsecutiveFailures(ctx, courseID, "content_generation")
+	if err != nil {
+		t.Fatalf("ConsecutiveFailures failed: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 consecutive failures, got %d", count)
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-065"]}
+func TestConsecutiveFailures_ResetsAfterSuccess(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_cf_reset_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Number Theory Advanced", "intake")
+
+	// 2 failures before the success run.
+	for i := 0; i < 2; i++ {
+		run, err := repo.CreateRun(ctx, courseID, "content_generation")
+		if err != nil {
+			t.Fatalf("CreateRun (pre-success fail %d): %v", i, err)
+		}
+		if err := repo.SetRunStatus(ctx, run.ID, "failed", nil); err != nil {
+			t.Fatalf("SetRunStatus (pre-success fail %d): %v", i, err)
+		}
+	}
+
+	// One completed run — resets the consecutive counter.
+	successRun, err := repo.CreateRun(ctx, courseID, "content_generation")
+	if err != nil {
+		t.Fatalf("CreateRun (success): %v", err)
+	}
+	if err := repo.SetRunStatus(ctx, successRun.ID, "completed", nil); err != nil {
+		t.Fatalf("SetRunStatus (success): %v", err)
+	}
+
+	// 3 failures after the success run.
+	for i := 0; i < 3; i++ {
+		run, err := repo.CreateRun(ctx, courseID, "content_generation")
+		if err != nil {
+			t.Fatalf("CreateRun (post-success fail %d): %v", i, err)
+		}
+		if err := repo.SetRunStatus(ctx, run.ID, "failed", nil); err != nil {
+			t.Fatalf("SetRunStatus (post-success fail %d): %v", i, err)
+		}
+	}
+
+	// Only the 3 post-success failures should count.
+	count, err := repo.ConsecutiveFailures(ctx, courseID, "content_generation")
+	if err != nil {
+		t.Fatalf("ConsecutiveFailures failed: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 consecutive failures since last success, got %d", count)
+	}
+}
+
+// ─── IncrementAttemptCount ──────────────────────────────────────────────────
+
+// @{"verifies": ["REQ-AGENT-065", "REQ-AGENT-067"]}
+func TestIncrementAttemptCount_IncrementsAndSetsBackoff(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_inc_attempt_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Probability Theory", "intake")
+
+	const backoffSeconds int64 = 600
+
+	// First increment: count should become 1 and next_eligible_at should be set.
+	beforeCall := time.Now()
+	newCount, err := repo.IncrementAttemptCount(ctx, courseID, backoffSeconds)
+	afterCall := time.Now()
+	if err != nil {
+		t.Fatalf("IncrementAttemptCount: %v", err)
+	}
+	if newCount != 1 {
+		t.Errorf("IncrementAttemptCount: expected count=1, got %d", newCount)
+	}
+
+	// Read back both columns to verify they are set correctly.
+	var count int
+	var nextEligible time.Time
+	err = pool.QueryRow(ctx,
+		`SELECT generation_attempt_count, next_eligible_at FROM courses WHERE id = $1`,
+		courseID).Scan(&count, &nextEligible)
+	if err != nil {
+		t.Fatalf("SELECT after IncrementAttemptCount: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("generation_attempt_count: expected 1, got %d", count)
+	}
+	// next_eligible_at must be approximately now + backoffSeconds. Allow ±2 seconds
+	// of clock skew between Go and PostgreSQL, and for any round-trip latency.
+	const tolerance = 2 * time.Second
+	expectedMin := beforeCall.Add(time.Duration(backoffSeconds)*time.Second - tolerance)
+	expectedMax := afterCall.Add(time.Duration(backoffSeconds)*time.Second + tolerance)
+	if nextEligible.Before(expectedMin) || nextEligible.After(expectedMax) {
+		t.Errorf("next_eligible_at %v outside expected window [%v, %v]", nextEligible, expectedMin, expectedMax)
+	}
+
+	// Second increment: count should become 2.
+	newCount2, err := repo.IncrementAttemptCount(ctx, courseID, backoffSeconds)
+	if err != nil {
+		t.Fatalf("IncrementAttemptCount (2nd): %v", err)
+	}
+	if newCount2 != 2 {
+		t.Errorf("IncrementAttemptCount (2nd): expected count=2, got %d", newCount2)
+	}
+}
+
+// ─── SetCourseTerminal ──────────────────────────────────────────────────────
+
+// @{"verifies": ["REQ-AGENT-062"]}
+func TestSetCourseTerminal_TransitionsToGenerationFailed(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_terminal_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Stochastic Processes", "syllabus_approved")
+
+	if err := repo.SetCourseTerminal(ctx, courseID); err != nil {
+		t.Fatalf("SetCourseTerminal: %v", err)
+	}
+
+	var status string
+	if err := pool.QueryRow(ctx,
+		`SELECT status FROM courses WHERE id = $1`, courseID).Scan(&status); err != nil {
+		t.Fatalf("SELECT after SetCourseTerminal: %v", err)
+	}
+	if status != "generation_failed" {
+		t.Errorf("status: expected 'generation_failed', got %q", status)
+	}
+}
+
+// ─── ResetAttemptCount ──────────────────────────────────────────────────────
+
+// @{"verifies": ["REQ-AGENT-065"]}
+func TestResetAttemptCount_ZeroesCountAndClearsBackoff(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_reset_attempt_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Ergodic Theory", "intake")
+
+	// Seed the course with a non-zero count and a future backoff window.
+	future := time.Now().Add(time.Hour)
+	if _, err := pool.Exec(ctx,
+		`UPDATE courses SET generation_attempt_count = 3, next_eligible_at = $1 WHERE id = $2`,
+		future, courseID); err != nil {
+		t.Fatalf("seed attempt count: %v", err)
+	}
+
+	if err := repo.ResetAttemptCount(ctx, courseID); err != nil {
+		t.Fatalf("ResetAttemptCount: %v", err)
+	}
+
+	var count int
+	var nextEligible *time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT generation_attempt_count, next_eligible_at FROM courses WHERE id = $1`,
+		courseID).Scan(&count, &nextEligible); err != nil {
+		t.Fatalf("SELECT after ResetAttemptCount: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("generation_attempt_count: expected 0, got %d", count)
+	}
+	if nextEligible != nil {
+		t.Errorf("next_eligible_at: expected NULL, got %v", nextEligible)
+	}
+}
+
+// ─── RecoverGenerationFailed ────────────────────────────────────────────────
+
+// @{"verifies": ["REQ-AGENT-069"]}
+func TestRecoverGenerationFailed_RestoresSyllabusApproved(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_recover_ok_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Functional Analysis", "syllabus_approved")
+
+	// Move the course to the terminal state and seed stale counters.
+	future := time.Now().Add(time.Hour)
+	if _, err := pool.Exec(ctx,
+		`UPDATE courses SET status = 'generation_failed', generation_attempt_count = 5, next_eligible_at = $1 WHERE id = $2`,
+		future, courseID); err != nil {
+		t.Fatalf("seed generation_failed: %v", err)
+	}
+
+	if err := repo.RecoverGenerationFailed(ctx, courseID); err != nil {
+		t.Fatalf("RecoverGenerationFailed: %v", err)
+	}
+
+	var status string
+	var count int
+	var nextEligible *time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT status, generation_attempt_count, next_eligible_at FROM courses WHERE id = $1`,
+		courseID).Scan(&status, &count, &nextEligible); err != nil {
+		t.Fatalf("SELECT after RecoverGenerationFailed: %v", err)
+	}
+	if status != "syllabus_approved" {
+		t.Errorf("status: expected 'syllabus_approved', got %q", status)
+	}
+	if count != 0 {
+		t.Errorf("generation_attempt_count: expected 0 after recovery, got %d", count)
+	}
+	if nextEligible != nil {
+		t.Errorf("next_eligible_at: expected NULL after recovery, got %v", nextEligible)
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-069"]}
+func TestRecoverGenerationFailed_NoOpForNonTerminalCourse(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_recover_noop_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Harmonic Analysis", "syllabus_approved")
+
+	// RecoverGenerationFailed must be a no-op when status != 'generation_failed'
+	// (the WHERE status='generation_failed' guard in the UPDATE).
+	if err := repo.RecoverGenerationFailed(ctx, courseID); err != nil {
+		t.Fatalf("RecoverGenerationFailed (no-op): %v", err)
+	}
+
+	var status string
+	if err := pool.QueryRow(ctx,
+		`SELECT status FROM courses WHERE id = $1`, courseID).Scan(&status); err != nil {
+		t.Fatalf("SELECT after no-op RecoverGenerationFailed: %v", err)
+	}
+	if status != "syllabus_approved" {
+		t.Errorf("status: expected 'syllabus_approved' (unchanged), got %q", status)
+	}
+}
+
+// ─── CreateRun claim guard ──────────────────────────────────────────────────
+
+// @{"verifies": ["REQ-AGENT-066"]}
+func TestCreateRun_ClaimGuard_SecondRunReturnsClaimed(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_claim_guard_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Operator Algebras", "intake")
+
+	// First CreateRun must succeed.
+	_, err := repo.CreateRun(ctx, courseID, "content_generation")
+	if err != nil {
+		t.Fatalf("first CreateRun failed: %v", err)
+	}
+
+	// Second CreateRun for the same (course_id, run_type) while the first is
+	// still 'running' must return ErrRunAlreadyClaimed.
+	_, err = repo.CreateRun(ctx, courseID, "content_generation")
+	if err == nil {
+		t.Fatal("expected ErrRunAlreadyClaimed, got nil")
+	}
+	if err != ErrRunAlreadyClaimed {
+		t.Errorf("expected ErrRunAlreadyClaimed, got %v", err)
+	}
+}
+
+// @{"verifies": ["REQ-AGENT-066"]}
+func TestCreateRun_ClaimGuard_AllowsAfterCompleted(t *testing.T) {
+	if pool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+
+	ctx := context.Background()
+	repo := NewAgentRepository(pool)
+
+	studentID := createTestUser(ctx, t, "agent_claim_after_"+uuid.New().String())
+	courseID := createTestCourse(ctx, t, studentID, "Spectral Theory", "intake")
+
+	// First run — running → completed.
+	run1, err := repo.CreateRun(ctx, courseID, "content_generation")
+	if err != nil {
+		t.Fatalf("first CreateRun failed: %v", err)
+	}
+	if err := repo.SetRunStatus(ctx, run1.ID, "completed", nil); err != nil {
+		t.Fatalf("SetRunStatus (complete run1): %v", err)
+	}
+
+	// After completion the unique index predicate (WHERE status='running') no
+	// longer covers run1, so a new running claim must succeed.
+	_, err = repo.CreateRun(ctx, courseID, "content_generation")
+	if err != nil {
+		t.Errorf("second CreateRun after completion should succeed, got %v", err)
 	}
 }

@@ -253,9 +253,15 @@ func (r *AgentRunner) HandleSectionRegen(ctx context.Context, courseID, studentI
 // For flat courses (c.TreeMode == false), it calls RunContentGeneration as before.
 // This branching is the sole dispatch point — flat-course behaviour is unchanged.
 //
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-037", "REQ-AGENT-043"]}
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-037", "REQ-AGENT-043", "REQ-AGENT-064", "REQ-AGENT-067"]}
 func (r *AgentRunner) pollAndGenerate(ctx context.Context) {
-	courses, err := r.agentRepo.ListUntriggeredApprovals(ctx)
+	// Resolve the max-attempts cap from config at call time so operators can tune it
+	// without a restart. Default 5 matches the migration seed (REQ-AGENT-067).
+	maxAttempts := r.configSvc.GetInt64("generation_max_attempts")
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	courses, err := r.agentRepo.ListUntriggeredApprovals(ctx, maxAttempts)
 	if err != nil {
 		log.Printf("runner: poll: list untriggered approvals: %v", err)
 		return

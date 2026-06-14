@@ -30,11 +30,15 @@ The effort is done when:
 |------|---------|------|
 | G1 | Phase A — bug-fix & admin oversight quick wins (asks 1, 2, 3-read, 4-read) | [goals/G1.md](goals/G1.md) |
 | G2 | Phase B — interactive knowledge-tree epic (asks 4-author, 5) | [goals/G2.md](goals/G2.md) |
+| G3 | Phase C — generation execution substrate: bounded, cost-governed, resilient runs (post-launch hardening) | [goals/G3.md](goals/G3.md) |
 
-Delivered as a **single combined release** (PM decision): G1 may be built and reviewed early
-but is held for one delivery alongside G2.
+G1+G2 were delivered as a **single combined release** (PM decision). **G3 is a follow-on goal**
+opened after live use exposed that the generation engine beneath asks #4–#5 is not safe to run: it
+storms the DB on failure (925 runs/10h), exhausts paid external quotas (~1000 Brave calls), and
+rarely completes (300s coarse timeout). G3 hardens the execution substrate without regressing G1/G2.
 
 ## Execution gate
 
-The orchestrator dispatches no contributor workers until an explicit go. The current frontier
-is **G1-S1 (Sprint 25)**; see [state.json](state.json).
+The orchestrator dispatches no contributor workers until an explicit go. G1+G2 are delivered.
+The current frontier is **G3-S1 (Sprint 31)** — planned and awaiting an explicit go to build; see
+[state.json](state.json).

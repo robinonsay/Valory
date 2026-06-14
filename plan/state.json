@@ -1,6 +1,6 @@
 {
   "mission": "Give admins real oversight of student learning and re-architect course generation as an interactive, human-in-the-loop knowledge tree. See plan/root.md.",
-  "current_phase": "EXECUTING (resumed post-compact 2026-06-13). ALL BUILD SPRINTS COMPLETE: G1-S1 + G2-S1 (8) + G1-S2 Sprint 26 (4) + G2-S2 Sprint 28 (5) + G2-S3 Sprint 29 (6) + G2-S4 Sprint 30 (5: T1 shared tree UI [rework: REQ wording; gate mis-attribution from dirty tree resolved by baseline commit], T5 expose tree_mode [D16, no rework], T2 student build flow [blocked->T5->re-gated], T3 admin authoring+publish->assign [rework: title wire-mismatch + atomic REQ], T4 component+e2e tests [+78 ->673 green, e2e gated]). All 28 tasks gate-1 accepted. Committed: baseline 4baee4b (Sprints 26/28/29) + 75fa794 (T1) + 57d45b1 (T5) + 20ee62f (T2) + ce35c91 (T3) + f7a8a29 (T4); branch sprint-25-27-admin-oversight-tree-design (pushed through 4baee4b; T1-T4 commits LOCAL, push at release). Delivers ALL 5 asks (#1 delete-500, #2 names, #3 admin co-dev incl UX, #4 admin material oversight, #5 interactive knowledge tree end-to-end). RELEASE STATUS: ** APPROVED FOR DELIVERY ** by Senior SQE (gate-2) 2026-06-13 - holistic combined-release review PASSED: ran full integration suite LIVE vs real PG16 under valory_app role (-p 1, migrations 021+022, no regressions) + go build/vet clean + vue-tsc + vitest 673/673; all 5 asks delivered; RLS/D10/D12/secrets/CSRF/XSS invariants coherent; cost-safety (token cap + HITL pause + 409s + semaphore) coherent; 39 req files schema-valid, 225 cited IDs all resolve (0 dangling); server binary unmodified; deferred backlog has NO mislabeled ship-blockers. Branch pushed. USER PARALLEL WIP (do NOT touch/commit): File/Unit grain in CLAUDE.md, docs/agentic-architecture.md, plan/README.md, schemas/plan-state.schema.json, plan/files/, plan/units/. Deferred (PM backlog): DeleteStudent request-scoped-conn refactor; code/test-comment cleanups (T2 RLS comment, G2-S2-T4 stale pre-D10 comment, node_handler.go:861 silent EmitNodeEvent drop, draft node_error SSE raw err); REQ-FEADMIN-707 chat rendering; O3 refine orphan node_chats double-submit; api-sse §5.2.8 doc-reconciliation; citation_verified not persisted for tree content nodes; G2-S4 nits (CourseBuildView auth.token->null, refreshNodes/handleLoadNodeChat logging, window.confirm delete, useSSE no auto-reconnect, e2e waitForTimeout, repository_test.go applyMigrations missing assignment_id, ListHomework test shape). Migration numbering: G1-S2=021, PhaseB=022.",
+  "current_phase": "EXECUTING (resumed post-compact 2026-06-13). ALL BUILD SPRINTS COMPLETE: G1-S1 + G2-S1 (8) + G1-S2 Sprint 26 (4) + G2-S2 Sprint 28 (5) + G2-S3 Sprint 29 (6) + G2-S4 Sprint 30 (5: T1 shared tree UI [rework: REQ wording; gate mis-attribution from dirty tree resolved by baseline commit], T5 expose tree_mode [D16, no rework], T2 student build flow [blocked->T5->re-gated], T3 admin authoring+publish->assign [rework: title wire-mismatch + atomic REQ], T4 component+e2e tests [+78 ->673 green, e2e gated]). All 28 tasks gate-1 accepted. Committed: baseline 4baee4b (Sprints 26/28/29) + 75fa794 (T1) + 57d45b1 (T5) + 20ee62f (T2) + ce35c91 (T3) + f7a8a29 (T4); branch sprint-25-27-admin-oversight-tree-design (pushed through 4baee4b; T1-T4 commits LOCAL, push at release). Delivers ALL 5 asks (#1 delete-500, #2 names, #3 admin co-dev incl UX, #4 admin material oversight, #5 interactive knowledge tree end-to-end). RELEASE STATUS: ** APPROVED FOR DELIVERY ** by Senior SQE (gate-2) 2026-06-13 - holistic combined-release review PASSED: ran full integration suite LIVE vs real PG16 under valory_app role (-p 1, migrations 021+022, no regressions) + go build/vet clean + vue-tsc + vitest 673/673; all 5 asks delivered; RLS/D10/D12/secrets/CSRF/XSS invariants coherent; cost-safety (token cap + HITL pause + 409s + semaphore) coherent; 39 req files schema-valid, 225 cited IDs all resolve (0 dangling); server binary unmodified; deferred backlog has NO mislabeled ship-blockers. Branch pushed. USER PARALLEL WIP (do NOT touch/commit): File/Unit grain in CLAUDE.md, docs/agentic-architecture.md, plan/README.md, schemas/plan-state.schema.json, plan/files/, plan/units/. Deferred (PM backlog): DeleteStudent request-scoped-conn refactor; code/test-comment cleanups (T2 RLS comment, G2-S2-T4 stale pre-D10 comment, node_handler.go:861 silent EmitNodeEvent drop, draft node_error SSE raw err); REQ-FEADMIN-707 chat rendering; O3 refine orphan node_chats double-submit; api-sse §5.2.8 doc-reconciliation; citation_verified not persisted for tree content nodes; G2-S4 nits (CourseBuildView auth.token->null, refreshNodes/handleLoadNodeChat logging, window.confirm delete, useSSE no auto-reconnect, e2e waitForTimeout, repository_test.go applyMigrations missing assignment_id, ListHomework test shape). Migration numbering: G1-S2=021, PhaseB=022, demo-hotfixes=023. NEW GOAL G3 (Phase C) PLANNED (awaiting explicit go to build): generation execution substrate - root cause of the demo failures is fire-and-forget poll-driven generation with no run lifecycle (no bounded retry/backoff/idempotent-dispatch/cost-gate). G3-S1 (run lifecycle, stops the storm) decomposed incl. File/Unit grain on T3; G3-S2 (cost governance) + G3-S3 (latency/resilience) provisional. Sibling candidate G4: RLS/role-context enforcement (DeleteStudent/syllabi bare-pool class + kill superuser test-masking). Demo session also shipped hotfixes (committed/pushed): enum cast, setup-guard race, syllabi RLS (023), syllabus regeneration, user-delete RLS, course-delete feature. Interim emergency backoff edit in repository.go is UNCOMMITTED + UNDEPLOYED (stack down); G3-S1-T3 subsumes it.",
   "updated_at": "2026-06-13T20:55:00Z",
   "tasks": [
     {
@@ -365,6 +365,94 @@
       "acceptance": "pass",
       "requirements": ["REQ-SYS-073", "REQ-SYS-077"],
       "blockers": "ACCEPTED (gate 1, no rework). D16 fix (unblocks T2+T3). SQE PASS + Systems PASS: all 6 CourseRow scan sites (GetCourseByID, getCourseByIDTx, Transition+TransitionTx RETURNING, ListCourses admin+student paths) select+scan tree_mode in lockstep column/scan order; CreateCourse correctly omits (bool zero=false default); courseToResponse emits \"tree_mode\" always-present bool to getCourse+listCourses; 3 new handler tests (true/false/list) non-vacuous, no DB mocks, @verifies annotated; applyMigrations test-schema tree_mode matches migration 022 (BOOLEAN NOT NULL DEFAULT false); no RLS/authz/WHERE widening (additive column only); go build+vet clean; -tags testing course pkg green (integration skips w/o VALORY_TEST_DATABASE_URL). DEFERRED backlog (PRE-EXISTING, not T5): repository_test.go applyMigrations missing assignment_id/course_assignments table (breaks integration vs applyMigrations-only DB); TestHandler_ListHomework_* decode wrong shape (resp[\"homework\"] vs bare array). Gate-2 Senior SQE batched at final delivery. Unblocks T2+T3."
+    },
+    {
+      "id": "G3-S1-T1",
+      "title": "Design TDD: generation run lifecycle & dispatch (states, attempts, backoff, terminal generation_failed, idempotent claim, unify flat+tree)",
+      "sprint": "G3-S1",
+      "status": "pending",
+      "depends_on": [],
+      "assigned_worker": null,
+      "verifier": "Senior SQE",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-AGENT-003", "REQ-AGENT-014"],
+      "blockers": "PLANNED (awaiting explicit go to build). Root cause: poll-driven fire-and-forget generation has no run lifecycle -> 925 failed runs/10h storm + ~1000 Brave calls + 300s timeouts. Authoritative TDD for T3/T4 -> docs/design/generation-run-lifecycle.md. Binding decisions D17-D20 (see plan/sprints/G3-S1.md)."
+    },
+    {
+      "id": "G3-S1-T2",
+      "title": "Requirements: bounded retry/backoff, max-attempts, terminal failure, idempotent dispatch, no-double-run (REQ-AGENT-061+)",
+      "sprint": "G3-S1",
+      "status": "pending",
+      "depends_on": ["G3-S1-T1"],
+      "assigned_worker": null,
+      "verifier": "Senior SQE",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-SYS-074"],
+      "blockers": "PLANNED. New REQ-AGENT-061+ in internal/agent/requirements/ + any L1 REQ-SYS reliability invariant. Depends T1 TDD."
+    },
+    {
+      "id": "G3-S1-T3",
+      "title": "Backend: migration 024 (generation_failed status + eligibility index) + bounded ListUntriggeredApprovals (backoff + terminal) + consecutive-failure read",
+      "sprint": "G3-S1",
+      "status": "pending",
+      "depends_on": ["G3-S1-T1", "G3-S1-T2"],
+      "assigned_worker": null,
+      "verifier": "SQE + Systems Engineer",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-AGENT-061", "REQ-AGENT-062", "REQ-AGENT-063", "REQ-AGENT-064", "REQ-AGENT-065"],
+      "blockers": "PLANNED. Multi-file -> File/Unit grain. Subsumes the interim emergency backoff clause (uncommitted, undeployed). Contract: plan/tasks/G3-S1-T3.md; Files: plan/files/G3-S1-T3-F0{1,2}-*.md; Unit example: plan/units/G3-S1-T3-F02-U01-eligibility-query.md.",
+      "files": [
+        {
+          "id": "G3-S1-T3-F01",
+          "path": "migrations/024_generation_run_lifecycle.sql",
+          "status": "pending",
+          "assigned_worker": null,
+          "units": [
+            { "id": "G3-S1-T3-F01-U01", "title": "schema_migrations self-record + BEGIN/COMMIT wrapper (021-023 convention)", "requirements": ["REQ-AGENT-061"], "acceptance": "pending" },
+            { "id": "G3-S1-T3-F01-U02", "title": "add terminal generation_failed course status (enum/CHECK)", "requirements": ["REQ-AGENT-062"], "acceptance": "pending" },
+            { "id": "G3-S1-T3-F01-U03", "title": "covering index on agent_runs(course_id,run_type,status,started_at)", "requirements": ["REQ-AGENT-063"], "acceptance": "pending" }
+          ]
+        },
+        {
+          "id": "G3-S1-T3-F02",
+          "path": "internal/agent/repository.go",
+          "status": "pending",
+          "assigned_worker": null,
+          "units": [
+            { "id": "G3-S1-T3-F02-U01", "title": "ListUntriggeredApprovals bounded eligibility (backoff + terminal exclusion; keep enum cast + tree_mode branch)", "requirements": ["REQ-AGENT-064"], "acceptance": "pending" },
+            { "id": "G3-S1-T3-F02-U02", "title": "ConsecutiveFailures count read (failed since last success)", "requirements": ["REQ-AGENT-065"], "acceptance": "pending" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G3-S1-T4",
+      "title": "Backend: runner dispatch — idempotent claim, unified flat+tree in-flight guard, bounded retry/backoff, terminal generation_failed on exhaustion, token-cap fail-fast hook",
+      "sprint": "G3-S1",
+      "status": "pending",
+      "depends_on": ["G3-S1-T3"],
+      "assigned_worker": null,
+      "verifier": "SQE + Systems Engineer",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-AGENT-064", "REQ-AGENT-065", "REQ-SYS-074"],
+      "blockers": "PLANNED. internal/agent/runner.go. Consumes T3 eligibility/claim. D19 unify flat+tree guard; D18 terminal state on max-attempts; fail-fast token-cap hook (full cost gate is G3-S2)."
+    },
+    {
+      "id": "G3-S1-T5",
+      "title": "Integration tests under SET ROLE valory_app: storm cannot recur (bounded runs), idempotent dispatch (forced race=1 run), backoff spacing, max-attempts->terminal, flat+tree, happy-path no regression",
+      "sprint": "G3-S1",
+      "status": "pending",
+      "depends_on": ["G3-S1-T3", "G3-S1-T4"],
+      "assigned_worker": null,
+      "verifier": "SQE",
+      "artifact_path": null,
+      "acceptance": "pending",
+      "requirements": ["REQ-AGENT-064", "REQ-AGENT-065"],
+      "blockers": "PLANNED. internal/agent/*_integration_test.go. Counterfactual: removing backoff/terminal/idempotent-claim must fail a test. No superuser masking (SET ROLE valory_app)."
     }
   ]
 }

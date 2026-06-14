@@ -51,6 +51,13 @@ var allowedKeys = map[string]bool{
 	// and can only be set by the testEmailSend success path (direct DB write).
 	// Allowing it here would let any admin forge the test-send prerequisite gate.
 	"two_factor_enabled": true,
+	// REQ-AGENT-067: bounded dispatch retry controls (seeded in migration 024).
+	// generation_max_attempts: max consecutive dispatch-level failures before a
+	// course transitions to 'generation_failed'.
+	// generation_backoff_seconds: duration of the backoff window added to NOW()
+	// when a dispatch-level run fails.
+	"generation_max_attempts":    true,
+	"generation_backoff_seconds": true,
 }
 
 // @{"req": ["REQ-ADMIN-001", "REQ-ADMIN-002", "REQ-ADMIN-003", "REQ-AUDIT-001", "REQ-GRADE-002", "REQ-GRADE-003", "REQ-EMAIL-008"]}
@@ -505,6 +512,17 @@ func validateConfigValue(key, value string) error {
 	case "two_factor_enabled":
 		if value != "true" && value != "false" {
 			return fmt.Errorf("two_factor_enabled must be \"true\" or \"false\"")
+		}
+	// REQ-AGENT-067: bounded dispatch retry controls (seeded in migration 024).
+	case "generation_max_attempts":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 {
+			return fmt.Errorf("generation_max_attempts must be an integer >= 1")
+		}
+	case "generation_backoff_seconds":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 0 {
+			return fmt.Errorf("generation_backoff_seconds must be an integer >= 0")
 		}
 	}
 	return nil

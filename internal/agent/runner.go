@@ -86,6 +86,15 @@ type AgentRunner struct {
 	// Keys are course UUID strings; presence means a goroutine is in flight.
 	// Single-instance server, so in-process is sufficient.
 	inFlightLayered sync.Map
+
+	// inFlightFlat guards the flat-course (content_generation) dispatch path,
+	// mirroring inFlightLayered for the tree path (D19/REQ-AGENT-064). Keys are
+	// course UUID strings; presence means a goroutine is already running.
+	// The DB unique partial index (agent_runs_one_running_per_course_type_idx)
+	// is the cross-process atomic guard; this map is a fast-path latency
+	// optimisation that avoids a DB round-trip when the previous goroutine for
+	// the same course is still active in this process.
+	inFlightFlat sync.Map
 }
 
 // @{"req": ["REQ-AGENT-003", "REQ-AGENT-006", "REQ-AGENT-007", "REQ-AGENT-008", "REQ-AGENT-011", "REQ-AGENT-013", "REQ-AGENT-014", "REQ-AGENT-037", "REQ-AGENT-038", "REQ-AGENT-039"]}
@@ -245,48 +254,194 @@ func (r *AgentRunner) HandleSectionRegen(ctx context.Context, courseID, studentI
 	return nil
 }
 
-// pollAndGenerate queries for courses with approved syllabi that have no
-// triggered run and starts one for each.
+// pollAndGenerate queries for courses with approved syllabi that are eligible
+// for a new generation run and dispatches one goroutine per course.
 //
-// For tree-mode courses (c.TreeMode == true), it calls seedTreeAndGenerateRoot
-// to initialise the knowledge tree and generate the first layer (section_goal).
-// For flat courses (c.TreeMode == false), it calls RunContentGeneration as before.
-// This branching is the sole dispatch point — flat-course behaviour is unchanged.
+// Unified dispatch (D19/REQ-AGENT-064): both the flat path and the tree path
+// use the same two-layer idempotency guard:
+//   - Layer 1 (fast path): process-level sync.Map (inFlightFlat / inFlightLayered).
+//     Skips the DB round-trip when a goroutine for this course is already active.
+//   - Layer 2 (atomic claim): the unique partial index
+//     agent_runs_one_running_per_course_type_idx enforces one 'running' row per
+//     (course_id, run_type) at the database layer. CreateRun returns
+//     ErrRunAlreadyClaimed (SQLSTATE 23505) on conflict; the dispatcher discards
+//     silently and releases the in-flight map entry so the next tick can retry.
 //
-// @{"req": ["REQ-AGENT-003", "REQ-AGENT-037", "REQ-AGENT-043", "REQ-AGENT-064", "REQ-AGENT-067"]}
+// Retry/terminal flow (§6.2/D18/REQ-AGENT-062/065): on failure, IncrementAttemptCount
+// applies the backoff and, when the new count >= maxAttempts, SetCourseTerminal
+// transitions the course to 'generation_failed'. On terminal success, ResetAttemptCount
+// clears the counter and backoff timestamp (D21 — reset only on terminal success).
+//
+// @{"req": ["REQ-AGENT-003", "REQ-AGENT-037", "REQ-AGENT-043", "REQ-AGENT-062", "REQ-AGENT-064", "REQ-AGENT-065", "REQ-AGENT-067", "REQ-AGENT-068"]}
 func (r *AgentRunner) pollAndGenerate(ctx context.Context) {
-	// Resolve the max-attempts cap from config at call time so operators can tune it
-	// without a restart. Default 5 matches the migration seed (REQ-AGENT-067).
+	// Resolve retry controls from config at call time so operator changes take
+	// effect without a server restart. Defaults match the migration 024 seed.
 	maxAttempts := r.configSvc.GetInt64("generation_max_attempts")
 	if maxAttempts <= 0 {
 		maxAttempts = 5
 	}
+	backoffSeconds := r.configSvc.GetInt64("generation_backoff_seconds")
+	if backoffSeconds <= 0 {
+		backoffSeconds = 600
+	}
+
 	courses, err := r.agentRepo.ListUntriggeredApprovals(ctx, maxAttempts)
 	if err != nil {
 		log.Printf("runner: poll: list untriggered approvals: %v", err)
 		return
 	}
+
 	for _, c := range courses {
+		key := c.CourseID.String()
+
 		if c.TreeMode {
-			// Tree-mode path: seed root/syllabus nodes, generate section_goal layer.
 			if r.layeredRunner == nil {
 				log.Printf("runner: tree-mode course %s skipped — LayeredRunner not wired", c.CourseID)
 				continue
 			}
-			go func(courseID, studentID uuid.UUID) {
-				if err := r.layeredRunner.seedTreeAndGenerateRoot(ctx, courseID, studentID); err != nil {
-					log.Printf("runner: seed tree for course %s: %v", courseID, err)
-				}
-			}(c.CourseID, c.StudentID)
+			// Layer 1: process-level guard for tree path.
+			if _, alreadyRunning := r.inFlightLayered.LoadOrStore(key, struct{}{}); alreadyRunning {
+				continue
+			}
+			go func(course CourseStudentRow) {
+				defer r.inFlightLayered.Delete(course.CourseID.String())
+				r.dispatchTreeCourse(ctx, course, maxAttempts, backoffSeconds)
+			}(c)
 		} else {
-			// Flat-course path: unchanged behaviour.
-			go func(courseID, studentID uuid.UUID) {
-				if err := r.RunContentGeneration(ctx, courseID, studentID); err != nil {
-					log.Printf("runner: content generation for course %s: %v", courseID, err)
-				}
-			}(c.CourseID, c.StudentID)
+			// Layer 1: process-level guard for flat path.
+			if _, alreadyRunning := r.inFlightFlat.LoadOrStore(key, struct{}{}); alreadyRunning {
+				continue
+			}
+			go func(course CourseStudentRow) {
+				defer r.inFlightFlat.Delete(course.CourseID.String())
+				r.dispatchFlatCourse(ctx, course, maxAttempts, backoffSeconds)
+			}(c)
 		}
 	}
+}
+
+// dispatchFlatCourse handles the full flat-course dispatch sequence for one course:
+// CreateRun (Layer 2 claim), tokenCapPreFlight, RunContentGeneration,
+// handleFailedRun / handleCompletedRun.
+//
+// RunContentGeneration is retained intact (REQ-AGENT-014 timeout, handleTimeout/
+// handleAPIFailure classification, UPDATE courses SET status='active'). It manages
+// its own SetRunStatus calls for failure cases internally. The outer goroutine
+// (this function) calls handleFailedRun / handleCompletedRun for the courses-level
+// columns only — there is no double SetRunStatus call on agent_runs.
+//
+// Reconciliation of the double-status-write concern (design §8.2 option a):
+// RunContentGeneration calls SetRunStatus(failed) internally for timeout/API-failure/
+// default error cases, and SetRunStatus(completed) for the success case. This function
+// calls handleFailedRun or handleCompletedRun after RunContentGeneration returns.
+// handleFailedRun does NOT call SetRunStatus — it only updates courses columns.
+// handleCompletedRun does NOT call SetRunStatus — RunContentGeneration already
+// stamped completed_at = now() via its own SetRunStatus(completed) call.
+// Result: completed_at is stamped exactly once per run, by RunContentGeneration.
+//
+// @{"req": ["REQ-AGENT-062", "REQ-AGENT-064", "REQ-AGENT-065", "REQ-AGENT-066", "REQ-AGENT-068"]}
+func (r *AgentRunner) dispatchFlatCourse(ctx context.Context, course CourseStudentRow, maxAttempts, backoffSeconds int64) {
+	// Layer 2: atomic DB claim — unique partial index enforces one running row.
+	run, err := r.agentRepo.CreateRun(ctx, course.CourseID, "content_generation")
+	if errors.Is(err, ErrRunAlreadyClaimed) {
+		// Another goroutine or process already holds the run; skip silently.
+		log.Printf("runner: flat course %s already claimed, skipping", course.CourseID)
+		return
+	}
+	if err != nil {
+		log.Printf("runner: flat course %s: create run: %v", course.CourseID, err)
+		return
+	}
+
+	// Emit generation_claimed event (design §10 / REQ-AGENT-066).
+	_ = r.agentRepo.EmitEvent(ctx, run.ID, "generation_claimed", map[string]any{
+		"course_id":      course.CourseID,
+		"run_id":         run.ID,
+		"attempt_number": 0, // current count before this run's outcome
+	})
+
+	// Pre-flight: token cap check BEFORE any paid work (§9.2 / REQ-AGENT-068).
+	// A capped run fails immediately — zero per-section Brave calls are made.
+	if err := r.tokenCapPreFlight(ctx, course.CourseID, course.StudentID); err != nil {
+		errMsg := err.Error()
+		_ = r.agentRepo.SetRunStatus(ctx, run.ID, "failed", &errMsg)
+		_ = r.agentRepo.EmitEvent(ctx, run.ID, "token_cap_preflight_failed", map[string]any{
+			"course_id": course.CourseID,
+		})
+		r.handleFailedRun(ctx, run.ID, course.CourseID, course.StudentID, err, maxAttempts, backoffSeconds)
+		return
+	}
+
+	// RunContentGeneration is retained intact: it applies the REQ-AGENT-014 timeout
+	// context, calls handleTimeout/handleAPIFailure for event emission and student
+	// notification, runs generateAllSections, and transitions the course to 'active'
+	// on success. It calls SetRunStatus internally for all terminal states so
+	// completed_at is stamped exactly once inside RunContentGeneration (see
+	// reconciliation note in the function comment above).
+	genErr := r.RunContentGeneration(ctx, run.ID, course.CourseID, course.StudentID)
+	if genErr != nil {
+		// RunContentGeneration has already called SetRunStatus(failed) internally.
+		// handleFailedRun updates courses columns only (no SetRunStatus here).
+		r.handleFailedRun(ctx, run.ID, course.CourseID, course.StudentID, genErr, maxAttempts, backoffSeconds)
+		return
+	}
+
+	// Terminal success: course is now 'active'. Reset the attempt counter and
+	// backoff timestamp (D21 — reset only on terminal success, never per layer).
+	r.handleCompletedRun(ctx, run.ID, course.CourseID, course.StudentID)
+}
+
+// dispatchTreeCourse handles the full tree-mode dispatch sequence for one course:
+// CreateRun (Layer 2 claim), tokenCapPreFlight, seedTreeAndGenerateRoot,
+// handleFailedRun / handleCompletedRun.
+//
+// The attempt counter is incremented at the dispatch level (this function), not
+// per layer (D21). Only when the full tree-generation cycle completes is
+// handleCompletedRun called to reset the counter.
+//
+// @{"req": ["REQ-AGENT-062", "REQ-AGENT-064", "REQ-AGENT-065", "REQ-AGENT-066", "REQ-AGENT-068"]}
+func (r *AgentRunner) dispatchTreeCourse(ctx context.Context, course CourseStudentRow, maxAttempts, backoffSeconds int64) {
+	// Layer 2: atomic DB claim.
+	run, err := r.agentRepo.CreateRun(ctx, course.CourseID, "tree_layer_generation")
+	if errors.Is(err, ErrRunAlreadyClaimed) {
+		log.Printf("runner: tree course %s already claimed, skipping", course.CourseID)
+		return
+	}
+	if err != nil {
+		log.Printf("runner: tree course %s: create run: %v", course.CourseID, err)
+		return
+	}
+
+	_ = r.agentRepo.EmitEvent(ctx, run.ID, "generation_claimed", map[string]any{
+		"course_id": course.CourseID,
+		"run_id":    run.ID,
+	})
+
+	// Pre-flight token cap check before any tree-node generation work.
+	if err := r.tokenCapPreFlight(ctx, course.CourseID, course.StudentID); err != nil {
+		errMsg := err.Error()
+		_ = r.agentRepo.SetRunStatus(ctx, run.ID, "failed", &errMsg)
+		_ = r.agentRepo.EmitEvent(ctx, run.ID, "token_cap_preflight_failed", map[string]any{
+			"course_id": course.CourseID,
+		})
+		r.handleFailedRun(ctx, run.ID, course.CourseID, course.StudentID, err, maxAttempts, backoffSeconds)
+		return
+	}
+
+	// Pass run.ID to seedTreeAndGenerateRoot so it uses the single dispatch run
+	// created above. The function no longer creates its own run — doing so would
+	// fire SQLSTATE 23505 on the unique partial index and produce a silent no-op
+	// storm (B1 fix: exactly one tree_layer_generation run per dispatch).
+	genErr := r.layeredRunner.seedTreeAndGenerateRoot(ctx, run.ID, course.CourseID, course.StudentID)
+	if genErr != nil {
+		errMsg := genErr.Error()
+		_ = r.agentRepo.SetRunStatus(ctx, run.ID, "failed", &errMsg)
+		r.handleFailedRun(ctx, run.ID, course.CourseID, course.StudentID, genErr, maxAttempts, backoffSeconds)
+		return
+	}
+
+	_ = r.agentRepo.SetRunStatus(ctx, run.ID, "completed", nil)
+	r.handleCompletedRun(ctx, run.ID, course.CourseID, course.StudentID)
 }
 
 // pollFeedback scans for section_feedback rows that have not yet triggered
@@ -473,7 +628,16 @@ func (r *AgentRunner) pollLayeredGeneration(ctx context.Context) {
 			}
 
 			// Create (or reuse) the run for this layer generation.
+			// Tolerate ErrRunAlreadyClaimed (SQLSTATE 23505) as a benign skip:
+			// another tick or goroutine already holds a running row for this
+			// course+type pair (design §3.2.5 / REQ-AGENT-064). The in-flight
+			// guard above is the fast-path; the unique index is the DB guard.
+			// @{"req": ["REQ-AGENT-062", "REQ-AGENT-064"]}
 			run, runErr := r.agentRepo.CreateRun(ctx, courseID, "tree_layer_generation")
+			if errors.Is(runErr, ErrRunAlreadyClaimed) {
+				log.Printf("runner: poll layered: course %s layer %s already claimed, skipping", courseID, layer)
+				return
+			}
 			if runErr != nil {
 				log.Printf("runner: poll layered: create run for course %s: %v", courseID, runErr)
 				return
@@ -517,8 +681,14 @@ func containsRegenKeyword(text string) bool {
 // course. It respects the configured generation timeout (REQ-AGENT-014) and
 // halts on API failure (REQ-AGENT-011).
 //
+// runID is the agent_runs row already created by the caller (dispatchFlatCourse).
+// This function owns all SetRunStatus transitions for the run it receives — it
+// stamps completed_at exactly once (either on failure or on success), so the
+// outer goroutine must NOT call SetRunStatus again. The outer goroutine calls
+// handleFailedRun / handleCompletedRun for courses-level column updates only.
+//
 // @{"req": ["REQ-AGENT-003", "REQ-AGENT-006", "REQ-AGENT-011", "REQ-AGENT-014"]}
-func (r *AgentRunner) RunContentGeneration(ctx context.Context, courseID, studentID uuid.UUID) error {
+func (r *AgentRunner) RunContentGeneration(ctx context.Context, runID, courseID, studentID uuid.UUID) error {
 	// Apply per-generation timeout (REQ-AGENT-014).
 	timeoutSecs := r.configSvc.GetInt64("content_generation_timeout_seconds")
 	if timeoutSecs <= 0 {
@@ -527,40 +697,38 @@ func (r *AgentRunner) RunContentGeneration(ctx context.Context, courseID, studen
 	genCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
 	defer cancel()
 
-	run, err := r.agentRepo.CreateRun(ctx, courseID, "content_generation")
-	if err != nil {
-		return fmt.Errorf("runner: create run: %w", err)
-	}
-
-	if err := r.agentRepo.EmitEvent(genCtx, run.ID, "generation_started", map[string]any{
+	if err := r.agentRepo.EmitEvent(genCtx, runID, "generation_started", map[string]any{
 		"course_id": courseID,
 	}); err != nil {
 		log.Printf("runner: emit generation_started: %v", err)
 	}
 
-	genErr := r.generateAllSections(genCtx, run.ID, courseID, studentID)
+	genErr := r.generateAllSections(genCtx, runID, courseID, studentID)
 
 	// Distinguish timeout from API failure from other errors.
+	// SetRunStatus is called here (inside RunContentGeneration) for every failure
+	// case so completed_at is stamped exactly once and the outer goroutine does
+	// not need to call SetRunStatus (see reconciliation note in dispatchFlatCourse).
 	if genErr != nil {
 		switch {
 		case errors.Is(genCtx.Err(), context.DeadlineExceeded):
 			// Timeout (REQ-AGENT-014).
-			r.handleTimeout(ctx, run.ID, courseID, studentID)
+			r.handleTimeout(ctx, runID, courseID, studentID)
 			errMsg := "generation timeout"
-			_ = r.agentRepo.SetRunStatus(ctx, run.ID, "failed", &errMsg)
+			_ = r.agentRepo.SetRunStatus(ctx, runID, "failed", &errMsg)
 		case errors.Is(genErr, ErrRateLimitExhausted), errors.Is(genErr, ErrTokenCapExceeded):
 			// API failure or token cap (REQ-AGENT-011).
-			r.handleAPIFailure(ctx, run.ID, courseID, studentID, genErr)
+			r.handleAPIFailure(ctx, runID, courseID, studentID, genErr)
 			errMsg := genErr.Error()
-			_ = r.agentRepo.SetRunStatus(ctx, run.ID, "failed", &errMsg)
+			_ = r.agentRepo.SetRunStatus(ctx, runID, "failed", &errMsg)
 		default:
 			errMsg := genErr.Error()
-			_ = r.agentRepo.SetRunStatus(ctx, run.ID, "failed", &errMsg)
+			_ = r.agentRepo.SetRunStatus(ctx, runID, "failed", &errMsg)
 		}
 		return genErr
 	}
 
-	// Transition course to 'active' using a server-role connection.
+	// Transition course to 'active' using a server-role connection (§11.5).
 	if cconn, cErr := db.AcquireServerConn(ctx, r.pool); cErr == nil {
 		if _, transErr := cconn.Exec(ctx,
 			`UPDATE courses SET status = 'active', updated_at = now() WHERE id = $1`,
@@ -573,11 +741,113 @@ func (r *AgentRunner) RunContentGeneration(ctx context.Context, courseID, studen
 		log.Printf("runner: acquire server conn for course status update: %v", cErr)
 	}
 
-	_ = r.agentRepo.EmitEvent(ctx, run.ID, "generation_complete", map[string]any{
+	_ = r.agentRepo.EmitEvent(ctx, runID, "generation_complete", map[string]any{
 		"course_id": courseID,
 	})
-	_ = r.agentRepo.SetRunStatus(ctx, run.ID, "completed", nil)
+	_ = r.agentRepo.SetRunStatus(ctx, runID, "completed", nil)
 	return nil
+}
+
+// tokenCapPreFlight checks the per-student token cap BEFORE any paid work begins
+// (§9.2 / REQ-AGENT-068). Returns ErrTokenCapExceeded when the cap is set and
+// already exceeded. A capped run stops immediately — zero per-section Brave calls
+// are made, fixing the Brave over-spend defect described in the design.
+//
+// The existing per-call check in ThrottledClient.Messages remains as defence-in-depth
+// for the case where token usage is written by a concurrent run between the pre-flight
+// and the first section call.
+//
+// Uses the bare pool (not AcquireServerConn) because agent_token_usage has no RLS.
+// The AND draft_id IS NULL filter restricts to the production token record.
+//
+// @{"req": ["REQ-AGENT-068", "REQ-SYS-074"]}
+func (r *AgentRunner) tokenCapPreFlight(ctx context.Context, courseID, studentID uuid.UUID) error {
+	cap := r.configSvc.GetInt64("per_student_token_limit")
+	if cap <= 0 {
+		return nil // cap disabled
+	}
+	var used int64
+	err := r.pool.QueryRow(ctx,
+		`SELECT COALESCE(total_tokens_used, 0)
+		 FROM agent_token_usage
+		 WHERE student_id = $1 AND course_id = $2 AND draft_id IS NULL`,
+		studentID, courseID,
+	).Scan(&used)
+	// ErrNoRows means no usage record yet — treat as zero.
+	if err != nil && !isNoRows(err) {
+		return err
+	}
+	if used >= cap {
+		return ErrTokenCapExceeded
+	}
+	return nil
+}
+
+// handleFailedRun updates courses-level lifecycle columns after a dispatch-level
+// run fails (REQ-AGENT-062/065). It does NOT call SetRunStatus — the caller must
+// stamp the run 'failed' before calling this function to avoid a double UPDATE on
+// agent_runs.completed_at (design §6.2 option a).
+//
+// Sequence:
+//  1. IncrementAttemptCount — sets next_eligible_at = NOW() + backoffSeconds.
+//  2. If new count >= maxAttempts: SetCourseTerminal → 'generation_failed' + events.
+//  3. Else: emit generation_failed_with_retry event + notify student.
+//
+// @{"req": ["REQ-AGENT-062", "REQ-AGENT-065", "REQ-AGENT-066"]}
+func (r *AgentRunner) handleFailedRun(ctx context.Context, runID, courseID, studentID uuid.UUID, runErr error, maxAttempts, backoffSeconds int64) {
+	newCount, err := r.agentRepo.IncrementAttemptCount(ctx, courseID, backoffSeconds)
+	if err != nil {
+		log.Printf("runner: increment attempt count for course %s: %v", courseID, err)
+		return
+	}
+
+	if int64(newCount) >= maxAttempts {
+		// Max attempts exhausted — transition course to terminal 'generation_failed'.
+		if termErr := r.agentRepo.SetCourseTerminal(ctx, courseID); termErr != nil {
+			log.Printf("runner: set course terminal for course %s: %v", courseID, termErr)
+		}
+		_ = r.agentRepo.EmitEvent(ctx, runID, "generation_terminal", map[string]any{
+			"course_id":      courseID,
+			"attempt_number": newCount,
+			"max_attempts":   maxAttempts,
+		})
+		_ = notify.Write(ctx, r.pool, notify.Notification{
+			StudentID: studentID,
+			Type:      notify.TypeGenerationFailed,
+			Message:   fmt.Sprintf("Content generation for your course has failed after %d attempts and cannot be automatically retried. Please contact support.", newCount),
+		})
+	} else {
+		_ = r.agentRepo.EmitEvent(ctx, runID, "generation_failed_with_retry", map[string]any{
+			"course_id":      courseID,
+			"attempt_number": newCount,
+			"max_attempts":   maxAttempts,
+		})
+		_ = notify.Write(ctx, r.pool, notify.Notification{
+			StudentID: studentID,
+			Type:      notify.TypeGenerationRetrying,
+			Message:   fmt.Sprintf("Content generation attempt %d of %d failed; the system will retry automatically.", newCount, maxAttempts),
+		})
+	}
+}
+
+// handleCompletedRun resets the courses-level attempt counter and backoff
+// timestamp when a course reaches terminal SUCCESS (flat → 'active'; tree →
+// tree-generation-complete). Called only on terminal success — never on
+// intermediate tree_layer_generation completions (D21/REQ-AGENT-065).
+//
+// @{"req": ["REQ-AGENT-065", "REQ-AGENT-066"]}
+func (r *AgentRunner) handleCompletedRun(ctx context.Context, runID, courseID, studentID uuid.UUID) {
+	if err := r.agentRepo.ResetAttemptCount(ctx, courseID); err != nil {
+		log.Printf("runner: reset attempt count for course %s: %v", courseID, err)
+	}
+}
+
+// isNoRows returns true when err is the pgx no-rows sentinel. Using a helper
+// avoids importing pgx directly in the runner beyond what is already imported.
+func isNoRows(err error) bool {
+	// pgx wraps pgx.ErrNoRows; check the error string as a last resort.
+	const pgxNoRows = "no rows in result set"
+	return err != nil && (err.Error() == pgxNoRows)
 }
 
 // generateAllSections iterates over the course's homework sections and generates

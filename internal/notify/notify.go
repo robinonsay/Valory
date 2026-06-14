@@ -13,6 +13,18 @@ const (
 	TypeAPIFailure        = "api_failure"
 	TypeGenerationTimeout = "generation_timeout"
 	TypeAdminEscalation   = "admin_escalation"
+	// TypeGenerationRetrying is sent to the student when a dispatch-level run
+	// fails but the course still has retry budget remaining (REQ-AGENT-062).
+	TypeGenerationRetrying = "generation_retrying"
+	// TypeGenerationFailed is sent to the student when a course exhausts its
+	// retry budget and transitions to the terminal 'generation_failed' state
+	// (REQ-AGENT-062, REQ-AGENT-069). A corresponding notification_type enum
+	// value is added to PostgreSQL in migration 024.
+	TypeGenerationFailed = "generation_failed"
+	// TypeGenerationRecovery is sent to the student when an operator triggers
+	// RecoverGenerationFailed, resetting the course back to 'syllabus_approved'
+	// (REQ-AGENT-069).
+	TypeGenerationRecovery = "generation_recovery"
 )
 
 type Notification struct {

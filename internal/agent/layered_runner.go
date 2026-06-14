@@ -893,6 +893,12 @@ func (lr *LayeredRunner) ExpandToNextLayer(
 //  4. Sets courses.status='generating', current_layer='section_goal'.
 //  5. Calls GenerateLayer to immediately start generating section_goal nodes.
 //
+// runID is the agent_runs row already created by the caller (dispatchTreeCourse).
+// The caller owns the single CreateRun for this dispatch; this function must NOT
+// create a second run — the unique partial index (agent_runs_one_running_per_course_type_idx)
+// would fire SQLSTATE 23505 and the prior implementation mistakenly treated that as
+// a benign no-op, producing a silent no-op storm (B1 fix: dispatch §8.1).
+//
 // This function is called by the poller in a goroutine on the first tick after
 // a tree-mode course transitions to 'syllabus_approved'. It is idempotent:
 // duplicate inserts are guarded by ON CONFLICT DO NOTHING.
@@ -902,6 +908,7 @@ func (lr *LayeredRunner) ExpandToNextLayer(
 // @{"req": ["REQ-AGENT-043", "REQ-AGENT-037", "REQ-AGENT-038", "REQ-SYS-073"]}
 func (lr *LayeredRunner) seedTreeAndGenerateRoot(
 	ctx context.Context,
+	runID uuid.UUID,
 	courseID uuid.UUID,
 	studentID uuid.UUID,
 ) error {
@@ -909,12 +916,6 @@ func (lr *LayeredRunner) seedTreeAndGenerateRoot(
 	meta, err := lr.loadCourseMeta(ctx, courseID)
 	if err != nil {
 		return fmt.Errorf("layered_runner: seed tree: %w", err)
-	}
-
-	// Create the agent run for this tree layer generation.
-	run, err := lr.agentRepo.CreateRun(ctx, courseID, "tree_layer_generation")
-	if err != nil {
-		return fmt.Errorf("layered_runner: seed tree: create run: %w", err)
 	}
 
 	// Load the approved syllabus AsciiDoc via a server-role connection.
@@ -1020,6 +1021,8 @@ func (lr *LayeredRunner) seedTreeAndGenerateRoot(
 		courseID, rootID, syllabusID, sectionCount)
 
 	// Immediately generate the section_goal layer (first HITL gate).
-	return lr.GenerateLayer(ctx, run.ID, courseID, studentID, NodeTypeSectionGoal,
+	// runID is the caller-owned dispatch run — passed in rather than created here
+	// to ensure exactly one tree_layer_generation run exists per dispatch (B1 fix).
+	return lr.GenerateLayer(ctx, runID, courseID, studentID, NodeTypeSectionGoal,
 		meta.Topic, meta.Level, meta.Parameters)
 }

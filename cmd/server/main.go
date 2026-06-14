@@ -99,21 +99,83 @@ func main() {
 		log.Fatalf("server: run migrations: %v", err)
 	}
 
-	// Startup recovery: any agent_run left in 'running' state survived a crash.
-	// Mark them failed so the polling loop can schedule fresh runs.
-	// agent_runs has no RLS so either pool works here.
-	// @{"req": ["REQ-AGENT-016"]}
+	// @{"req": ["REQ-SECURITY-005"]}
+	// --- Config service (provides consent version and generation retry config) ---
+	// Config MUST load before startup recovery so the attempt-count/backoff bulk
+	// update below can read generation_backoff_seconds from the config table
+	// (design §8.3 / REQ-AGENT-062). The previous ordering (recovery before load)
+	// was incorrect: make_interval(secs => $1) requires the backoff value, which
+	// comes from system_config and is not available until configSvc.Load returns.
+	configSvc := admin.NewConfigService(pool)
+	if err := configSvc.Load(ctx); err != nil {
+		log.Fatalf("server: load config service: %v", err)
+	}
+
+	// Startup recovery (§8.3): three ordered steps.
+	//
+	// B2b fix: stamp a unique per-restart marker so Step 2's subquery matches ONLY
+	// runs that were genuinely in-flight at THIS restart, not rows from prior
+	// restarts. Without the marker, each restart increments attempt_count by the
+	// cumulative count of all prior restart-failed rows, wrongly driving courses to
+	// generation_failed after just one real failure.
+	restartMark := "server restart:" + time.Now().UTC().Format(time.RFC3339Nano)
+
+	// Step 1: mark stale 'running' agent_runs as failed with the per-restart marker.
+	// agent_runs has no RLS so the bare pool is sufficient here.
+	// @{"req": ["REQ-AGENT-016", "REQ-AGENT-062"]}
 	if _, err := pool.Exec(ctx,
-		`UPDATE agent_runs SET status = 'failed', error = 'server restart' WHERE status = 'running'`,
+		`UPDATE agent_runs SET status = 'failed', error = $1 WHERE status = 'running'`,
+		restartMark,
 	); err != nil {
 		log.Printf("server: startup recovery: mark stale runs failed: %v", err)
 	}
 
-	// @{"req": ["REQ-SECURITY-005"]}
-	// --- Config service (provides consent version) ---
-	configSvc := admin.NewConfigService(pool)
-	if err := configSvc.Load(ctx); err != nil {
-		log.Fatalf("server: load config service: %v", err)
+	// Step 2: increment generation_attempt_count and set next_eligible_at for
+	// courses whose runs were just marked failed due to THIS server restart.
+	// The subquery filters on the unique restartMark so only in-flight-at-THIS-restart
+	// runs are counted (B2b fix: prior-restart rows are excluded).
+	// Guarded to status = 'syllabus_approved' so active/terminal courses are
+	// never touched (design §8.3 / REQ-AGENT-062 / REQ-AGENT-065).
+	// Uses serverPool because courses has FORCE RLS and valory_app is NOBYPASSRLS;
+	// the bare pool carries app.current_role='' which courses_server_*_policy rejects
+	// (B2 fix: RLS violation on bare pool → 0 rows updated → recovery silently defeated).
+	// @{"req": ["REQ-AGENT-062", "REQ-AGENT-065"]}
+	backoffSeconds := configSvc.GetInt64("generation_backoff_seconds")
+	if backoffSeconds <= 0 {
+		backoffSeconds = 600
+	}
+	if _, err := serverPool.Exec(ctx,
+		`UPDATE courses c
+		    SET generation_attempt_count = generation_attempt_count + 1,
+		        next_eligible_at = NOW() + make_interval(secs => $1)
+		  WHERE id IN (
+		      SELECT course_id FROM agent_runs
+		       WHERE status = 'failed' AND error = $2
+		         AND course_id IS NOT NULL
+		  )
+		    AND status = 'syllabus_approved'`,
+		backoffSeconds, restartMark,
+	); err != nil {
+		log.Printf("server: startup recovery: increment attempt counts: %v", err)
+	}
+
+	// Step 3: transition courses that have now exhausted their retry budget to the
+	// terminal 'generation_failed' state so the poller never re-dispatches them.
+	// Only touches 'syllabus_approved' courses (the guarded set from step 2).
+	// Uses serverPool for the same FORCE RLS reason as step 2 (B2 fix).
+	// @{"req": ["REQ-AGENT-062", "REQ-AGENT-065", "REQ-AGENT-069"]}
+	maxAttempts := configSvc.GetInt64("generation_max_attempts")
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	if _, err := serverPool.Exec(ctx,
+		`UPDATE courses
+		    SET status = 'generation_failed'
+		  WHERE status = 'syllabus_approved'
+		    AND generation_attempt_count >= $1`,
+		maxAttempts,
+	); err != nil {
+		log.Printf("server: startup recovery: transition exhausted courses to generation_failed: %v", err)
 	}
 
 	// --- Managed secrets subsystem (REQ-ADMIN-005..008, REQ-SECURITY-006..008) ---

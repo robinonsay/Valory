@@ -448,6 +448,12 @@ router.beforeEach(async (to, _from) => {
   // completes, so protected components never mount before auth state is known.
   const auth = useAuthStore()
   const setup = useSetupStore()
+  // REQ-FESETUP-001/002: resolve setup status BEFORE the first routing decision.
+  // checkSetupStatus() is idempotent (returns the cached/in-flight promise), so
+  // this fetches at most once; awaiting it here closes the first-navigation race
+  // where needsSetup was still null — without it the guard fell through to /login
+  // on a fresh install instead of redirecting to the first-run setup wizard.
+  await setup.checkSetupStatus()
   const redirect = await guardFn(
     to,
     {

@@ -24,6 +24,23 @@ collapse unused levels for a small ask (it may go Root → Tasks directly).
 
 ---
 
+## 1a. Discovery: research precedes decomposition
+
+The tree below assumes the right decomposition is knowable top-down. It often is not — a vague
+ask has to be **researched before it can be cut**, and the only investigation the tree otherwise
+offers is the level-4 design facet, which runs *after* a task is already carved out and so cannot
+fix a wrong cut. Valory therefore runs a **discovery phase** before each decomposition boundary
+whenever a one-prompt *triage* flags uncertainty: a depth-first, disk-durable question tree
+(`plan/discovery/<node>/frontier.json`, driven by `scripts/discovery.py`) that resolves the
+most-constraining question first, prunes the siblings its answers subsume, stops a branch by
+decision-relevance, and is checked by a groundedness + coverage gate before its `findings.md`
+drives the cut. Cost concentrates at the top of the tree and falls toward the leaves; a node is
+**not decomposable** until its discovery resolves — the same hard gate as an unresolved
+dependency (§7). This keeps decomposition *evidence-based* instead of *assumption-based*. Full
+model: **[discovery-phase.md](discovery-phase.md)**.
+
+---
+
 ## 2. The decomposition tree
 
 | Level | Node | Question it answers | Cardinality |
@@ -100,6 +117,7 @@ not transcripts** — fan out for breadth, keep each worker's mandate "report th
 
 | Level | Node | Owner agent |
 |-------|------|-------------|
+| pre | Discovery (per node, when uncertain) | `software-lead` drives the frontier; `discovery-agent` answers; `discovery-gate` gates (see §1a) |
 | 0 | Root | `project-manager` — authors `plan/root.md` |
 | 1 | Goals | `project-manager` — authors `plan/goals/*.md` |
 | 2 | Sprints | `software-lead` (orchestrator) — `plan/sprints/*.md` |
@@ -190,6 +208,9 @@ the orchestrator level:
 
 - Model dependencies explicitly in `plan/state.json` (`depends_on`). A task with unresolved
   dependencies is **not dispatchable**.
+- A node is likewise **not decomposable** while its `discovery` pointer is `discovering`,
+  `gated`, or `escalated` (only `done` clears it) — discovery is to decomposition what
+  `depends_on` is to dispatch. See [discovery-phase.md](discovery-phase.md).
 - Within a sprint, dispatch only the **independent frontier** in parallel; serialize the rest.
 - For sequential chains, run workers in sequence, each consuming the prior result, with the
   orchestrator passing context forward.
@@ -320,12 +341,20 @@ deviations   anything that diverged from the task contract (or "none")
   before advancing.
 - **Over-decomposition** — not every ask needs six levels, and not every task needs File/Unit
   docs. Collapse unused levels; a single-file task is one File with no separate Unit planning.
+- **Decomposing blind** — cutting an uncertain node without discovery; the wrong cut then passes
+  its own acceptance but is the wrong task, surfacing only at integration. Triage every boundary
+  and let `findings.md` drive the cut (§1a).
+- **Over-research** — running discovery on a node the codebase already answers. The triage's
+  four criteria gate this; if discovery keeps firing low on the tree, a higher pass was too
+  shallow.
 
 ---
 
 ## Appendix: one-line summary
 
-A logically deep tree (intent → outcome → batch → task → contract → artifact, the artifact
+Research precedes planning — a depth-first discovery phase turns a vague ask into grounded
+findings before any node is cut ([discovery-phase.md](discovery-phase.md)) — and then a
+logically deep tree (intent → outcome → batch → task → contract → artifact, the artifact
 itself grained into Files and Units), executed through a flat layer (one `software-lead`
 orchestrator owning levels 0–3, parallel workers owning each leaf's design → implementation →
 acceptance, dispatched one worker per File so file conflicts cannot arise), with dependencies

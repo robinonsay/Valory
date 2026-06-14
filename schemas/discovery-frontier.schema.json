@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/discovery-frontier.schema.json",
+  "title": "DiscoveryFrontier",
+  "description": "The durable DFS stack for one discovery pass. Discovery runs before a decomposition boundary (Root→Goals, Goal→Sprints, Sprint→Tasks, Task→impl) whenever the triage flags uncertainty. One file per node at plan/discovery/<node-id>/frontier.json; full answers live in sibling Q<NN>.md files, the decision-ready synthesis in findings.md. This is to discovery what plan/state.json is to execution. See docs/discovery-phase.md.",
+  "type": "object",
+  "required": ["node", "status", "budget", "questions"],
+  "additionalProperties": false,
+  "properties": {
+    "node": {
+      "type": "string",
+      "description": "The tree node this discovery pass serves: 'root', a goal 'G<n>', a sprint 'G<n>-S<m>', or a task 'G<n>-S<m>-T<k>'.",
+      "pattern": "^(root|G[0-9]+|G[0-9]+-S[0-9]+|G[0-9]+-S[0-9]+-T[0-9]+)$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["discovering", "gated", "done", "escalated"],
+      "description": "discovering = frontier still being worked; gated = passed to the discovery-gate; done = gate passed, findings ready to decompose; escalated = a budget cap was hit and the pass is inconclusive (NEVER a clean exit)."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the last mutation of this frontier."
+    },
+    "budget": {
+      "type": "object",
+      "description": "Backstop caps against runaway search. Hitting any cap forces status 'escalated' — it is a safety net, not a clean stop. Most branches should terminate by decision-relevance (leaf_reason), not by budget.",
+      "required": ["max_depth", "max_open", "token_cap"],
+      "additionalProperties": false,
+      "properties": {
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum question depth before escalation."
+        },
+        "max_open": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum simultaneously-open questions before escalation."
+        },
+        "token_cap": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Approximate token budget for the whole pass before escalation."
+        }
+      }
+    },
+    "tokens_spent": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Approximate tokens consumed so far, compared against budget.token_cap by the budget check."
+    },
+    "questions": {
+      "type": "array",
+      "description": "Every question in the DFS tree, open and resolved. Ordering in the file is not significant; DFS pop order is driven by weight among status='open' questions.",
+      "items": {
+        "type": "object",
+        "required": ["id", "depth", "weight", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^Q[0-9]+$",
+            "description": "Canonical question id (e.g. Q3). Unique within this frontier."
+          },
+          "parent": {
+            "type": ["string", "null"],
+            "pattern": "^Q[0-9]+$",
+            "description": "The question whose answer spawned this one, or null for a triage-seeded root question."
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Distance from a triage-seeded root (root questions are depth 0). Compared against budget.max_depth."
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "constraint_weight — how much this question's answer is expected to prune or change the plan. The DFS pops the highest-weight open question first."
+          },
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "description": "The question text."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "answered", "pruned", "inconclusive"],
+            "description": "open = awaiting an answer; answered = resolved (leaf or with children); pruned = subsumed by a sibling's answer (see pruned_by); inconclusive = hit a budget cap."
+          },
+          "answer_ref": {
+            "type": ["string", "null"],
+            "description": "Relative path to the Q<NN>.md file holding the full answer + evidence cites. Null until answered."
+          },
+          "children": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^Q[0-9]+$" },
+            "uniqueItems": true,
+            "description": "Child question ids spawned by this question's answer. Empty for a leaf."
+          },
+          "leaf_reason": {
+            "type": ["string", "null"],
+            "description": "Why this answered question spawned no children — i.e. why it is decision-stable. Required reading for the gate, which uses it to catch premature stops. Null unless the question is an answered leaf."
+          },
+          "pruned_by": {
+            "type": ["string", "null"],
+            "pattern": "^Q[0-9]+$",
+            "description": "The id of the question whose answer subsumed this one. Set only when status='pruned'. The gate uses it to catch over-eager prunes."
+          }
+        }
+      }
+    }
+  }
+}

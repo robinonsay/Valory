@@ -13,6 +13,7 @@ Full rationale: [docs/agentic-architecture.md](../docs/agentic-architecture.md).
 ```
 plan/
   README.md            # this file
+  discovery/           # PRE-decomposition — DFS research trees per node (see plan/discovery/README.md)
   root.md              # level 0 — the core ask + whole-effort acceptance
   goals/               # level 1 — G<n>.md, major outcomes
   sprints/             # level 2 — G<n>-S<m>.md, work batches per goal
@@ -29,10 +30,15 @@ per-task triplet file; level 5 is its artifact directory. Files/Units (5a/5b) ar
 *implementation grain* of a task — present only when a task spans multiple files; a single-file
 task is one File with no separate Unit docs.)
 
+(`discovery/` is the *pre-decomposition* research phase — a depth-first question tree run before
+a node is cut, only when uncertainty is high. Full model:
+[docs/discovery-phase.md](../docs/discovery-phase.md).)
+
 ## Who owns what
 
 | Level | Node | Owner agent |
 |-------|------|-------------|
+| pre Discovery | `discovery/<node>/` | `software-lead` drives; `discovery-agent` answers; `discovery-gate` gates |
 | 0 Root | `root.md` | `project-manager` |
 | 1 Goals | `goals/G<n>.md` | `project-manager` |
 | 2 Sprints | `sprints/G<n>-S<m>.md` | `software-lead` (orchestrator) |
@@ -61,6 +67,10 @@ task is one File with no separate Unit docs.)
   status / acceptance / artifact_path in `state.json` before dispatching dependents.
 - **Legacy is not migrated.** Historical `sprints/*.md` prose and the central
   `requirements/l1,l2-requirements.json` stay where they are; new efforts use this tree.
+- **Discover before decomposing.** When a node is uncertain, run a discovery pass
+  (`scripts/discovery.py`, [docs/discovery-phase.md](../docs/discovery-phase.md)) and let
+  `findings.md` drive the cut; a node is not decomposable until its `state.json` discovery
+  pointer reaches `done`. Never hand-edit `frontier.json` — the tool owns it.
 
 ## Templates
 

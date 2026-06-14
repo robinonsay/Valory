@@ -12,8 +12,12 @@ live tree and coordination state live in [plan/](plan/).
 ### Mission (never drop this)
 
 Build Valory by decomposing every effort into a work tree
-(Root → Goals → Sprints → Tasks → spec-triplet → artifact). One orchestrator (`software-lead`)
-owns levels 0–3 and the integration authority; parallel workers each own one leaf. The
+(discovery → Root → Goals → Sprints → Tasks → spec-triplet → artifact). Research precedes
+planning: before decomposing an uncertain node, a depth-first **discovery phase**
+(`plan/discovery/`, driven by `scripts/discovery.py`, gated for groundedness + coverage) turns
+the vague ask into grounded findings so cuts are evidence-based, not assumption-based. One
+orchestrator (`software-lead`) owns levels 0–3 and the integration authority; parallel workers
+each own one leaf. The
 orchestrator's mission, the tree (`plan/`), and the live state (`plan/state.json`) are
 persisted to disk so compaction can never permanently lose them. Nothing ships without passing
 the acceptance facet (SQE + Systems Engineer → Senior SQE).
@@ -22,6 +26,7 @@ the acceptance facet (SQE + Systems Engineer → Senior SQE).
 
 | Level | Node | Owner agent |
 |---|---|---|
+| pre Discovery | research a node before cutting it (when uncertain) | `software-lead` drives the frontier; `discovery-agent` answers; `discovery-gate` gates → `plan/discovery/<node>/` |
 | 0 Root | the core ask | `project-manager` → `plan/root.md` |
 | 1 Goals | major outcomes | `project-manager` → `plan/goals/*.md` |
 | 2 Sprints | work batches per goal | `software-lead` (orchestrator) → `plan/sprints/*.md` |
@@ -62,6 +67,9 @@ workers. The orchestrator owns the tree; workers own leaves.
 - The orchestrator does not do the work itself — it dispatches and integrates.
 - Reconcile `plan/state.json` (status / acceptance / artifact_path) **before** dispatching
   dependents. `plan/state.json` validates against `schemas/plan-state.schema.json`.
+- Discover before you decompose an uncertain node: a node is **not decomposable** while its
+  `discovery` pointer is `discovering`/`gated`/`escalated` (only `done` clears it), exactly as a
+  task with unresolved `depends_on` is not dispatchable.
 - Split a task that touches both backend and frontend unless they are trivially coupled.
 
 ### Worker return schema
@@ -107,6 +115,8 @@ Orchestrator integrates → reconciles state.json → tree advances
 | `software-quality-engineer` | Acceptance gate 1a: code quality, correctness, test coverage |
 | `systems-engineer` | Acceptance gate 1b (parallel): security, performance, integration |
 | `senior-quality-engineer` | Acceptance gate 2: final cross-cutting quality and delivery approval |
+| `discovery-agent` | Discovery: answers one question (read-only research → grounded answer + child questions) |
+| `discovery-gate` | Discovery: gates a pass for groundedness + coverage before findings drive decomposition |
 
 ## Requirements
 
@@ -151,11 +161,13 @@ reload into the system prompt on every compaction.
 - Keep `plan/state.json` continuously up to date as work progresses — it is the durable runtime.
 - Compact proactively at phase boundaries (e.g. a sprint completing), not at the auto-threshold.
 - **Hooks** (`.claude/settings.json`):
-  - `PreCompact` → `.claude/hooks/precompact-snapshot.sh` backs up `plan/state.json` to a
-    timestamped file in `plan/.snapshots/` before compaction.
+  - `PreCompact` → `.claude/hooks/precompact-snapshot.sh` backs up `plan/state.json` (and any
+    in-flight `plan/discovery/*/frontier.json`) to a timestamped file in `plan/.snapshots/`
+    before compaction.
   - `SessionStart` (matchers `compact`, `resume`) → `.claude/hooks/sessionstart-reload.sh`
-    re-injects `plan/state.json` + a pointer to `plan/root.md` as context so the orchestrator
-    reconciles against disk, not a lossy summary.
+    re-injects `plan/state.json` + a pointer to `plan/root.md`, and surfaces any discovery pass
+    still `discovering`, so the orchestrator reconciles (and resumes discovery) against disk, not
+    a lossy summary.
 
 ## Compact Instructions
 
@@ -166,6 +178,9 @@ When summarizing this conversation, ALWAYS preserve verbatim:
 - Which workers are dispatched and their assigned `task_id`s.
 - Completed `task_id`s and their `artifact_path` values.
 - Pending `task_id`s and their blockers.
+- Any **in-flight discovery pass** — the node and its `frontier.json` status. The discovery tree
+  on disk is recoverable, but the *fact that a pass is open* must survive the summary.
 
 Discard: intermediate reasoning and raw tool outputs already written to disk (the plan tree,
-`plan/state.json`, requirement files, and artifacts are all recoverable from disk).
+`plan/state.json`, the discovery trees under `plan/discovery/`, requirement files, and artifacts
+are all recoverable from disk).

@@ -1,0 +1,12 @@
+{
+  "node": "root",
+  "status": "discovering",
+  "updated_at": "2026-06-14T13:44:45Z",
+  "budget": {
+    "max_depth": 4,
+    "max_open": 20,
+    "token_cap": 150000
+  },
+  "tokens_spent": 0,
+  "questions": []
+}

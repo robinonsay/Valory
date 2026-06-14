@@ -24,6 +24,15 @@ You own the top of the work-decomposition tree (see
 Author Root + Goals **before** the Software Lead decomposes them into sprints and tasks. Then
 your requirement JSON files give those goals verifiable, traceable detail.
 
+**When discovery has run, author from its findings — not from assumption.** A vague ask is
+researched first (the discovery phase, [docs/discovery-phase.md](../../docs/discovery-phase.md)).
+If `plan/discovery/root/findings.md` exists, treat it as your authoring contract: its candidate
+children become your Goals, its falsifiable acceptance per child seeds each goal's acceptance and
+your requirement `description`s, and its residual assumptions/risks carry forward into the goal
+files so they are visible downstream. Do not invent Goals the findings do not support; if a goal
+you need has no grounding, that is a coverage gap — ask the Software Lead to extend discovery
+rather than guessing.
+
 ## Your responsibilities
 
 - Translate product goals and user stories into formal requirements

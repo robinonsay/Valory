@@ -145,6 +145,36 @@
           }
         }
       }
+    },
+    "discovery": {
+      "type": "array",
+      "description": "Optional index of discovery passes (docs/discovery-phase.md). One entry per tree node (root/goal/sprint/task) that ran a discovery pass before being decomposed. The heavy DFS detail lives in plan/discovery/<node>/frontier.json (schemas/discovery-frontier.schema.json); this is only the pointer. A node is NOT decomposable while its entry's status is 'discovering', 'gated', or 'escalated' — only 'done' clears the gate, the same way unresolved depends_on blocks dispatch.",
+      "items": {
+        "type": "object",
+        "required": ["node", "status", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "type": "string",
+            "pattern": "^(root|G[0-9]+|G[0-9]+-S[0-9]+|G[0-9]+-S[0-9]+-T[0-9]+)$",
+            "description": "The tree node this discovery pass serves (matches the frontier's 'node')."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["discovering", "gated", "done", "escalated"],
+            "description": "Mirrors the frontier's status. Only 'done' makes the node decomposable."
+          },
+          "path": {
+            "type": "string",
+            "description": "Directory holding the pass (e.g. plan/discovery/G2-S3/)."
+          },
+          "gate": {
+            "type": "string",
+            "enum": ["pending", "pass", "fail"],
+            "description": "The discovery-gate verdict (groundedness + coverage); 'done' status requires 'pass'."
+          }
+        }
+      }
     }
   }
 }

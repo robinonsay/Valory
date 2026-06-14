@@ -306,6 +306,29 @@ func TestApproveSyllabus_WrongState_ReturnsInvalidTransition(t *testing.T) {
 }
 
 // @{"verifies": ["REQ-COURSE-005"]}
+// fakeSyllabusRegenerator simulates the Chair revising a syllabus: it inserts a
+// new syllabus version with revised content (NOT the verbatim feedback), exactly
+// as the production Chair.RegenerateSyllabus does on the server pool. It records
+// the feedback it was handed so tests can assert the request was forwarded.
+type fakeSyllabusRegenerator struct {
+	repo        *CourseRepository
+	revised     string
+	gotFeedback string
+}
+
+func (f *fakeSyllabusRegenerator) RegenerateSyllabus(ctx context.Context, courseID, studentID uuid.UUID, feedbackText string) (uuid.UUID, error) {
+	f.gotFeedback = feedbackText
+	latest, err := f.repo.GetLatestSyllabus(ctx, courseID)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	row, err := f.repo.InsertSyllabus(ctx, courseID, f.revised, latest.Version+1)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	return row.ID, nil
+}
+
 func TestRequestModification_IncrementsSyllabusVersion(t *testing.T) {
 	if pool == nil {
 		t.Skip("TEST_DATABASE_URL not set")
@@ -314,6 +337,10 @@ func TestRequestModification_IncrementsSyllabusVersion(t *testing.T) {
 	ctx := context.Background()
 	repo := NewRepository(pool)
 	svc := NewService(repo)
+	// RequestModification regenerates via the Chair (server-role write); inject a
+	// fake regenerator that revises the syllabus instead of storing the feedback.
+	fake := &fakeSyllabusRegenerator{repo: repo, revised: "= Revised Syllabus\n\nNow includes graphs."}
+	svc.SetSyllabusRegenerator(fake)
 
 	studentID, courseID := createTestCourse(ctx, t, "svc_modreq")
 
@@ -332,8 +359,16 @@ func TestRequestModification_IncrementsSyllabusVersion(t *testing.T) {
 	if newSyllabus.Version != 2 {
 		t.Errorf("expected syllabus version 2, got %d", newSyllabus.Version)
 	}
-	if newSyllabus.ContentAdoc != "Please add a chapter on graphs." {
-		t.Errorf("unexpected ContentAdoc: %q", newSyllabus.ContentAdoc)
+	// The new version must be the regenerated syllabus, NOT the verbatim feedback
+	// (the old Sprint-3 stub stored the request text as the content).
+	if newSyllabus.ContentAdoc != fake.revised {
+		t.Errorf("expected regenerated content %q, got %q", fake.revised, newSyllabus.ContentAdoc)
+	}
+	if newSyllabus.ContentAdoc == "Please add a chapter on graphs." {
+		t.Errorf("regression: syllabus content is the verbatim feedback, not a regeneration")
+	}
+	if fake.gotFeedback != "Please add a chapter on graphs." {
+		t.Errorf("regenerator did not receive the feedback: got %q", fake.gotFeedback)
 	}
 	if updatedCourse.Status != "syllabus_draft" {
 		t.Errorf("expected course status 'syllabus_draft', got %q", updatedCourse.Status)

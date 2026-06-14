@@ -634,6 +634,9 @@ func TestHandler_RequestModification_Success(t *testing.T) {
 
 	repo := NewRepository(pool)
 	svc := NewService(repo)
+	// Inject a fake Chair regenerator (production wires *agent.Chair); it revises
+	// the syllabus into a new version instead of storing the feedback verbatim.
+	svc.SetSyllabusRegenerator(&fakeSyllabusRegenerator{repo: repo, revised: "= Revised Syllabus"})
 
 	course, err := svc.CreateCourse(ctx, studentID, "Test Course")
 	if err != nil {

@@ -300,6 +300,11 @@ func main() {
 	// so that neither package imports the other (no circular dependency).
 	// @{"req": ["REQ-AGENT-018"]}
 	courseHandler.SetIntakeStarter(chair)
+	// Inject the syllabus regenerator for the "request modification" flow. chair
+	// satisfies course.SyllabusRegenerator via Chair.RegenerateSyllabus. Same
+	// post-construction injection seam as SetIntakeStarter (no circular import).
+	// @{"req": ["REQ-COURSE-005"]}
+	courseSvc.SetSyllabusRegenerator(chair)
 
 	// --- Image module wiring ---
 	// imageRepo uses the plain pool; upload handler acquires a server-role conn

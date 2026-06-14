@@ -169,6 +169,72 @@ func (c *Chair) GenerateSyllabus(ctx context.Context, courseID, studentID uuid.U
 	return syllabusID, nil
 }
 
+// RegenerateSyllabus revises the course's current syllabus in response to a
+// student's free-text modification request and inserts the revised document as a
+// new syllabus version. It backs the flat-course "request modification" flow,
+// which previously stored the student's feedback verbatim as the syllabus
+// content instead of asking the Chair to revise it.
+//
+// The read and write both use the server-role pool (c.pool), so the INSERT
+// satisfies the syllabi server RLS policy (021) regardless of the caller's
+// request-scoped role — the same path GenerateSyllabus uses.
+//
+// @{"req": ["REQ-AGENT-001", "REQ-COURSE-005"]}
+func (c *Chair) RegenerateSyllabus(ctx context.Context, courseID, studentID uuid.UUID, feedbackText string) (uuid.UUID, error) {
+	topic, err := c.courseTopic(ctx, courseID)
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("chair: regenerate syllabus: %w", err)
+	}
+
+	// Load the latest syllabus so the model revises the existing document rather
+	// than starting from scratch. Read on the server pool (server RLS policy).
+	var currentAdoc string
+	err = c.pool.QueryRow(ctx,
+		`SELECT content_adoc FROM syllabi WHERE course_id = $1 ORDER BY version DESC LIMIT 1`,
+		courseID,
+	).Scan(&currentAdoc)
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("chair: regenerate syllabus: load current: %w", err)
+	}
+
+	// REQ-PROFILE-008: keep the student's learning profile in the prompt so the
+	// revision stays personalised, consistent with GenerateSyllabus. No-op ("")
+	// when absent (REQ-PROFILE-010).
+	profileSummary := profile.LoadProfileSummary(ctx, c.serverPool, studentID)
+	prompt := profile.AppendProfileBlock(syllabusSystemPrompt(topic), profileSummary)
+
+	msgs := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock(
+			"Here is the current course syllabus:\n\n" + currentAdoc +
+				"\n\nThe student has requested the following changes:\n\n" + feedbackText +
+				"\n\nRevise the syllabus to incorporate this request. Return the COMPLETE revised " +
+				"syllabus as valid AsciiDoc, preserving the overall format (title and one-paragraph " +
+				"description, numbered sections with titles, learning objectives, and time estimates).",
+		)),
+	}
+
+	revisedAdoc, err := c.callClaude(ctx, studentID, courseID, prompt, msgs, 4096)
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("chair: regenerate syllabus: call claude: %w", err)
+	}
+	// Claude often wraps the document in ```asciidoc fences; strip them so the
+	// stored content renders cleanly.
+	revisedAdoc = stripCodeFence(revisedAdoc)
+
+	var syllabusID uuid.UUID
+	err = c.pool.QueryRow(ctx,
+		`INSERT INTO syllabi (course_id, content_adoc, version)
+		 VALUES ($1, $2, COALESCE((SELECT MAX(version) FROM syllabi WHERE course_id = $1), 0) + 1)
+		 RETURNING id`,
+		courseID, revisedAdoc,
+	).Scan(&syllabusID)
+	if err != nil {
+		return uuid.UUID{}, fmt.Errorf("chair: regenerate syllabus: insert: %w", err)
+	}
+
+	return syllabusID, nil
+}
+
 // GenerateSyllabusFromParams generates a course syllabus from admin-supplied
 // parameters, without any prior intake chat history.  Called by the admin
 // assignment handler when pre-seeding courses for assigned students.

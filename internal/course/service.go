@@ -15,13 +15,33 @@ var (
 	ErrBadRequest          = errors.New("course: bad request")
 )
 
+// SyllabusRegenerator asks the Chair to revise a course's syllabus from a
+// student's free-text modification request and persist it as a new version.
+// Satisfied by *agent.Chair via Chair.RegenerateSyllabus; injected after
+// construction (nil in tests until SetSyllabusRegenerator is called) to keep the
+// course package free of an agent import, mirroring the IntakeStarter seam.
+type SyllabusRegenerator interface {
+	RegenerateSyllabus(ctx context.Context, courseID, studentID uuid.UUID, feedbackText string) (uuid.UUID, error)
+}
+
 type CourseService struct {
 	repo *CourseRepository
+	// regenerator is nil until wired in main.go (or a test). RequestModification
+	// requires it; a nil regenerator is a wiring error, not a fallback to the old
+	// "store the feedback verbatim" behaviour.
+	regenerator SyllabusRegenerator
 }
 
 // @{"req": ["REQ-COURSE-001", "REQ-COURSE-002", "REQ-COURSE-003", "REQ-COURSE-004", "REQ-COURSE-005", "REQ-COURSE-006", "REQ-COURSE-007", "REQ-COURSE-008"]}
 func NewService(repo *CourseRepository) *CourseService {
 	return &CourseService{repo: repo}
+}
+
+// SetSyllabusRegenerator injects the Chair-backed syllabus regenerator after the
+// service is constructed (main.go wires *agent.Chair here). Mirrors the
+// CourseHandler.SetIntakeStarter seam.
+func (s *CourseService) SetSyllabusRegenerator(r SyllabusRegenerator) {
+	s.regenerator = r
 }
 
 // isUniqueViolationOnActiveIdx returns true when err is a PostgreSQL
@@ -156,34 +176,36 @@ func (s *CourseService) RequestModification(ctx context.Context, courseID, stude
 	if strings.TrimSpace(requestText) == "" {
 		return SyllabusRow{}, CourseRow{}, ErrBadRequest
 	}
-	_, err := s.GetCourse(ctx, courseID, studentID, "student")
-	if err != nil {
-		return SyllabusRow{}, CourseRow{}, err
-	}
-	latest, err := s.repo.GetLatestSyllabus(ctx, courseID)
-	if err != nil {
+	// Ownership + existence check on the request-scoped (student) connection.
+	if _, err := s.GetCourse(ctx, courseID, studentID, "student"); err != nil {
 		return SyllabusRow{}, CourseRow{}, err
 	}
 
-	// BeginTx begins the transaction on the request-scoped connection for the
-	// same reason as ApproveSyllabus: both writes must share the connection that
-	// carries the student's RLS GUCs.
-	tx, err := s.repo.BeginTx(ctx)
-	if err != nil {
+	// The old behaviour stored requestText verbatim as the new syllabus content
+	// (a Sprint-3 stub) — the syllabus never actually changed. Instead, ask the
+	// Chair to revise the current syllabus from the student's request and insert
+	// the revised document as a new version. The Chair writes on the server-role
+	// pool, which both performs the real revision and satisfies the syllabi RLS
+	// server policy (021) — a student-connection write would be denied.
+	if s.regenerator == nil {
+		return SyllabusRow{}, CourseRow{}, errors.New("course: syllabus regenerator not configured")
+	}
+	if _, err := s.regenerator.RegenerateSyllabus(ctx, courseID, studentID, requestText); err != nil {
 		return SyllabusRow{}, CourseRow{}, err
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
 
-	newSyllabus, err := s.repo.InsertSyllabusTx(ctx, tx, courseID, requestText, latest.Version+1)
-	if err != nil {
-		return SyllabusRow{}, CourseRow{}, err
-	}
-	updatedCourse, err := s.repo.TransitionTx(ctx, tx, courseID,
+	// Move the course back to syllabus_draft so the student reviews the revision.
+	// A student-owned course is writable on the request-scoped connection (this
+	// is unchanged from before; only the syllabi write moved to the server role).
+	updatedCourse, err := s.repo.Transition(ctx, courseID,
 		[]string{"syllabus_draft", "syllabus_approved"}, "syllabus_draft", nil)
 	if err != nil {
 		return SyllabusRow{}, CourseRow{}, err
 	}
-	if err := tx.Commit(ctx); err != nil {
+
+	// Return the freshly inserted (revised) syllabus version.
+	newSyllabus, err := s.repo.GetLatestSyllabus(ctx, courseID)
+	if err != nil {
 		return SyllabusRow{}, CourseRow{}, err
 	}
 	return newSyllabus, updatedCourse, nil

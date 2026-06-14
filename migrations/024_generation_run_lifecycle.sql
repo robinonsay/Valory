@@ -20,6 +20,12 @@
 --   6. Partial index on courses WHERE status='syllabus_approved' for eligibility scans
 --   7. Seed system_config keys generation_backoff_seconds and generation_max_attempts
 --
+-- NOTE (D22): The widening of courses_single_active_idx to also exclude
+-- 'generation_failed' lives in migration 025. It cannot be in this file because
+-- runMigrations sends each whole file as a single simple-query string (one implicit
+-- transaction), and PostgreSQL forbids using a newly-added enum value in the same
+-- transaction that adds it (SQLSTATE 55P04).
+--
 -- PG 16 assumption: ALTER TYPE … ADD VALUE inside a transaction block is supported
 -- on PostgreSQL 16+ (the version Valory targets per docker-compose). These statements
 -- are placed OUTSIDE the BEGIN…COMMIT block (before the version stamp) following the
@@ -125,27 +131,7 @@ CREATE INDEX IF NOT EXISTS courses_generation_eligible_idx
     WHERE status = 'syllabus_approved';
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 6a. Widen courses_single_active_idx to exclude 'generation_failed' (D22)
--- ─────────────────────────────────────────────────────────────────────────────
--- Lead decision D22: a course in terminal 'generation_failed' state must not
--- block the student from creating a new course. The original partial unique
--- index from migration 003 predicated on
---   WHERE status NOT IN ('archived', 'completed')
--- which would treat 'generation_failed' as "active" and prevent a new course.
--- This migration widens the exclusion to include 'generation_failed' so the
--- student can start fresh while the old course sits in its terminal state.
---
--- Idempotent: DROP IF EXISTS first, then CREATE UNIQUE INDEX IF NOT EXISTS.
--- This is safe because we are only widening the exclusion predicate — the
--- index still prevents duplicate in-progress courses; it simply no longer
--- counts 'generation_failed' as an in-progress course.
-DROP INDEX IF EXISTS courses_single_active_idx;
-CREATE UNIQUE INDEX IF NOT EXISTS courses_single_active_idx
-    ON courses (student_id)
-    WHERE status NOT IN ('archived', 'completed', 'generation_failed');
-
--- ─────────────────────────────────────────────────────────────────────────────
--- 7. Seed system_config keys (OQ-4 resolved: seeded for safe first-run behaviour)
+-- 6. Seed system_config keys (OQ-4 resolved: seeded for safe first-run behaviour)
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Mirrors the pattern established by migration 002 (correction_loop_max_iterations)
 -- and migration 022 (enable_tree_mode_courses). ON CONFLICT DO NOTHING preserves

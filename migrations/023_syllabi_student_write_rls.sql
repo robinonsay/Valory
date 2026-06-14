@@ -1,3 +1,5 @@
+BEGIN;
+
 -- Migration 023 — Restore student write access to their own syllabi.
 --
 -- Migration 021 enabled FORCE ROW LEVEL SECURITY on `syllabi` and added a
@@ -24,7 +26,11 @@
 -- empty/unset GUC casts to NULL (no rows) instead of raising, matching 021.
 --
 -- Idempotency: each CREATE POLICY is wrapped in DO $$ ... EXCEPTION WHEN
--- duplicate_object THEN NULL so re-running the migration is safe.
+-- duplicate_object THEN NULL, and the migration self-records via ON CONFLICT DO
+-- NOTHING, so re-running (the runner re-applies every file on each boot) is safe.
+
+INSERT INTO schema_migrations (version) VALUES ('023_syllabi_student_write_rls')
+    ON CONFLICT (version) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- Student INSERT policy: a student may insert a syllabus row for a course they
@@ -60,3 +66,5 @@ DO $$ BEGIN
         ));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+COMMIT;

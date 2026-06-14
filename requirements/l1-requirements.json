@@ -565,7 +565,15 @@
     "description": "The system shall enforce a configurable per-layer token budget that fails nodes exceeding the limit.",
     "rationale": "The global per-student token cap is insufficient for layered generation where a single layer can exhaust the budget before the human reviews it; a per-layer sub-cap gives admins fine-grained cost control and makes budget exhaustion observable via failed-node escalation.",
     "verification_method": "Test",
-    "implements": ["REQ-AGENT-045", "REQ-AGENT-046"]
+    "implements": ["REQ-AGENT-045", "REQ-AGENT-046", "REQ-AGENT-068"]
+  },
+  {
+    "id": "REQ-SYS-078",
+    "title": "Bounded Background Generation Dispatch per Course",
+    "description": "The system shall limit automatic generation dispatch attempts per course to a configurable maximum.",
+    "rationale": "Unbounded automatic re-dispatch of a persistently-failing course exhausts external API quotas and blocks forward progress for all students; a configurable attempt ceiling ensures the system remains cost-predictable and operationally stable under persistent generation failures.",
+    "verification_method": "Test",
+    "implements": ["REQ-AGENT-061", "REQ-AGENT-062", "REQ-AGENT-063", "REQ-AGENT-064", "REQ-AGENT-065", "REQ-AGENT-066", "REQ-AGENT-067", "REQ-AGENT-069"]
   },
   {
     "id": "REQ-SYS-075",

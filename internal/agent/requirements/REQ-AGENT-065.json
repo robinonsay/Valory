@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-065",
+  "title": "Dispatch-Level Retry Budget per Course",
+  "description": "The agent module shall count only dispatch-level generation failures per course since the course last succeeded.",
+  "rationale": "Counting per-layer sub-retries within a single tree run allows a course that fails at a specific layer to repeatedly reset its budget on successful intermediate layers, preventing it from ever reaching the terminal state and bounding the storm incorrectly.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-062", "REQ-SYS-078"]
+}

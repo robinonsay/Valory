@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-061",
+  "title": "Idempotent Generation Schema Migrations",
+  "description": "The agent module shall record each schema migration exactly once and produce no change when re-applied.",
+  "rationale": "Migration scripts that silently re-apply changes corrupt schema state or fail noisily in automated deployments; idempotency and self-recording ensure repeated execution is safe and the applied revision is always known.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-078"]
+}

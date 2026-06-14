@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-062",
+  "title": "Terminal Failed State on Retry Exhaustion",
+  "description": "The agent module shall transition a course to a permanent failed state when dispatch-level retries are exhausted.",
+  "rationale": "Without a terminal state, a persistently failing course re-enters the eligibility pool on every scheduler tick, producing unbounded retry storms that exhaust external API quotas and block forward progress.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-003", "REQ-SYS-078"]
+}

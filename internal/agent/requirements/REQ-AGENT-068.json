@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-068",
+  "title": "Token-Cap Pre-flight Blocks Per-Section External Calls",
+  "description": "The agent module shall make no per-section external call when a run exceeds the token cap.",
+  "rationale": "The existing per-call token check fires only after a paid search call has already been made for each section; checking the cap before section iteration begins eliminates external calls on capped runs, preventing unnecessary quota consumption.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-074"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-067",
+  "title": "Configurable Backoff and Attempt Cap on Generation Retries",
+  "description": "The agent module shall space generation auto-retries by a configurable interval and cap retries at a configurable maximum.",
+  "rationale": "Fixed or absent inter-retry delays allow a failing course to consume the entire retry budget within seconds; an operator-tunable backoff interval and attempt cap are required so the retry storm is both slowed and terminated without code changes.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-062", "REQ-AGENT-065", "REQ-SYS-078"]
+}

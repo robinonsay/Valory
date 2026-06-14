@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-064",
+  "title": "Scheduler Exclusion of Ineligible Courses",
+  "description": "The agent module shall exclude courses in a backoff window or terminal failed state from generation dispatch.",
+  "rationale": "Courses inside a backoff window or in a permanent failed state must not be re-dispatched; dispatching them defeats the retry budget and backoff policy, re-introducing the unbounded storm the lifecycle design exists to prevent.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-062", "REQ-SYS-078"]
+}

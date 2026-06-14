@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-069",
+  "title": "Explicit Recovery Action Required for Terminally-Failed Courses",
+  "description": "The agent module shall return a terminally-failed course to eligibility only via an explicit recovery action.",
+  "rationale": "A bare manual database status reset without resetting the attempt counter and backoff timestamp leaves stale state that causes immediate re-exhaustion on the next run; only the designated recovery action atomically resets all lifecycle fields to a clean state, so it is the sole supported path. Resolves OQ-1: bare manual status reset is disallowed.",
+  "verification_method": "Test",
+  "uses": ["REQ-AGENT-062", "REQ-AGENT-003", "REQ-SYS-078"]
+}

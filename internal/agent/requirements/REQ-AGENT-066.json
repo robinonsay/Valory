@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-066",
+  "title": "At Most One Concurrent Generation Run per Course",
+  "description": "The agent module shall permit at most one active generation run per course at any time.",
+  "rationale": "Two concurrent runs for the same course write to the same content rows and course status, producing corrupted or duplicated content; mutual exclusion is required for both flat and tree paths to prevent data integrity violations.",
+  "verification_method": "Test",
+  "uses": ["REQ-SYS-078"]
+}

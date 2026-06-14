@@ -1,0 +1,8 @@
+{
+  "id": "REQ-AGENT-063",
+  "title": "Index-Backed Generation Eligibility Lookups",
+  "description": "The agent module shall resolve generation eligibility queries without performing a full table scan.",
+  "rationale": "The eligibility query runs on every scheduler tick; a full table scan at that cadence degrades database performance linearly with the number of courses, making the system unscalable under normal operational load.",
+  "verification_method": "Analysis",
+  "uses": ["REQ-SYS-078"]
+}

@@ -5,7 +5,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCourseStore } from '@/stores/course'
-import { post, ApiError } from '@/api/client'
+import { post, del, ApiError } from '@/api/client'
 import type { CourseResponse } from '@/types/course'
 
 const router = useRouter()
@@ -16,6 +16,28 @@ const showCreateModal = ref(false)
 const newCourseTopic = ref('')
 const createError = ref<string | null>(null)
 const isCreating = ref(false)
+const deletingId = ref<string | null>(null)
+
+// @{"req": ["REQ-FECOURSE-001"]}
+// Delete a course and all its material after an explicit confirmation. RLS +
+// the service ownership check guarantee a student can only delete their own.
+const deleteCourse = async (courseId: string, title: string): Promise<void> => {
+  if (!window.confirm(`Delete "${title}"? This permanently removes the course and all of its material. This cannot be undone.`)) {
+    return
+  }
+  deletingId.value = courseId
+  try {
+    await del(`/api/v1/courses/${courseId}`)
+    const idx = courseStore.courses.findIndex(c => c.id === courseId)
+    if (idx !== -1) {
+      courseStore.courses.splice(idx, 1)
+    }
+  } catch {
+    window.alert('Failed to delete course. Please try again.')
+  } finally {
+    deletingId.value = null
+  }
+}
 
 onMounted(async () => {
   if (auth.isAuthenticated) {
@@ -131,12 +153,21 @@ const createNewCourse = async (): Promise<void> => {
           <span class="status-badge">{{ course.status }}</span>
           <span class="date">{{ new Date(course.created_at).toLocaleDateString() }}</span>
         </div>
-        <button
-          class="continue-button"
-          @click.stop="navigateToCourse(course.id, course.status, course.tree_mode)"
-        >
-          Continue
-        </button>
+        <div class="card-actions">
+          <button
+            class="continue-button"
+            @click.stop="navigateToCourse(course.id, course.status, course.tree_mode)"
+          >
+            Continue
+          </button>
+          <button
+            class="delete-button"
+            :disabled="deletingId === course.id"
+            @click.stop="deleteCourse(course.id, course.title || course.topic)"
+          >
+            {{ deletingId === course.id ? 'Deleting…' : 'Delete' }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -308,6 +339,37 @@ const createNewCourse = async (): Promise<void> => {
 
 .continue-button:hover {
   background-color: #1565c0;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.card-actions .continue-button {
+  flex: 1;
+  width: auto;
+}
+
+.delete-button {
+  padding: 0.75rem 1rem;
+  background-color: #fff;
+  color: #d32f2f;
+  border: 1px solid #e0a0a0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s;
+}
+
+.delete-button:hover:not(:disabled) {
+  background-color: #ffebee;
+}
+
+.delete-button:disabled {
+  color: #bbb;
+  border-color: #eee;
+  cursor: not-allowed;
 }
 
 .modal-overlay {

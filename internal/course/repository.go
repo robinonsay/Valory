@@ -120,6 +120,36 @@ func (r *CourseRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
 	return r.pool.Begin(ctx)
 }
 
+// DeleteCourse permanently deletes a course and all of its material. agent_runs
+// is ON DELETE RESTRICT from courses, so it (and its ON DELETE CASCADE
+// pipeline_events) must be removed before the course; every other course child
+// (syllabi, homework, course_nodes -> node_chats, chat_messages, grades,
+// due_date_schedules, images, lesson_content, section_feedback,
+// agent_token_usage) is ON DELETE CASCADE and is swept by the course delete.
+// Runs on the request-scoped connection (BeginTx) so RLS applies under the
+// caller's role. Returns the number of course rows deleted (0 = not visible).
+//
+// @{"req": ["REQ-COURSE-001"]}
+func (r *CourseRepository) DeleteCourse(ctx context.Context, courseID uuid.UUID) (int64, error) {
+	tx, err := r.BeginTx(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if _, err := tx.Exec(ctx, `DELETE FROM agent_runs WHERE course_id = $1`, courseID); err != nil {
+		return 0, err
+	}
+	ct, err := tx.Exec(ctx, `DELETE FROM courses WHERE id = $1`, courseID)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return ct.RowsAffected(), nil
+}
+
 // @{"req": ["REQ-COURSE-001"]}
 func (r *CourseRepository) CreateCourse(ctx context.Context, studentID uuid.UUID, topic string) (CourseRow, error) {
 	var course CourseRow

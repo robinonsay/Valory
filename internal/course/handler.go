@@ -53,6 +53,7 @@ func (h *CourseHandler) Routes(r chi.Router) {
 	r.Post("/", h.createCourse)
 	r.Get("/", h.listCourses)
 	r.Get("/{id}", h.getCourse)
+	r.Delete("/{id}", h.deleteCourse)
 	r.Get("/{id}/syllabus", h.getSyllabus)
 	r.Get("/{id}/homework", h.listHomework)
 	r.Post("/{id}/withdraw", h.withdraw)
@@ -60,6 +61,42 @@ func (h *CourseHandler) Routes(r chi.Router) {
 	r.Post("/{id}/syllabus/approve", h.approveSyllabus)
 	r.Post("/{id}/syllabus/modification", h.requestModification)
 	r.Post("/{id}/schedule/agree", h.agreeToSchedule)
+}
+
+// deleteCourse handles DELETE /api/v1/courses/{id}: a student permanently
+// deletes their own course and all of its material. Ownership is enforced by the
+// service (and by RLS on the request-scoped connection).
+//
+// @{"req": ["REQ-COURSE-001"]}
+func (h *CourseHandler) deleteCourse(w http.ResponseWriter, r *http.Request) {
+	rawID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized")
+		return
+	}
+	userID := uuid.UUID(rawID)
+
+	courseID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid course id")
+		return
+	}
+
+	if err := h.svc.DeleteCourse(r.Context(), courseID, userID); err != nil {
+		if errors.Is(err, ErrForbidden) {
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "access forbidden")
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "course not found")
+			return
+		}
+		log.Printf("course: deleteCourse: course=%s: %v", courseID, err)
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // @{"req": ["REQ-COURSE-001", "REQ-AGENT-018"]}

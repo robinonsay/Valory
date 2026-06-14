@@ -211,6 +211,28 @@ func (s *CourseService) RequestModification(ctx context.Context, courseID, stude
 	return newSyllabus, updatedCourse, nil
 }
 
+// DeleteCourse permanently deletes a student's own course and all of its
+// material. Ownership/existence is checked first on the request-scoped
+// connection (clean 404/403); RLS independently scopes the delete so a student
+// can never delete another student's course.
+//
+// @{"req": ["REQ-COURSE-001"]}
+func (s *CourseService) DeleteCourse(ctx context.Context, courseID, studentID uuid.UUID) error {
+	if _, err := s.GetCourse(ctx, courseID, studentID, "student"); err != nil {
+		return err
+	}
+	rows, err := s.repo.DeleteCourse(ctx, courseID)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		// The course existed at the ownership check but the delete matched nothing
+		// (e.g. an RLS race) — treat as not found rather than a silent success.
+		return ErrNotFound
+	}
+	return nil
+}
+
 // @{"req": ["REQ-COURSE-008"]}
 func (s *CourseService) AgreeToSchedule(ctx context.Context, courseID, studentID uuid.UUID) (int, error) {
 	_, err := s.GetCourse(ctx, courseID, studentID, "student")

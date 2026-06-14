@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/valory/valory/internal/auth"
 )
 
 var (
@@ -261,11 +263,24 @@ func (r *Repository) SetActive(ctx context.Context, id uuid.UUID, active bool) e
 
 // @{"req": ["REQ-USER-007"]}
 func (r *Repository) DeleteStudent(ctx context.Context, id uuid.UUID) error {
-	tx, err := r.pool.Begin(ctx)
+	// Run on the request-scoped connection when present so every DELETE executes
+	// under the caller's RLS context. For an admin's HTTP request the middleware
+	// sets app.current_role='admin', and courses_admin_policy (ALL) lets the
+	// connection delete the student's courses. The bare pool carries no GUCs, so
+	// RLS on courses/chat_messages/etc. filters out all rows: the staged deletes
+	// affect 0 rows and the final users delete then trips the courses->users
+	// RESTRICT FK (HTTP 500). Mirrors CourseRepository.BeginTx (REQ-USER-007).
+	var tx pgx.Tx
+	var err error
+	if conn, ok := auth.ConnFromContext(ctx); ok {
+		tx, err = conn.Begin(ctx)
+	} else {
+		tx, err = r.pool.Begin(ctx)
+	}
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var role string
 	err = tx.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&role)

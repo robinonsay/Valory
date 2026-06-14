@@ -514,6 +514,13 @@ func TestLayeredRunner_FeedbackNode_StoresFeedbackAndNodeTransitionsToRejected(t
 		t.Fatalf("GenerateLayer: %v", err)
 	}
 
+	// Close the first run so the migration-024 unique index
+	// (agent_runs_one_running_per_course_type_idx) permits the regeneration run below.
+	// Mirrors pollLayeredGeneration, which marks its run completed after GenerateLayer.
+	if err := NewAgentRepository(integPool).SetRunStatus(ctx, runID, "completed", nil); err != nil {
+		t.Fatalf("close first run: %v", err)
+	}
+
 	nodes := lrListSectionGoalNodes(t, seed.CourseID)
 	if len(nodes) == 0 {
 		t.Fatal("no section_goal nodes after generation")
